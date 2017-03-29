@@ -16,9 +16,9 @@
 
 package org.onosproject.store.service;
 
-import org.onosproject.store.primitives.TransactionId;
-
 import java.util.concurrent.CompletableFuture;
+
+import org.onosproject.store.primitives.TransactionId;
 
 /**
  * Provides a context for transactional operations.
@@ -77,22 +77,51 @@ public interface TransactionContext extends DistributedPrimitive {
     /**
      * Returns a transactional map data structure with the specified name.
      *
-     * @param <K> key type
-     * @param <V> value type
      * @param mapName name of the transactional map
      * @param serializer serializer to use for encoding/decoding keys and values of the map
+     * @param <K> key type
+     * @param <V> value type
      * @return Transactional Map
      */
-    <K, V> TransactionalMap<K, V> getTransactionalMap(String mapName, Serializer serializer);
+    default <K, V> TransactionalMap<K, V> getTransactionalMap(String mapName, Serializer serializer) {
+        return getTransactionalMap(mapName, MapTransaction.LockMode.OPTIMISTIC, serializer);
+    }
+
+    /**
+     * Returns a transactional map data structure with the specified name.
+     *
+     * @param mapName name of the transactional map
+     * @param lockMode the type of locking to perform on the map
+     * @param serializer serializer to use for encoding/decoding keys and values of the map
+     * @param <K> key type
+     * @param <V> value type
+     * @return Transactional Map
+     */
+    <K, V> TransactionalMap<K, V> getTransactionalMap(String mapName, MapTransaction.LockMode lockMode, Serializer serializer);
 
     /**
      * Wraps the given consistent map in a transactional map.
      *
      * @param map the map to wrap
+     * @param serializer serializer to use for encoding/decoding keys and values of the map
      * @param <K> key type
      * @param <V> value type
      * @return Transactional Map
      */
-    <K, V> TransactionalMap<K, V> getTransactionalMap(AsyncConsistentMap<K, V> map, Serializer serializer);
+    default <K, V> TransactionalMap<K, V> getTransactionalMap(AsyncConsistentMap<K, V> map, Serializer serializer) {
+        return getTransactionalMap(map, MapTransaction.LockMode.OPTIMISTIC, serializer);
+    }
+
+    /**
+     * Wraps the given consistent map in a transactional map.
+     *
+     * @param map the map to wrap
+     * @param lockMode the type of locking to perform on the map
+     * @param serializer serializer to use for encoding/decoding keys and values of the map
+     * @param <K> key type
+     * @param <V> value type
+     * @return Transactional Map
+     */
+    <K, V> TransactionalMap<K, V> getTransactionalMap(AsyncConsistentMap<K, V> map, MapTransaction.LockMode lockMode, Serializer serializer);
 
 }

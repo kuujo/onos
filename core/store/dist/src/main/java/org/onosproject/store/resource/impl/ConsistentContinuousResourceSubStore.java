@@ -26,6 +26,7 @@ import org.onosproject.net.resource.ResourceAllocation;
 import org.onosproject.net.resource.ResourceConsumerId;
 import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.ConsistentMap;
+import org.onosproject.store.service.MapTransaction;
 import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.TransactionContext;
 import org.onosproject.store.service.Versioned;
@@ -69,8 +70,8 @@ class ConsistentContinuousResourceSubStore implements ConsistentResourceSubStore
     @Override
     public TransactionalContinuousResourceSubStore transactional(TransactionContext tx) {
         return new TransactionalContinuousResourceSubStore(
-                tx.getTransactionalMap(asyncConsumers, SERIALIZER),
-                tx.getTransactionalMap(asyncChildMap, SERIALIZER));
+                tx.getTransactionalMap(asyncConsumers, MapTransaction.LockMode.PESSIMISTIC, SERIALIZER),
+                tx.getTransactionalMap(asyncChildMap, MapTransaction.LockMode.PESSIMISTIC, SERIALIZER));
     }
 
     // computational complexity: O(n) where n is the number of the existing allocations for the resource

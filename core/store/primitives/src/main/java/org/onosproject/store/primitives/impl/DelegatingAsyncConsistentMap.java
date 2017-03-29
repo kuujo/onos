@@ -165,6 +165,11 @@ public class DelegatingAsyncConsistentMap<K, V> implements AsyncConsistentMap<K,
     }
 
     @Override
+    public CompletableFuture<Void> begin(MapTransaction.LockMode mode) {
+        return delegateMap.begin(mode);
+    }
+
+    @Override
     public CompletableFuture<Boolean> prepare(MapTransaction<K, V> transaction) {
         return delegateMap.prepare(transaction);
     }

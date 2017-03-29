@@ -20,6 +20,7 @@ import org.onosproject.store.primitives.DistributedPrimitiveCreator;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.CommitStatus;
+import org.onosproject.store.service.MapTransaction;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.TransactionContext;
 import org.onosproject.store.service.TransactionalMap;
@@ -85,21 +86,27 @@ public class DefaultTransactionContext implements TransactionContext {
     }
 
     @Override
-    public <K, V> TransactionalMap<K, V> getTransactionalMap(String mapName,
+    public <K, V> TransactionalMap<K, V> getTransactionalMap(
+            String mapName,
+            MapTransaction.LockMode lockMode,
             Serializer serializer) {
         // FIXME: Do not create duplicates.
         DefaultTransactionalMap<K, V> txMap = new DefaultTransactionalMap<>(mapName,
                 DistributedPrimitives.newMeteredMap(creator.newAsyncConsistentMap(mapName, serializer)),
                 this,
+                lockMode,
                 serializer);
         txParticipants.add(txMap);
         return txMap;
     }
 
     @Override
-    public <K, V> TransactionalMap<K, V> getTransactionalMap(AsyncConsistentMap<K, V> map, Serializer serializer) {
+    public <K, V> TransactionalMap<K, V> getTransactionalMap(
+            AsyncConsistentMap<K, V> map,
+            MapTransaction.LockMode lockMode,
+            Serializer serializer) {
         DefaultTransactionalMap<K, V> txMap = new DefaultTransactionalMap<>(
-                map.name(), map, this, serializer);
+                map.name(), map, this, lockMode, serializer);
         txParticipants.add(txMap);
         return txMap;
     }

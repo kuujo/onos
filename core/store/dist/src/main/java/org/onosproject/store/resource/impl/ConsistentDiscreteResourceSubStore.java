@@ -25,6 +25,7 @@ import org.onosproject.net.resource.ResourceConsumerId;
 import org.onosproject.net.resource.Resources;
 import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.ConsistentMap;
+import org.onosproject.store.service.MapTransaction;
 import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.TransactionContext;
 import org.onosproject.store.service.Versioned;
@@ -67,8 +68,8 @@ class ConsistentDiscreteResourceSubStore implements ConsistentResourceSubStore<D
     @Override
     public TransactionalDiscreteResourceSubStore transactional(TransactionContext tx) {
         return new TransactionalDiscreteResourceSubStore(
-                tx.getTransactionalMap(asyncConsumers, SERIALIZER),
-                tx.getTransactionalMap(asyncChildMap, SERIALIZER));
+                tx.getTransactionalMap(asyncConsumers, MapTransaction.LockMode.PESSIMISTIC, SERIALIZER),
+                tx.getTransactionalMap(asyncChildMap, MapTransaction.LockMode.PESSIMISTIC, SERIALIZER));
     }
 
     // computational complexity: O(1)

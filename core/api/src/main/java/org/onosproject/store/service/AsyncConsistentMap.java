@@ -338,10 +338,12 @@ public interface AsyncConsistentMap<K, V> extends DistributedPrimitive {
      * Demotes the start of a transaction to allow the map to synchronize local
      * state if necessary.
      *
+     * @param transactionId the transaction identifier
      * @param mode the transaction mode
-     * @return {@code true}
+     * @param consistency the transaction consistency
+     * @return future that will be completed once the transaction has started
      */
-    CompletableFuture<Boolean> begin(MapTransaction.LockMode mode);
+    CompletableFuture<Void> begin(TransactionId transactionId, MapTransaction.LockMode mode, MapTransaction.Consistency consistency);
 
     /**
      * Prepares a transaction for commitment.

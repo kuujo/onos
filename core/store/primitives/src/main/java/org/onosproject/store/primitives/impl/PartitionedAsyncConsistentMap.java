@@ -74,8 +74,8 @@ public class PartitionedAsyncConsistentMap<K, V> implements AsyncConsistentMap<K
     @Override
     public CompletableFuture<Integer> size() {
         return Tools.allOf(getMaps().stream().map(m -> m.size()).collect(Collectors.toList()),
-                            Math::addExact,
-                            0);
+                Math::addExact,
+                0);
     }
 
     @Override
@@ -91,9 +91,10 @@ public class PartitionedAsyncConsistentMap<K, V> implements AsyncConsistentMap<K
     @Override
     public CompletableFuture<Boolean> containsValue(V value) {
         return Tools.firstOf(getMaps().stream().map(m -> m.containsValue(value)).collect(Collectors.toList()),
-                            Match.ifValue(true),
-                            false);
+                Match.ifValue(true),
+                false);
     }
+
     @Override
     public CompletableFuture<Versioned<V>> get(K key) {
         return getMap(key).get(key);
@@ -124,22 +125,22 @@ public class PartitionedAsyncConsistentMap<K, V> implements AsyncConsistentMap<K
     @Override
     public CompletableFuture<Void> clear() {
         return CompletableFuture.allOf(getMaps().stream()
-                                                .map(map -> map.clear())
-                                                .toArray(CompletableFuture[]::new));
+                .map(map -> map.clear())
+                .toArray(CompletableFuture[]::new));
     }
 
     @Override
     public CompletableFuture<Set<K>> keySet() {
         return Tools.allOf(getMaps().stream().map(m -> m.keySet()).collect(Collectors.toList()),
-                    (s1, s2) -> ImmutableSet.<K>builder().addAll(s1).addAll(s2).build(),
-                    ImmutableSet.of());
+                (s1, s2) -> ImmutableSet.<K>builder().addAll(s1).addAll(s2).build(),
+                ImmutableSet.of());
     }
 
     @Override
     public CompletableFuture<Collection<Versioned<V>>> values() {
         return Tools.allOf(getMaps().stream().map(m -> m.values()).collect(Collectors.toList()),
-                    (c1, c2) -> ImmutableList.<Versioned<V>>builder().addAll(c1).addAll(c2).build(),
-                    ImmutableList.of());
+                (c1, c2) -> ImmutableList.<Versioned<V>>builder().addAll(c1).addAll(c2).build(),
+                ImmutableList.of());
     }
 
     @Override
@@ -182,15 +183,22 @@ public class PartitionedAsyncConsistentMap<K, V> implements AsyncConsistentMap<K
     @Override
     public CompletableFuture<Void> addListener(MapEventListener<K, V> listener, Executor executor) {
         return CompletableFuture.allOf(getMaps().stream()
-                                                .map(map -> map.addListener(listener, executor))
-                                                .toArray(CompletableFuture[]::new));
+                .map(map -> map.addListener(listener, executor))
+                .toArray(CompletableFuture[]::new));
     }
 
     @Override
     public CompletableFuture<Void> removeListener(MapEventListener<K, V> listener) {
         return CompletableFuture.allOf(getMaps().stream()
-                                                .map(map -> map.removeListener(listener))
-                                                .toArray(CompletableFuture[]::new));
+                .map(map -> map.removeListener(listener))
+                .toArray(CompletableFuture[]::new));
+    }
+
+    @Override
+    public CompletableFuture<Void> begin(MapTransaction.LockMode mode) {
+        return CompletableFuture.allOf(getMaps().stream()
+                .map(map -> map.begin(mode))
+                .toArray(CompletableFuture[]::new));
     }
 
     @Override
@@ -203,20 +211,20 @@ public class PartitionedAsyncConsistentMap<K, V> implements AsyncConsistentMap<K
         });
         Map<AsyncConsistentMap<K, V>, MapTransaction<K, V>> transactionsByMap =
                 Maps.transformValues(updatesGroupedByMap,
-                                     list -> new MapTransaction<>(transaction.transactionId(), list));
+                        list -> new MapTransaction<>(transaction.transactionId(), list));
 
         return Tools.allOf(transactionsByMap.entrySet()
-                         .stream()
-                         .map(e -> e.getKey().prepare(e.getValue()))
-                         .collect(Collectors.toList()))
-                    .thenApply(list -> list.stream().reduce(Boolean::logicalAnd).orElse(true));
+                .stream()
+                .map(e -> e.getKey().prepare(e.getValue()))
+                .collect(Collectors.toList()))
+                .thenApply(list -> list.stream().reduce(Boolean::logicalAnd).orElse(true));
     }
 
     @Override
     public CompletableFuture<Void> commit(TransactionId transactionId) {
         return CompletableFuture.allOf(getMaps().stream()
-                                                .map(e -> e.commit(transactionId))
-                                                .toArray(CompletableFuture[]::new));
+                .map(e -> e.commit(transactionId))
+                .toArray(CompletableFuture[]::new));
     }
 
     @Override
@@ -235,13 +243,13 @@ public class PartitionedAsyncConsistentMap<K, V> implements AsyncConsistentMap<K
         });
         Map<AsyncConsistentMap<K, V>, MapTransaction<K, V>> transactionsByMap =
                 Maps.transformValues(updatesGroupedByMap,
-                                     list -> new MapTransaction<>(transaction.transactionId(), list));
+                        list -> new MapTransaction<>(transaction.transactionId(), list));
 
         return Tools.allOf(transactionsByMap.entrySet()
-                                            .stream()
-                                            .map(e -> e.getKey().prepareAndCommit(e.getValue()))
-                                            .collect(Collectors.toList()))
-                    .thenApply(list -> list.stream().reduce(Boolean::logicalAnd).orElse(true));
+                .stream()
+                .map(e -> e.getKey().prepareAndCommit(e.getValue()))
+                .collect(Collectors.toList()))
+                .thenApply(list -> list.stream().reduce(Boolean::logicalAnd).orElse(true));
     }
 
     @Override
@@ -261,6 +269,7 @@ public class PartitionedAsyncConsistentMap<K, V> implements AsyncConsistentMap<K
 
     /**
      * Returns the map (partition) to which the specified key maps.
+     *
      * @param key key
      * @return AsyncConsistentMap to which key maps
      */
@@ -270,6 +279,7 @@ public class PartitionedAsyncConsistentMap<K, V> implements AsyncConsistentMap<K
 
     /**
      * Returns all the constituent maps.
+     *
      * @return collection of maps.
      */
     private Collection<AsyncConsistentMap<K, V>> getMaps() {

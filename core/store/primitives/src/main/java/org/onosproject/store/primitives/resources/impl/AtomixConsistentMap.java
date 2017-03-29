@@ -288,6 +288,32 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
     }
 
     @Override
+    public CompletableFuture<Void> begin(TransactionId transactionId, MapTransaction.LockMode mode, MapTransaction.Consistency consistency) {
+        switch (mode) {
+            case OPTIMISTIC:
+                return beginOptimistic(transactionId, consistency);
+            case PESSIMISTIC:
+                return beginPessimistic(transactionId);
+            default:
+                throw new AssertionError();
+        }
+    }
+
+    /**
+     * Starts an optimistic map transaction.
+     */
+    private CompletableFuture<Void> beginOptimistic(TransactionId transactionId, MapTransaction.Consistency consistency) {
+        return client.submit(new TransactionBegin(transactionId, MapTransaction.LockMode.OPTIMISTIC, consistency));
+    }
+
+    /**
+     * Starts a pessimistic map transaction.
+     */
+    private CompletableFuture<Void> beginPessimistic(TransactionId transactionId) {
+        return client.submit(new TransactionBegin(transactionId, MapTransaction.LockMode.PESSIMISTIC));
+    }
+
+    @Override
     public CompletableFuture<Boolean> prepare(MapTransaction<String, byte[]> transaction) {
         return client.submit(new TransactionPrepare(transaction)).thenApply(v -> v == PrepareResult.OK);
     }

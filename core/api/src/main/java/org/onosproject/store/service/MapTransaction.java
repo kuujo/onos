@@ -46,7 +46,32 @@ public class MapTransaction<K, V> {
          * Indicates a transaction that uses pessimistic locking.
          */
         PESSIMISTIC,
+    }
 
+    /**
+     * Transaction isolation level.
+     */
+    public enum IsolationLevel {
+        SERIALIZABLE,
+        REPEATABLE_READS,
+        READ_COMMITTED,
+        READ_UNCOMMITTED,
+    }
+
+    /**
+     * Map transaction consistency.
+     */
+    public enum Consistency {
+
+        /**
+         * Indicates that the transaction is being performed within a weakly consistent map.
+         */
+        WEAK,
+
+        /**
+         * Indicates that the transaction is being performed within a strongly consistent map.
+         */
+        STRONG,
     }
 
     private final TransactionId transactionId;

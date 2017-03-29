@@ -84,12 +84,14 @@ public class DefaultTransactionalMap<K, V> implements TransactionalMap<K, V>, Tr
             String name,
             AsyncConsistentMap<K, V> backingMap,
             TransactionContext txContext,
+            MapTransaction.LockMode lockMode,
             Serializer serializer) {
         this.name = name;
         this.backingMap = backingMap;
         this.backingConsistentMap = backingMap.asConsistentMap();
         this.txContext = txContext;
         this.serializer = serializer;
+        backingMap.begin(txContext.transactionId(), lockMode).join();
     }
 
     @Override

@@ -629,6 +629,22 @@ public abstract class Tools {
     }
 
     /**
+     * Attempts to supply a future, returning an exceptionally completed future
+     * if an exception is thrown within the supplier.
+     *
+     * @param supplier the supplier with which to create the future
+     * @param <T> future value type
+     * @return future
+     */
+    public static <T> CompletableFuture<T> tryFuture(Supplier<CompletableFuture<T>> supplier) {
+        try {
+            return supplier.get();
+        } catch (Exception e) {
+            return exceptionalFuture(e);
+        }
+    }
+
+    /**
      * Returns a future that is completed exceptionally.
      *
      * @param t exception

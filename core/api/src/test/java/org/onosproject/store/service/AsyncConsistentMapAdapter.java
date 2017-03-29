@@ -138,6 +138,11 @@ public class AsyncConsistentMapAdapter<K, V> implements AsyncConsistentMap<K, V>
     }
 
     @Override
+    public CompletableFuture<Void> begin(MapTransaction.LockMode mode) {
+        return null;
+    }
+
+    @Override
     public CompletableFuture<Boolean> prepare(MapTransaction<K, V> transaction) {
         return null;
     }
