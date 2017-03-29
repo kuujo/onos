@@ -16,9 +16,9 @@
 
 package org.onosproject.store.service;
 
-import java.util.concurrent.CompletableFuture;
-
 import org.onosproject.store.primitives.TransactionId;
+
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Provides a context for transactional operations.
@@ -84,4 +84,15 @@ public interface TransactionContext extends DistributedPrimitive {
      * @return Transactional Map
      */
     <K, V> TransactionalMap<K, V> getTransactionalMap(String mapName, Serializer serializer);
+
+    /**
+     * Wraps the given consistent map in a transactional map.
+     *
+     * @param map the map to wrap
+     * @param <K> key type
+     * @param <V> value type
+     * @return Transactional Map
+     */
+    <K, V> TransactionalMap<K, V> getTransactionalMap(AsyncConsistentMap<K, V> map, Serializer serializer);
+
 }

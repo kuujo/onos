@@ -18,12 +18,11 @@ package org.onosproject.store.service;
 import java.util.List;
 import java.util.function.Function;
 
-import org.onosproject.store.primitives.MapUpdate;
-import org.onosproject.store.primitives.TransactionId;
-
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import org.onosproject.store.primitives.MapUpdate;
+import org.onosproject.store.primitives.TransactionId;
 
 /**
  * Collection of map updates to be committed atomically.
@@ -32,6 +31,23 @@ import com.google.common.collect.Lists;
  * @param <V> value type
  */
 public class MapTransaction<K, V> {
+
+    /**
+     * Indicates a transaction lock mode.
+     */
+    public enum LockMode {
+
+        /**
+         * Indicates a transaction that uses optimistic locking.
+         */
+        OPTIMISTIC,
+
+        /**
+         * Indicates a transaction that uses pessimistic locking.
+         */
+        PESSIMISTIC,
+
+    }
 
     private final TransactionId transactionId;
     private final List<MapUpdate<K, V>> updates;

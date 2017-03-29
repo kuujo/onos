@@ -86,15 +86,15 @@ public class ConsistentResourceStore extends AbstractStore<ResourceEvent, Resour
             .build());
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected StorageService service;
+    protected StorageService storage;
 
     private ConsistentDiscreteResourceSubStore discreteStore;
     private ConsistentContinuousResourceSubStore continuousStore;
 
     @Activate
     public void activate() {
-        discreteStore = new ConsistentDiscreteResourceSubStore(service);
-        continuousStore = new ConsistentContinuousResourceSubStore(service);
+        discreteStore = new ConsistentDiscreteResourceSubStore(storage);
+        continuousStore = new ConsistentContinuousResourceSubStore(storage);
 
         log.info("Started");
     }
@@ -120,7 +120,7 @@ public class ConsistentResourceStore extends AbstractStore<ResourceEvent, Resour
             resources.forEach(r -> log.trace("registering {}", r));
         }
 
-        TransactionContext tx = service.transactionContextBuilder().build();
+        TransactionContext tx = storage.transactionContextBuilder().build();
         tx.begin();
 
         // the order is preserved by LinkedHashMap
@@ -159,7 +159,7 @@ public class ConsistentResourceStore extends AbstractStore<ResourceEvent, Resour
     public boolean unregister(List<? extends ResourceId> ids) {
         checkNotNull(ids);
 
-        TransactionContext tx = service.transactionContextBuilder().build();
+        TransactionContext tx = storage.transactionContextBuilder().build();
         tx.begin();
 
         TransactionalDiscreteResourceSubStore discreteTxStore = discreteStore.transactional(tx);
@@ -215,7 +215,7 @@ public class ConsistentResourceStore extends AbstractStore<ResourceEvent, Resour
         checkNotNull(resources);
         checkNotNull(consumer);
 
-        TransactionContext tx = service.transactionContextBuilder().build();
+        TransactionContext tx = storage.transactionContextBuilder().build();
         tx.begin();
 
         TransactionalDiscreteResourceSubStore discreteTxStore = discreteStore.transactional(tx);
@@ -239,7 +239,7 @@ public class ConsistentResourceStore extends AbstractStore<ResourceEvent, Resour
     public boolean release(List<ResourceAllocation> allocations) {
         checkNotNull(allocations);
 
-        TransactionContext tx = service.transactionContextBuilder().build();
+        TransactionContext tx = storage.transactionContextBuilder().build();
         tx.begin();
 
         TransactionalDiscreteResourceSubStore discreteTxStore = discreteStore.transactional(tx);
@@ -249,11 +249,11 @@ public class ConsistentResourceStore extends AbstractStore<ResourceEvent, Resour
             ResourceConsumerId consumerId = allocation.consumerId();
 
             if (resource instanceof DiscreteResource) {
-                if (!discreteTxStore.release((DiscreteResource) resource, consumerId)) {
+                if (!discreteTxStore.release(consumerId, (DiscreteResource) resource)) {
                     return abortTransaction(tx);
                 }
             } else if (resource instanceof ContinuousResource) {
-                if (!continuousTxStore.release((ContinuousResource) resource, consumerId)) {
+                if (!continuousTxStore.release(consumerId, (ContinuousResource) resource)) {
                     return abortTransaction(tx);
                 }
             }

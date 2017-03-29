@@ -23,6 +23,7 @@ import org.onosproject.net.resource.Resource;
 import org.onosproject.net.resource.ResourceAllocation;
 import org.onosproject.net.resource.ResourceConsumerId;
 import org.onosproject.net.resource.Resources;
+import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.TransactionContext;
@@ -35,29 +36,44 @@ import java.util.stream.Stream;
 
 import static org.onosproject.store.resource.impl.ConsistentResourceStore.SERIALIZER;
 
-class ConsistentDiscreteResourceSubStore {
-    private ConsistentMap<DiscreteResourceId, ResourceConsumerId> consumers;
-    private ConsistentMap<DiscreteResourceId, DiscreteResources> childMap;
+/**
+ * Consistent substore for discrete resources.
+ */
+class ConsistentDiscreteResourceSubStore implements ConsistentResourceSubStore<DiscreteResourceId, DiscreteResource, TransactionalDiscreteResourceSubStore> {
+    private final AsyncConsistentMap<DiscreteResourceId, ResourceConsumerId> asyncConsumers;
+    private final AsyncConsistentMap<DiscreteResourceId, DiscreteResources> asyncChildMap;
+
+    private final ConsistentMap<DiscreteResourceId, ResourceConsumerId> consumers;
+    private final ConsistentMap<DiscreteResourceId, DiscreteResources> childMap;
 
     ConsistentDiscreteResourceSubStore(StorageService service) {
-        this.consumers = service.<DiscreteResourceId, ResourceConsumerId>consistentMapBuilder()
+        this.asyncConsumers = service.<DiscreteResourceId, ResourceConsumerId>consistentMapBuilder()
                 .withName(MapNames.DISCRETE_CONSUMER_MAP)
                 .withSerializer(SERIALIZER)
-                .build();
-        this.childMap = service.<DiscreteResourceId, DiscreteResources>consistentMapBuilder()
+                .withRelaxedReadConsistency()
+                .buildAsyncMap();
+        this.asyncChildMap = service.<DiscreteResourceId, DiscreteResources>consistentMapBuilder()
                 .withName(MapNames.DISCRETE_CHILD_MAP)
                 .withSerializer(SERIALIZER)
-                .build();
+                .withRelaxedReadConsistency()
+                .buildAsyncMap();
+
+        this.consumers = asyncConsumers.asConsistentMap();
+        this.childMap = asyncChildMap.asConsistentMap();
 
         childMap.put(Resource.ROOT.id(), DiscreteResources.empty());
     }
 
-    TransactionalDiscreteResourceSubStore transactional(TransactionContext tx) {
-        return new TransactionalDiscreteResourceSubStore(tx);
+    @Override
+    public TransactionalDiscreteResourceSubStore transactional(TransactionContext tx) {
+        return new TransactionalDiscreteResourceSubStore(
+                tx.getTransactionalMap(asyncConsumers, SERIALIZER),
+                tx.getTransactionalMap(asyncChildMap, SERIALIZER));
     }
 
     // computational complexity: O(1)
-    List<ResourceAllocation> getResourceAllocations(DiscreteResourceId resource) {
+    @Override
+    public List<ResourceAllocation> getResourceAllocations(DiscreteResourceId resource) {
         Versioned<ResourceConsumerId> consumerId = consumers.get(resource);
         if (consumerId == null) {
             return ImmutableList.of();
@@ -66,7 +82,8 @@ class ConsistentDiscreteResourceSubStore {
         return ImmutableList.of(new ResourceAllocation(Resources.discrete(resource).resource(), consumerId.value()));
     }
 
-    Set<DiscreteResource> getChildResources(DiscreteResourceId parent) {
+    @Override
+    public Set<DiscreteResource> getChildResources(DiscreteResourceId parent) {
         Versioned<DiscreteResources> children = childMap.get(parent);
 
         if (children == null) {
@@ -76,7 +93,8 @@ class ConsistentDiscreteResourceSubStore {
         return children.value().values();
     }
 
-    <T> Set<DiscreteResource> getChildResources(DiscreteResourceId parent, Class<T> cls) {
+    @Override
+    public Set<DiscreteResource> getChildResources(DiscreteResourceId parent, Class<?> cls) {
         Versioned<DiscreteResources> children = childMap.get(parent);
 
         if (children == null) {
@@ -86,11 +104,13 @@ class ConsistentDiscreteResourceSubStore {
         return children.value().valuesOf(cls);
     }
 
-    boolean isAvailable(DiscreteResource resource) {
+    @Override
+    public boolean isAvailable(DiscreteResource resource) {
         return getResourceAllocations(resource.id()).isEmpty();
     }
 
-    <T> Stream<DiscreteResource> getAllocatedResources(DiscreteResourceId parent, Class<T> cls) {
+    @Override
+    public Stream<DiscreteResource> getAllocatedResources(DiscreteResourceId parent, Class<?> cls) {
         Set<DiscreteResource> children = getChildResources(parent);
         if (children.isEmpty()) {
             return Stream.of();
@@ -101,7 +121,8 @@ class ConsistentDiscreteResourceSubStore {
                 .filter(x -> consumers.containsKey(x.id()));
     }
 
-    Stream<DiscreteResource> getResources(ResourceConsumerId consumerId) {
+    @Override
+    public Stream<DiscreteResource> getResources(ResourceConsumerId consumerId) {
         return consumers.entrySet().stream()
                 .filter(x -> x.getValue().value().equals(consumerId))
                 .map(Map.Entry::getKey)

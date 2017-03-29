@@ -15,19 +15,19 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicBoolean;
-
+import com.google.common.collect.Sets;
 import org.onosproject.store.primitives.DistributedPrimitiveCreator;
 import org.onosproject.store.primitives.TransactionId;
+import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.CommitStatus;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.TransactionContext;
 import org.onosproject.store.service.TransactionalMap;
 import org.onosproject.utils.MeteringAgent;
 
-import com.google.common.collect.Sets;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Default implementation of transaction context.
@@ -88,10 +88,18 @@ public class DefaultTransactionContext implements TransactionContext {
     public <K, V> TransactionalMap<K, V> getTransactionalMap(String mapName,
             Serializer serializer) {
         // FIXME: Do not create duplicates.
-        DefaultTransactionalMap<K, V> txMap = new DefaultTransactionalMap<K, V>(mapName,
-                DistributedPrimitives.newMeteredMap(creator.<K, V>newAsyncConsistentMap(mapName, serializer)),
+        DefaultTransactionalMap<K, V> txMap = new DefaultTransactionalMap<>(mapName,
+                DistributedPrimitives.newMeteredMap(creator.newAsyncConsistentMap(mapName, serializer)),
                 this,
                 serializer);
+        txParticipants.add(txMap);
+        return txMap;
+    }
+
+    @Override
+    public <K, V> TransactionalMap<K, V> getTransactionalMap(AsyncConsistentMap<K, V> map, Serializer serializer) {
+        DefaultTransactionalMap<K, V> txMap = new DefaultTransactionalMap<>(
+                map.name(), map, this, serializer);
         txParticipants.add(txMap);
         return txMap;
     }

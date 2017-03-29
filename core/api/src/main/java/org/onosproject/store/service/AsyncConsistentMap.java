@@ -335,6 +335,15 @@ public interface AsyncConsistentMap<K, V> extends DistributedPrimitive {
     CompletableFuture<Void> removeListener(MapEventListener<K, V> listener);
 
     /**
+     * Demotes the start of a transaction to allow the map to synchronize local
+     * state if necessary.
+     *
+     * @param mode the transaction mode
+     * @return {@code true}
+     */
+    CompletableFuture<Boolean> begin(MapTransaction.LockMode mode);
+
+    /**
      * Prepares a transaction for commitment.
      * @param transaction transaction
      * @return {@code true} if prepare is successful and transaction is ready to be committed;

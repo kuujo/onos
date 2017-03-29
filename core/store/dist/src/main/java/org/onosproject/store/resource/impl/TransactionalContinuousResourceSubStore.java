@@ -22,7 +22,6 @@ import org.onosproject.net.resource.ContinuousResourceId;
 import org.onosproject.net.resource.DiscreteResourceId;
 import org.onosproject.net.resource.ResourceAllocation;
 import org.onosproject.net.resource.ResourceConsumerId;
-import org.onosproject.store.service.TransactionContext;
 import org.onosproject.store.service.TransactionalMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,20 +32,25 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkArgument;
-import static org.onosproject.store.resource.impl.ConsistentResourceStore.SERIALIZER;
 
-class TransactionalContinuousResourceSubStore {
+/**
+ * Transactional substore for continuous resources.
+ */
+class TransactionalContinuousResourceSubStore implements TransactionalResourceSubStore<ContinuousResourceId, ContinuousResource> {
     private final Logger log = LoggerFactory.getLogger(getClass());
-    private final TransactionalMap<DiscreteResourceId, Set<ContinuousResource>> childMap;
     private final TransactionalMap<ContinuousResourceId, ContinuousResourceAllocation> consumers;
+    private final TransactionalMap<DiscreteResourceId, Set<ContinuousResource>> childMap;
 
-    TransactionalContinuousResourceSubStore(TransactionContext tx) {
-        this.childMap = tx.getTransactionalMap(MapNames.CONTINUOUS_CHILD_MAP, SERIALIZER);
-        this.consumers = tx.getTransactionalMap(MapNames.CONTINUOUS_CONSUMER_MAP, SERIALIZER);
+    TransactionalContinuousResourceSubStore(
+            TransactionalMap<ContinuousResourceId, ContinuousResourceAllocation> consumers,
+            TransactionalMap<DiscreteResourceId, Set<ContinuousResource>> childMap) {
+        this.consumers = consumers;
+        this.childMap = childMap;
     }
 
     // iterate over the values in the set: O(n) operation
-    Optional<ContinuousResource> lookup(ContinuousResourceId id) {
+    @Override
+    public Optional<ContinuousResource> lookup(ContinuousResourceId id) {
         // continuous resource always has its parent
         checkArgument(id.parent().isPresent());
 
@@ -60,7 +64,8 @@ class TransactionalContinuousResourceSubStore {
                 .findFirst();
     }
 
-    boolean register(DiscreteResourceId parent, Set<ContinuousResource> resources) {
+    @Override
+    public boolean register(DiscreteResourceId parent, Set<ContinuousResource> resources) {
         // short-circuit: receiving empty resource is regarded as success
         if (resources.isEmpty()) {
             return true;
@@ -92,7 +97,8 @@ class TransactionalContinuousResourceSubStore {
         return childMap.replace(parent, oldValues, newValues);
     }
 
-    boolean unregister(DiscreteResourceId parent, Set<ContinuousResource> resources) {
+    @Override
+    public boolean unregister(DiscreteResourceId parent, Set<ContinuousResource> resources) {
         // short-circuit: receiving empty resource is regarded as success
         if (resources.isEmpty()) {
             return true;
@@ -123,12 +129,14 @@ class TransactionalContinuousResourceSubStore {
         return childMap.replace(parent, oldValues, newValues);
     }
 
-    private boolean isAllocated(ContinuousResourceId id) {
+    @Override
+    public boolean isAllocated(ContinuousResourceId id) {
         ContinuousResourceAllocation allocations = consumers.get(id);
         return allocations != null && !allocations.allocations().isEmpty();
     }
 
-    boolean allocate(ResourceConsumerId consumerId, ContinuousResource request) {
+    @Override
+    public boolean allocate(ResourceConsumerId consumerId, ContinuousResource request) {
         // if the resource is not registered, then abort
         Optional<ContinuousResource> lookedUp = lookup(request.id());
         if (!lookedUp.isPresent()) {
@@ -159,7 +167,8 @@ class TransactionalContinuousResourceSubStore {
         return consumers.replace(original.id(), oldValue, newValue);
     }
 
-    boolean release(ContinuousResource resource, ResourceConsumerId consumerId) {
+    @Override
+    public boolean release(ResourceConsumerId consumerId, ContinuousResource resource) {
         ContinuousResourceAllocation oldAllocation = consumers.get(resource.id());
         ContinuousResourceAllocation newAllocation = oldAllocation.release(resource, consumerId);
 
