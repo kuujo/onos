@@ -22,6 +22,14 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import com.google.common.base.MoreObjects;
+import com.google.common.base.Objects;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import org.apache.commons.lang3.tuple.Pair;
 import org.onlab.util.HexString;
 import org.onosproject.store.primitives.MapUpdate;
@@ -33,16 +41,8 @@ import org.onosproject.store.service.TransactionContext;
 import org.onosproject.store.service.TransactionalMap;
 import org.onosproject.store.service.Versioned;
 
-import static com.google.common.base.Preconditions.*;
-
-import com.google.common.base.MoreObjects;
-import com.google.common.base.Objects;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * Default Transactional Map implementation that provides a repeatable reads
@@ -238,41 +238,6 @@ public class DefaultTransactionalMap<K, V> implements TransactionalMap<K, V>, Tr
 
     protected List<MapUpdate<K, V>> updates() {
         return updatesStream().collect(Collectors.toList());
-    }
-
-    protected List<MapUpdate<String, byte[]>> toMapUpdates() {
-        List<MapUpdate<String, byte[]>> updates = Lists.newLinkedList();
-        deleteSet.forEach(key -> {
-            Versioned<V> original = readCache.get(key);
-            if (original != null) {
-                updates.add(MapUpdate.<String, byte[]>newBuilder()
-                        .withMapName(name)
-                        .withType(MapUpdate.Type.REMOVE_IF_VERSION_MATCH)
-                        .withKey(keyCache.getUnchecked(key))
-                        .withCurrentVersion(original.version())
-                        .build());
-            }
-        });
-        writeCache.forEach((key, value) -> {
-            Versioned<V> original = readCache.get(key);
-            if (original == null) {
-                updates.add(MapUpdate.<String, byte[]>newBuilder()
-                        .withMapName(name)
-                        .withType(MapUpdate.Type.PUT_IF_ABSENT)
-                        .withKey(keyCache.getUnchecked(key))
-                        .withValue(serializer.encode(value))
-                        .build());
-            } else {
-                updates.add(MapUpdate.<String, byte[]>newBuilder()
-                        .withMapName(name)
-                        .withType(MapUpdate.Type.PUT_IF_VERSION_MATCH)
-                        .withKey(keyCache.getUnchecked(key))
-                        .withCurrentVersion(original.version())
-                        .withValue(serializer.encode(value))
-                        .build());
-            }
-        });
-        return updates;
     }
 
     @Override

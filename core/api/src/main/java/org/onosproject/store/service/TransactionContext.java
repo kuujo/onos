@@ -34,7 +34,10 @@ import org.onosproject.store.primitives.TransactionId;
  * isolation of work happening with in the transaction boundary. Within a transaction
  * context isolation level is REPEATABLE_READS i.e. only data that is committed can be read.
  * The only uncommitted data that can be read is the data modified by the current transaction.
+ *
+ * @deprecated use {@link Transaction}
  */
+@Deprecated
 public interface TransactionContext extends DistributedPrimitive {
 
     @Override

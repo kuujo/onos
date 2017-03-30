@@ -92,9 +92,15 @@ public interface DistributedPrimitive {
         LEADER_ELECTOR,
 
         /**
+         * Transaction type.
+         */
+        TRANSACTION,
+
+        /**
          * Transaction Context.
          */
-        TRANSACTION_CONTEXT
+        @Deprecated
+        TRANSACTION_CONTEXT,
     }
 
     /**

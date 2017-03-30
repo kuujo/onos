@@ -107,10 +107,19 @@ public interface StorageService {
     LeaderElectorBuilder leaderElectorBuilder();
 
     /**
+     * Creates a new transaction builder.
+     *
+     * @return a new transaction builder
+     */
+    TransactionBuilder transactionBuilder();
+
+    /**
      * Creates a new transaction context builder.
      *
      * @return a builder for a transaction context.
+     * @deprecated use {@link #transactionBuilder()}
      */
+    @Deprecated
     TransactionContextBuilder transactionContextBuilder();
 
     /**
