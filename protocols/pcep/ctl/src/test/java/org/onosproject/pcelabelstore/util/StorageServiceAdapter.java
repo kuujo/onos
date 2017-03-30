@@ -24,6 +24,7 @@ import org.onosproject.store.service.AtomicValueBuilder;
 import org.onosproject.store.service.ConsistentMapBuilder;
 import org.onosproject.store.service.ConsistentMultimapBuilder;
 import org.onosproject.store.service.ConsistentTreeMapBuilder;
+import org.onosproject.store.service.DistributedLockBuilder;
 import org.onosproject.store.service.DistributedSetBuilder;
 import org.onosproject.store.service.DocumentTreeBuilder;
 import org.onosproject.store.service.EventuallyConsistentMapBuilder;
@@ -70,6 +71,11 @@ public class StorageServiceAdapter implements StorageService {
 
     @Override
     public TransactionContextBuilder transactionContextBuilder() {
+        return null;
+    }
+
+    @Override
+    public DistributedLockBuilder lockBuilder() {
         return null;
     }
 

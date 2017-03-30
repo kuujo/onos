@@ -87,6 +87,11 @@ public interface DistributedPrimitive {
         TOPIC,
 
         /**
+         * Lock.
+         */
+        LOCK,
+
+        /**
          * Leader elector.
          */
         LEADER_ELECTOR,
