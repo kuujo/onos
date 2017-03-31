@@ -24,6 +24,63 @@ import org.onosproject.store.primitives.TransactionId;
  */
 public interface Transaction extends DistributedPrimitive {
 
+    /**
+     * Transaction state.
+     */
+    enum State {
+
+        /**
+         * Active transaction state.
+         */
+        ACTIVE,
+
+        /**
+         * Preparing transaction state.
+         */
+        PREPARING,
+
+        /**
+         * Prepared transaction state.
+         */
+        PREPARED,
+
+        /**
+         * Rolling back transaction state.
+         */
+        ROLLING_BACK,
+
+        /**
+         * Rolled back transaction state.
+         */
+        ROLLED_BACK,
+
+        /**
+         * Committing transaction state.
+         */
+        COMMITTING,
+
+        /**
+         * Committed transaction state.
+         */
+        COMMITTED,
+    }
+
+    /**
+     * Transaction status.
+     */
+    enum Status {
+
+        /**
+         * Successful transaction status.
+         */
+        SUCCESS,
+
+        /**
+         * Failure transaction status.
+         */
+        FAILURE,
+    }
+
     @Override
     default Type primitiveType() {
         return Type.TRANSACTION;
@@ -35,6 +92,13 @@ public interface Transaction extends DistributedPrimitive {
      * @return the transaction identifier
      */
     TransactionId transactionId();
+
+    /**
+     * Returns the transaction state.
+     *
+     * @return The transaction state.
+     */
+    State state();
 
     /**
      * Returns the transaction's lock mode.
@@ -51,12 +115,9 @@ public interface Transaction extends DistributedPrimitive {
     IsolationLevel isolationLevel();
 
     /**
-     * Begins the transaction block.
-     *
-     * @param transactionBlock the transaction block to execute
-     * @return the transaction context
+     * Aborts the transaction.
      */
-    Transaction begin(Runnable transactionBlock);
+    CompletableFuture<Status> abort();
 
     /**
      * Commits the transaction.
@@ -64,6 +125,6 @@ public interface Transaction extends DistributedPrimitive {
      * @return a completable future to be completed once the transaction has been committed. If the transaction
      * is committed successfully, the returned future will be completed {@code true}, otherwise {@code false}
      */
-    CompletableFuture<Boolean> commit();
+    CompletableFuture<Status> commit();
 
 }
