@@ -17,13 +17,40 @@ package org.onosproject.store.service;
 
 import org.onosproject.store.primitives.DistributedPrimitiveBuilder;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 /**
  * Abstract base class for a transaction context builder.
  */
 public abstract class TransactionContextBuilder
     extends DistributedPrimitiveBuilder<TransactionContextBuilder, TransactionContext> {
 
+    protected LockMode lockMode = LockMode.OPTIMISTIC;
+    protected IsolationLevel isolationLevel = IsolationLevel.REPEATABLE_READ;
+
     public TransactionContextBuilder() {
         super(DistributedPrimitive.Type.TRANSACTION_CONTEXT);
+    }
+
+    /**
+     * Sets the transaction lock mode.
+     *
+     * @param lockMode the transaction lock mode
+     * @return the transaction builder
+     */
+    public TransactionContextBuilder withLockMode(LockMode lockMode) {
+        this.lockMode = checkNotNull(lockMode);
+        return this;
+    }
+
+    /**
+     * Sets the transaction isolation level.
+     *
+     * @param isolationLevel the isolation level
+     * @return the transaction builder
+     */
+    public TransactionContextBuilder withIsolationLevel(IsolationLevel isolationLevel) {
+        this.isolationLevel = checkNotNull(isolationLevel);
+        return this;
     }
 }
