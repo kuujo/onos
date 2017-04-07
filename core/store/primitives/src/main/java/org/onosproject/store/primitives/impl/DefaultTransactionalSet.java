@@ -16,10 +16,10 @@
 package org.onosproject.store.primitives.impl;
 
 
-import org.onosproject.store.service.Serializer;
-import org.onosproject.store.service.TransactionContext;
 import org.onosproject.store.service.TransactionalMap;
 import org.onosproject.store.service.TransactionalSet;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * Default TransactionalSet implementation that provides a repeatable reads
@@ -34,11 +34,8 @@ public class DefaultTransactionalSet<E> implements TransactionalSet<E> {
     // dummy value to associate with an Object in the backing map
     private static final Boolean PRESENT = Boolean.TRUE;
 
-    public DefaultTransactionalSet(
-            String name,
-            TransactionContext txContext,
-            Serializer serializer) {
-        map = txContext.getTransactionalMap(name, serializer);
+    public DefaultTransactionalSet(TransactionalMap<E, Boolean> map) {
+        this.map = checkNotNull(map);
     }
 
     @Override

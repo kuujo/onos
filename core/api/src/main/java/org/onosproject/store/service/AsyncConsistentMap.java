@@ -27,6 +27,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 import org.onosproject.store.primitives.DefaultConsistentMap;
+import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.primitives.TransactionId;
 
 import com.google.common.util.concurrent.MoreExecutors;
@@ -55,7 +56,7 @@ import com.google.common.util.concurrent.MoreExecutors;
  * the returned future will be {@link CompletableFuture#complete completed} when the
  * operation finishes.
  */
-public interface AsyncConsistentMap<K, V> extends DistributedPrimitive {
+public interface AsyncConsistentMap<K, V> extends DistributedPrimitive, Transactional<MapUpdate<K, V>> {
 
     @Override
     default DistributedPrimitive.Type primitiveType() {
@@ -333,36 +334,6 @@ public interface AsyncConsistentMap<K, V> extends DistributedPrimitive {
      * @return future that will be completed when the operation finishes
      */
     CompletableFuture<Void> removeListener(MapEventListener<K, V> listener);
-
-    /**
-     * Prepares a transaction for commitment.
-     * @param transaction transaction
-     * @return {@code true} if prepare is successful and transaction is ready to be committed;
-     * {@code false} otherwise
-     */
-    CompletableFuture<Boolean> prepare(MapTransaction<K, V> transaction);
-
-    /**
-     * Commits a previously prepared transaction.
-     * @param transactionId transaction identifier
-     * @return future that will be completed when the operation finishes
-     */
-    CompletableFuture<Void> commit(TransactionId transactionId);
-
-    /**
-     * Aborts a previously prepared transaction.
-     * @param transactionId transaction identifier
-     * @return future that will be completed when the operation finishes
-     */
-    CompletableFuture<Void> rollback(TransactionId transactionId);
-
-    /**
-     * Prepares a transaction and commits it in one go.
-     * @param transaction transaction
-     * @return {@code true} if operation is successful and updates are committed
-     * {@code false} otherwise
-     */
-    CompletableFuture<Boolean> prepareAndCommit(MapTransaction<K, V> transaction);
 
     /**
      * Returns a new {@link ConsistentMap} that is backed by this instance.

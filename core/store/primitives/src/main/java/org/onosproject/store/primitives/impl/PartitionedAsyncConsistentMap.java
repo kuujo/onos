@@ -195,7 +195,6 @@ public class PartitionedAsyncConsistentMap<K, V> implements AsyncConsistentMap<K
 
     @Override
     public CompletableFuture<Boolean> prepare(MapTransaction<K, V> transaction) {
-
         Map<AsyncConsistentMap<K, V>, List<MapUpdate<K, V>>> updatesGroupedByMap = Maps.newIdentityHashMap();
         transaction.updates().forEach(update -> {
             AsyncConsistentMap<K, V> map = getMap(update.key());
@@ -227,7 +226,7 @@ public class PartitionedAsyncConsistentMap<K, V> implements AsyncConsistentMap<K
     }
 
     @Override
-    public CompletableFuture<Boolean> prepareAndCommit(MapTransaction<K, V> transaction) {
+    public CompletableFuture<Boolean> prepareAndCommit(Transaction<MapUpdate<K, V>> transaction) {
         Map<AsyncConsistentMap<K, V>, List<MapUpdate<K, V>>> updatesGroupedByMap = Maps.newIdentityHashMap();
         transaction.updates().forEach(update -> {
             AsyncConsistentMap<K, V> map = getMap(update.key());

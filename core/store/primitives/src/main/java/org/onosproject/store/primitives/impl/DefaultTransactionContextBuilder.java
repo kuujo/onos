@@ -39,6 +39,8 @@ public class DefaultTransactionContextBuilder extends TransactionContextBuilder 
     @Override
     public TransactionContext build() {
         return new DefaultTransactionContext(transactionId,
+                lockMode,
+                isolationLevel,
                 primitiveCreator,
                 transactionCoordinator);
     }

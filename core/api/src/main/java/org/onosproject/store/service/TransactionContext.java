@@ -84,4 +84,14 @@ public interface TransactionContext extends DistributedPrimitive {
      * @return Transactional Map
      */
     <K, V> TransactionalMap<K, V> getTransactionalMap(String mapName, Serializer serializer);
+
+    /**
+     * Returns a transactional set data structure with the specified name.
+     *
+     * @param setName the name of the transactional set
+     * @param serializer serializer to use for encoding/decoding items in the set
+     * @param <T> set value type
+     * @return transactional set
+     */
+    <T> TransactionalSet<T> getTransactionalSet(String setName, Serializer serializer);
 }

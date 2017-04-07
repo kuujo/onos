@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-present Open Networking Laboratory
+ * Copyright 2017-present Open Networking Laboratory
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,22 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.onosproject.store.primitives.impl;
+package org.onosproject.store.service;
 
 import java.util.concurrent.CompletableFuture;
 
-import org.onosproject.store.service.TransactionLog;
-
 /**
- * Participant in a two-phase commit protocol.
+ * Transaction block.
  */
-public interface TransactionParticipant<T> {
+@FunctionalInterface
+public interface TransactionBlock<T> {
 
     /**
-     * Returns the participant's transaction log.
+     * Executes the transaction block.
      *
-     * @return the participant's transaction log
+     * @param context the transaction context
+     * @return a completable future to be completed with the transaction result
      */
-    TransactionLog<T> log();
+    CompletableFuture<T> execute(TransactionContext context);
 
 }

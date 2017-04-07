@@ -30,6 +30,7 @@ import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.MapTransaction;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.TransactionContext;
+import org.onosproject.store.service.TransactionLog;
 import org.onosproject.store.service.TransactionalMap;
 import org.onosproject.store.service.Versioned;
 
@@ -53,11 +54,11 @@ import com.google.common.collect.Sets;
  */
 public class DefaultTransactionalMap<K, V> implements TransactionalMap<K, V>, TransactionParticipant {
 
-    private final TransactionContext txContext;
     private static final String TX_CLOSED_ERROR = "Transaction is closed";
     private final AsyncConsistentMap<K, V> backingMap;
     private final ConsistentMap<K, V> backingConsistentMap;
     private final String name;
+    final TransactionLog<MapUpdate<K, V>> transactionLog;
     private final Serializer serializer;
     private final Map<K, Versioned<V>> readCache = Maps.newConcurrentMap();
     private final Map<K, V> writeCache = Maps.newConcurrentMap();
@@ -66,29 +67,15 @@ public class DefaultTransactionalMap<K, V> implements TransactionalMap<K, V>, Tr
     private static final String ERROR_NULL_VALUE = "Null values are not allowed";
     private static final String ERROR_NULL_KEY = "Null key is not allowed";
 
-    private final LoadingCache<K, String> keyCache = CacheBuilder.newBuilder()
-            .softValues()
-            .build(new CacheLoader<K, String>() {
-
-                @Override
-                public String load(K key) {
-                    return HexString.toHexString(serializer.encode(key));
-                }
-            });
-
-    protected K dK(String key) {
-        return serializer.decode(HexString.fromHexString(key));
-    }
-
     public DefaultTransactionalMap(
             String name,
+            TransactionLog<MapUpdate<K, V>> transactionLog,
             AsyncConsistentMap<K, V> backingMap,
-            TransactionContext txContext,
             Serializer serializer) {
         this.name = name;
+        this.transactionLog = transactionLog;
         this.backingMap = backingMap;
         this.backingConsistentMap = backingMap.asConsistentMap();
-        this.txContext = txContext;
         this.serializer = serializer;
     }
 
@@ -172,6 +159,11 @@ public class DefaultTransactionalMap<K, V> implements TransactionalMap<K, V>, Tr
     }
 
     @Override
+    public TransactionLog<MapUpdate<K, V>> log() {
+        return updates();
+    }
+
+    @Override
     public CompletableFuture<Boolean> prepare() {
         return backingMap.prepare(new MapTransaction<>(txContext.transactionId(), updates()));
     }
@@ -238,41 +230,6 @@ public class DefaultTransactionalMap<K, V> implements TransactionalMap<K, V>, Tr
 
     protected List<MapUpdate<K, V>> updates() {
         return updatesStream().collect(Collectors.toList());
-    }
-
-    protected List<MapUpdate<String, byte[]>> toMapUpdates() {
-        List<MapUpdate<String, byte[]>> updates = Lists.newLinkedList();
-        deleteSet.forEach(key -> {
-            Versioned<V> original = readCache.get(key);
-            if (original != null) {
-                updates.add(MapUpdate.<String, byte[]>newBuilder()
-                        .withMapName(name)
-                        .withType(MapUpdate.Type.REMOVE_IF_VERSION_MATCH)
-                        .withKey(keyCache.getUnchecked(key))
-                        .withCurrentVersion(original.version())
-                        .build());
-            }
-        });
-        writeCache.forEach((key, value) -> {
-            Versioned<V> original = readCache.get(key);
-            if (original == null) {
-                updates.add(MapUpdate.<String, byte[]>newBuilder()
-                        .withMapName(name)
-                        .withType(MapUpdate.Type.PUT_IF_ABSENT)
-                        .withKey(keyCache.getUnchecked(key))
-                        .withValue(serializer.encode(value))
-                        .build());
-            } else {
-                updates.add(MapUpdate.<String, byte[]>newBuilder()
-                        .withMapName(name)
-                        .withType(MapUpdate.Type.PUT_IF_VERSION_MATCH)
-                        .withKey(keyCache.getUnchecked(key))
-                        .withCurrentVersion(original.version())
-                        .withValue(serializer.encode(value))
-                        .build());
-            }
-        });
-        return updates;
     }
 
     @Override

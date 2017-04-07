@@ -15,19 +15,26 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import java.util.Set;
+import java.util.Collection;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
+import com.google.common.collect.Maps;
 import org.onosproject.store.primitives.DistributedPrimitiveCreator;
+import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.primitives.TransactionId;
+import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.CommitStatus;
+import org.onosproject.store.service.IsolationLevel;
+import org.onosproject.store.service.LockMode;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.TransactionContext;
+import org.onosproject.store.service.TransactionLog;
 import org.onosproject.store.service.TransactionalMap;
+import org.onosproject.store.service.TransactionalSet;
 import org.onosproject.utils.MeteringAgent;
-
-import com.google.common.collect.Sets;
 
 /**
  * Default implementation of transaction context.
@@ -37,14 +44,20 @@ public class DefaultTransactionContext implements TransactionContext {
     private final AtomicBoolean isOpen = new AtomicBoolean(false);
     private final DistributedPrimitiveCreator creator;
     private final TransactionId transactionId;
+    private final LockMode lockMode;
+    private final IsolationLevel isolationLevel;
     private final TransactionCoordinator transactionCoordinator;
-    private final Set<TransactionParticipant> txParticipants = Sets.newConcurrentHashSet();
+    private final Map<String, DefaultTransactionalMap> maps = Maps.newConcurrentMap();
     private final MeteringAgent monitor;
 
     public DefaultTransactionContext(TransactionId transactionId,
+            LockMode lockMode,
+            IsolationLevel isolationLevel,
             DistributedPrimitiveCreator creator,
             TransactionCoordinator transactionCoordinator) {
         this.transactionId = transactionId;
+        this.lockMode = lockMode;
+        this.isolationLevel = isolationLevel;
         this.creator = creator;
         this.transactionCoordinator = transactionCoordinator;
         this.monitor = new MeteringAgent("transactionContext", "*", true);
@@ -75,7 +88,11 @@ public class DefaultTransactionContext implements TransactionContext {
     @Override
     public CompletableFuture<CommitStatus> commit() {
         final MeteringAgent.Context timer = monitor.startTimer("commit");
-        return transactionCoordinator.commit(transactionId, txParticipants)
+        transaction.commit();
+        final Collection<TransactionLog> transactionLogs = maps.values().stream()
+                .map(map -> map.transactionLog)
+                .collect(Collectors.toList());
+        return transactionCoordinator.commit(transactionId, transactionLogs)
                                      .whenComplete((r, e) -> timer.stop(e));
     }
 
@@ -85,14 +102,20 @@ public class DefaultTransactionContext implements TransactionContext {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <K, V> TransactionalMap<K, V> getTransactionalMap(String mapName,
             Serializer serializer) {
-        // FIXME: Do not create duplicates.
-        DefaultTransactionalMap<K, V> txMap = new DefaultTransactionalMap<K, V>(mapName,
-                DistributedPrimitives.newMeteredMap(creator.<K, V>newAsyncConsistentMap(mapName, serializer)),
-                this,
-                serializer);
-        txParticipants.add(txMap);
-        return txMap;
+        return maps.computeIfAbsent(mapName, name -> {
+            TransactionLog<MapUpdate<K, V>> txLog = new TransactionLog<>();
+            // TODO: Reuse a caching AsyncConsistentMap for IsolationLevel.REPEATABLE_READ
+            AsyncConsistentMap<K, V> asyncMap = DistributedPrimitives.newMeteredMap(creator.newAsyncConsistentMap(mapName, serializer));
+            return new DefaultTransactionalMap<>(name, txLog, asyncMap, serializer);
+        });
+    }
+
+    @Override
+    public <T> TransactionalSet<T> getTransactionalSet(String setName, Serializer serializer) {
+        // The set will wrap a TransactionalMap that's registered as the participant.
+        return new DefaultTransactionalSet<>(getTransactionalMap(setName, serializer));
     }
 }
