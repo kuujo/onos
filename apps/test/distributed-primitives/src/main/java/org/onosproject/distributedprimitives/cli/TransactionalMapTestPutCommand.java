@@ -19,6 +19,8 @@ import org.apache.karaf.shell.commands.Argument;
 import org.apache.karaf.shell.commands.Command;
 import org.onosproject.cli.AbstractShellCommand;
 import org.onosproject.store.serializers.KryoNamespaces;
+import org.onosproject.store.service.CommitStatus;
+import org.onosproject.store.service.IsolationLevel;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.TransactionContext;
@@ -41,7 +43,11 @@ public class TransactionalMapTestPutCommand extends AbstractShellCommand {
             required = true, multiValued = false)
     private String value = null;
 
-    TransactionalMap<String, String> map;
+    @Argument(index = 2, name = "isolationLevel",
+            description = "Transaction isolation level",
+            required = false, multiValued = false)
+    private IsolationLevel isolationLevel = IsolationLevel.SERIALIZABLE;
+
     String prefix = "Key";
     String mapName = "Test-Map";
     Serializer serializer = Serializer.using(KryoNamespaces.BASIC);
@@ -49,24 +55,30 @@ public class TransactionalMapTestPutCommand extends AbstractShellCommand {
     @Override
     protected void execute() {
         StorageService storageService = get(StorageService.class);
-        TransactionContext context;
-        context = storageService.transactionContextBuilder().build();
-        context.begin();
-        try {
-            map = context.getTransactionalMap(mapName, serializer);
-            for (int i = 1; i <= numKeys; i++) {
-                String key = prefix + i;
-                String response = map.put(key, value);
-                if (response == null) {
-                    print("Created Key %s with value %s.", key, value);
-                } else {
-                    print("Put %s into key %s. The old value was %s.", value, key, response);
+        CommitStatus status = null;
+        while (status != CommitStatus.SUCCESS) {
+            TransactionContext context = storageService.transactionContextBuilder()
+                    .withIsolationLevel(isolationLevel)
+                    .build();
+            context.begin();
+            try {
+                TransactionalMap<String, String> map = context.getTransactionalMap(mapName, serializer);
+                for (int i = 1; i <= numKeys; i++) {
+                    String key = prefix + i;
+                    String response = map.put(key, value);
+                    if (response == null) {
+                        print("Created Key %s with value %s.", key, value);
+                    } else {
+                        print("Put %s into key %s. The old value was %s.", value, key, response);
+                    }
                 }
+                status = context.commit().join();
+            } catch (Exception e) {
+                e.printStackTrace();
+                print("Aborting transaction: %s", e.getMessage());
+                context.abort();
+                break;
             }
-            context.commit();
-        } catch (Exception e) {
-            context.abort();
-            throw e;
         }
     }
 }

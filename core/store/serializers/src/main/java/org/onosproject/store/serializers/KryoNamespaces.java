@@ -217,10 +217,9 @@ import org.onosproject.net.resource.ResourceAllocation;
 import org.onosproject.net.resource.ResourceConsumerId;
 import org.onosproject.security.Permission;
 import org.onosproject.store.Timestamp;
-import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.primitives.TransactionId;
+import org.onosproject.store.service.LockVersion;
 import org.onosproject.store.service.MapEvent;
-import org.onosproject.store.service.MapTransaction;
 import org.onosproject.store.service.SetEvent;
 import org.onosproject.store.service.Task;
 import org.onosproject.store.service.Versioned;
@@ -528,9 +527,7 @@ public final class KryoNamespaces {
             .register(ExtensionSelectorType.class)
             .register(ExtensionTreatmentType.class)
             .register(TransactionId.class)
-            .register(MapTransaction.class)
-            .register(MapUpdate.class)
-            .register(MapUpdate.Type.class)
+            .register(LockVersion.class)
             .register(Versioned.class)
             .register(MapEvent.class)
             .register(MapEvent.Type.class)

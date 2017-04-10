@@ -15,20 +15,6 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import com.google.common.base.Throwables;
-import com.google.common.collect.Sets;
-import io.atomix.resource.ResourceType;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.onlab.util.Tools;
-import org.onosproject.store.primitives.MapUpdate;
-import org.onosproject.store.primitives.TransactionId;
-import org.onosproject.store.service.MapEvent;
-import org.onosproject.store.service.MapEventListener;
-import org.onosproject.store.service.MapTransaction;
-import org.onosproject.store.service.Versioned;
-
 import java.util.Arrays;
 import java.util.ConcurrentModificationException;
 import java.util.List;
@@ -36,6 +22,19 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletionException;
 import java.util.stream.Collectors;
+
+import com.google.common.base.Throwables;
+import com.google.common.collect.Sets;
+import io.atomix.resource.ResourceType;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
+import org.junit.Test;
+import org.onlab.util.Tools;
+import org.onosproject.store.primitives.TransactionId;
+import org.onosproject.store.primitives.impl.MapRecord;
+import org.onosproject.store.service.MapEvent;
+import org.onosproject.store.service.MapEventListener;
+import org.onosproject.store.service.Versioned;
 
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertArrayEquals;
@@ -344,15 +343,15 @@ public class AtomixConsistentMapTest extends AtomixTestBase {
         map.addListener(listener).join();
 
         // PUT_IF_ABSENT
-        MapUpdate<String, byte[]> update1 =
-                MapUpdate.<String, byte[]>newBuilder().withType(MapUpdate.Type.PUT_IF_ABSENT)
+        MapRecord<String, byte[]> update1 =
+                MapRecord.<String, byte[]>newBuilder().withType(MapRecord.Type.PUT_IF_VERSION_MATCH)
                 .withKey("foo")
                 .withValue(value1)
+                .withCurrentVersion(0)
                 .build();
 
-        MapTransaction<String, byte[]> tx = new MapTransaction<>(TransactionId.from("tx1"), Arrays.asList(update1));
-
-        map.prepare(tx).thenAccept(result -> {
+        TransactionId transactionId = TransactionId.from("tx1");
+        map.prepare(transactionId, Arrays.asList(update1)).thenAccept(result -> {
             assertEquals(true, result);
         }).join();
         // verify changes in Tx is not visible yet until commit
@@ -375,7 +374,7 @@ public class AtomixConsistentMapTest extends AtomixTestBase {
 
         assertFalse(listener.eventReceived());
 
-        map.commit(tx.transactionId()).join();
+        map.commit(transactionId).join();
         MapEvent<String, byte[]> event = listener.event();
         assertNotNull(event);
         assertEquals(MapEvent.Type.INSERT, event.type());
@@ -394,15 +393,14 @@ public class AtomixConsistentMapTest extends AtomixTestBase {
         // REMOVE_IF_VERSION_MATCH
         byte[] currFoo = map.get("foo").get().value();
         long currFooVersion = map.get("foo").get().version();
-        MapUpdate<String, byte[]> remove1 =
-                MapUpdate.<String, byte[]>newBuilder().withType(MapUpdate.Type.REMOVE_IF_VERSION_MATCH)
+        MapRecord<String, byte[]> remove1 =
+                MapRecord.<String, byte[]>newBuilder().withType(MapRecord.Type.REMOVE_IF_VERSION_MATCH)
                 .withKey("foo")
                 .withCurrentVersion(currFooVersion)
                 .build();
 
-        tx = new MapTransaction<>(TransactionId.from("tx2"), Arrays.asList(remove1));
-
-        map.prepare(tx).thenAccept(result -> {
+        transactionId = TransactionId.from("tx2");
+        map.prepare(transactionId, Arrays.asList(remove1)).thenAccept(result -> {
             assertTrue("prepare should succeed", result);
         }).join();
         // verify changes in Tx is not visible yet until commit
@@ -416,7 +414,7 @@ public class AtomixConsistentMapTest extends AtomixTestBase {
             assertThat(result.value(), is(currFoo));
         }).join();
 
-        map.commit(tx.transactionId()).join();
+        map.commit(transactionId).join();
         event = listener.event();
         assertNotNull(event);
         assertEquals(MapEvent.Type.REMOVE, event.type());
@@ -438,18 +436,20 @@ public class AtomixConsistentMapTest extends AtomixTestBase {
 
         map.addListener(listener).join();
 
-        MapUpdate<String, byte[]> update1 =
-                MapUpdate.<String, byte[]>newBuilder().withType(MapUpdate.Type.PUT_IF_ABSENT)
+        MapRecord<String, byte[]> update1 =
+                MapRecord.<String, byte[]>newBuilder().withType(MapRecord.Type.PUT_IF_VERSION_MATCH)
                 .withKey("foo")
                 .withValue(value1)
+                .withCurrentVersion(0)
                 .build();
-        MapTransaction<String, byte[]> tx = new MapTransaction<>(TransactionId.from("tx1"), Arrays.asList(update1));
-        map.prepare(tx).thenAccept(result -> {
+
+        TransactionId transactionId = TransactionId.from("tx1");
+        map.prepare(transactionId, Arrays.asList(update1)).thenAccept(result -> {
             assertEquals(true, result);
         }).join();
         assertFalse(listener.eventReceived());
 
-        map.rollback(tx.transactionId()).join();
+        map.rollback(transactionId).join();
         assertFalse(listener.eventReceived());
 
         map.get("foo").thenAccept(result -> {

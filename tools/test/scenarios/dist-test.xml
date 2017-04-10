@@ -38,6 +38,9 @@
             <import file="${ONOS_SCENARIOS}/dist-work-queue.xml"/>
             <dependency name="Distributed-Primitive-WorkQueue"/>
 
+            <import file="${ONOS_SCENARIOS}/dist-transaction.xml"/>
+            <dependency name="Distributed-Transaction"/>
+
         </group>
 
         <import file="${ONOS_SCENARIOS}/dist-teardown.xml"/>

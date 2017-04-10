@@ -50,6 +50,13 @@ public interface TransactionContext extends DistributedPrimitive {
     TransactionId transactionId();
 
     /**
+     * Returns the transaction isolation level.
+     *
+     * @return the transaction isolation level
+     */
+    IsolationLevel isolationLevel();
+
+    /**
      * Returns if this transaction context is open.
      *
      * @return true if open, false otherwise

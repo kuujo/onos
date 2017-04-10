@@ -77,6 +77,17 @@ public interface ConsistentMap<K, V> extends DistributedPrimitive {
     Versioned<V> get(K key);
 
     /**
+     * Returns the value (and version) to which the specified key is mapped, or the given
+     * default value if the map contains no mapping for the key.
+     *
+     * @param key the key whose associated value (and version) is to be returned
+     * @param defaultValue the default value to return if no mapping exists
+     * @return the value (and version) to which the specified key is mapped, or a {@link Versioned}
+     * object containing the given {@code defaultValue} where the version is the latest map version.
+     */
+    Versioned<V> getOrDefault(K key, V defaultValue);
+
+    /**
      * If the specified key is not already associated with a value (or is mapped to null),
      * attempts to compute its value using the given mapping function and enters it into
      * this map unless null.
