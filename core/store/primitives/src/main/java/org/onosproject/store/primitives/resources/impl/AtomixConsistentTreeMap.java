@@ -16,23 +16,6 @@
 
 package org.onosproject.store.primitives.resources.impl;
 
-import com.google.common.collect.Maps;
-import io.atomix.copycat.client.CopycatClient;
-import io.atomix.resource.AbstractResource;
-import io.atomix.resource.ResourceTypeInfo;
-import org.onlab.util.Match;
-import org.onosproject.store.primitives.TransactionId;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.FirstKey;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.FloorEntry;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.HigherEntry;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.LastEntry;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.LowerEntry;
-import org.onosproject.store.service.AsyncConsistentTreeMap;
-import org.onosproject.store.service.MapEvent;
-import org.onosproject.store.service.MapEventListener;
-import org.onosproject.store.service.MapTransaction;
-import org.onosproject.store.service.Versioned;
-
 import java.util.Collection;
 import java.util.ConcurrentModificationException;
 import java.util.List;
@@ -46,6 +29,21 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
+
+import com.google.common.collect.Maps;
+import io.atomix.copycat.client.CopycatClient;
+import io.atomix.resource.AbstractResource;
+import io.atomix.resource.ResourceTypeInfo;
+import org.onlab.util.Match;
+import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.FirstKey;
+import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.FloorEntry;
+import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.HigherEntry;
+import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.LastEntry;
+import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.LowerEntry;
+import org.onosproject.store.service.AsyncConsistentTreeMap;
+import org.onosproject.store.service.MapEvent;
+import org.onosproject.store.service.MapEventListener;
+import org.onosproject.store.service.Versioned;
 
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.CeilingEntry;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.CeilingKey;
@@ -372,30 +370,4 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
             boolean inclusiveLower) {
         throw new UnsupportedOperationException("This operation is not yet " +
                                                         "supported.");    }
-
-    @Override
-    public CompletableFuture<Boolean> prepareAndCommit(MapTransaction<String,
-            byte[]> transaction) {
-        throw new UnsupportedOperationException("This operation is not yet " +
-                                                        "supported.");
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepare(MapTransaction<String, byte[]>
-                                                          transaction) {
-        throw new UnsupportedOperationException("This operation is not yet " +
-                                                        "supported.");
-    }
-
-    @Override
-    public CompletableFuture<Void> commit(TransactionId transactionId) {
-        throw new UnsupportedOperationException("This operation is not yet " +
-                                                        "supported.");
-    }
-
-    @Override
-    public CompletableFuture<Void> rollback(TransactionId transactionId) {
-        throw new UnsupportedOperationException("This operation is not yet " +
-                                                        "supported.");
-    }
 }

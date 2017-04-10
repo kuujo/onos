@@ -126,27 +126,25 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
     }
 
     @Override
-    public <K, V> AsyncConsistentMap<K, V> newAsyncConsistentMap(String name, Serializer serializer) {
+    public <K, V> AsyncTransactionalMap<K, V> newAsyncConsistentMap(String name, Serializer serializer) {
         AtomixConsistentMap atomixConsistentMap = client.getResource(name, AtomixConsistentMap.class).join();
         Consumer<State> statusListener = state -> {
             atomixConsistentMap.statusChangeListeners()
                                .forEach(listener -> listener.accept(mapper.apply(state)));
         };
         resourceClient.client().onStateChange(statusListener);
-        AsyncConsistentMap<String, byte[]> rawMap =
+        AsyncTransactionalMap<String, byte[]> rawMap =
                 new DelegatingAsyncConsistentMap<String, byte[]>(atomixConsistentMap) {
                     @Override
                     public String name() {
                         return name;
                     }
                 };
-        AsyncConsistentMap<K, V> transcodedMap = DistributedPrimitives.<K, V, String, byte[]>newTranscodingMap(rawMap,
+        return DistributedPrimitives.<K, V, String, byte[]>newTranscodingMap(rawMap,
             key -> HexString.toHexString(serializer.encode(key)),
             string -> serializer.decode(HexString.fromHexString(string)),
             value -> value == null ? null : serializer.encode(value),
             bytes -> serializer.decode(bytes));
-
-        return transcodedMap;
     }
 
     @Override

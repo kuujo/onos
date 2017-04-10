@@ -26,16 +26,12 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-import org.onosproject.store.primitives.TransactionId;
+import com.google.common.base.Throwables;
+import com.google.common.collect.Maps;
 import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.MapEvent;
 import org.onosproject.store.service.MapEventListener;
-import org.onosproject.store.service.MapTransaction;
 import org.onosproject.store.service.Versioned;
-
-import com.google.common.base.Throwables;
-import com.google.common.collect.Maps;
-
 import org.onosproject.utils.MeteringAgent;
 
 /**
@@ -44,7 +40,7 @@ import org.onosproject.utils.MeteringAgent;
  * @param <K> key type
  * @param <V> value type
  */
-public class MeteredAsyncConsistentMap<K, V>  extends DelegatingAsyncConsistentMap<K, V> {
+public class MeteredAsyncConsistentMap<K, V> extends DelegatingAsyncConsistentMap<K, V> {
 
     private static final String PRIMITIVE_NAME = "consistentMap";
     private static final String SIZE = "size";
@@ -246,34 +242,6 @@ public class MeteredAsyncConsistentMap<K, V>  extends DelegatingAsyncConsistentM
             timer.stop(null);
             return CompletableFuture.completedFuture(null);
         }
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepare(MapTransaction<K, V> transaction) {
-        final MeteringAgent.Context timer = monitor.startTimer(PREPARE);
-        return super.prepare(transaction)
-                    .whenComplete((r, e) -> timer.stop(e));
-    }
-
-    @Override
-    public CompletableFuture<Void> commit(TransactionId transactionId) {
-        final MeteringAgent.Context timer = monitor.startTimer(COMMIT);
-        return super.commit(transactionId)
-                    .whenComplete((r, e) -> timer.stop(e));
-    }
-
-    @Override
-    public CompletableFuture<Void> rollback(TransactionId transactionId) {
-        final MeteringAgent.Context timer = monitor.startTimer(ROLLBACK);
-        return super.rollback(transactionId)
-                    .whenComplete((r, e) -> timer.stop(e));
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepareAndCommit(MapTransaction<K, V> transaction) {
-        final MeteringAgent.Context timer = monitor.startTimer(PREPARE_AND_COMMIT);
-        return super.prepareAndCommit(transaction)
-                    .whenComplete((r, e) -> timer.stop(e));
     }
 
     private class InternalMeteredMapEventListener implements MapEventListener<K, V> {

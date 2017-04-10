@@ -15,37 +15,33 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.onosproject.store.primitives.DistributedPrimitiveCreator;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.service.CommitStatus;
+import org.onosproject.store.service.IsolationLevel;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.TransactionContext;
 import org.onosproject.store.service.TransactionalMap;
 import org.onosproject.utils.MeteringAgent;
 
-import com.google.common.collect.Sets;
-
 /**
- * Default implementation of transaction context.
+ * Default transaction context.
  */
 public class DefaultTransactionContext implements TransactionContext {
 
     private final AtomicBoolean isOpen = new AtomicBoolean(false);
-    private final DistributedPrimitiveCreator creator;
     private final TransactionId transactionId;
+    private final IsolationLevel isolationLevel;
     private final TransactionCoordinator transactionCoordinator;
-    private final Set<TransactionParticipant> txParticipants = Sets.newConcurrentHashSet();
     private final MeteringAgent monitor;
 
     public DefaultTransactionContext(TransactionId transactionId,
-            DistributedPrimitiveCreator creator,
+            IsolationLevel isolationLevel,
             TransactionCoordinator transactionCoordinator) {
         this.transactionId = transactionId;
-        this.creator = creator;
+        this.isolationLevel = isolationLevel;
         this.transactionCoordinator = transactionCoordinator;
         this.monitor = new MeteringAgent("transactionContext", "*", true);
     }
@@ -58,6 +54,11 @@ public class DefaultTransactionContext implements TransactionContext {
     @Override
     public TransactionId transactionId() {
         return transactionId;
+    }
+
+    @Override
+    public IsolationLevel isolationLevel() {
+        return isolationLevel;
     }
 
     @Override
@@ -75,8 +76,7 @@ public class DefaultTransactionContext implements TransactionContext {
     @Override
     public CompletableFuture<CommitStatus> commit() {
         final MeteringAgent.Context timer = monitor.startTimer("commit");
-        return transactionCoordinator.commit(transactionId, txParticipants)
-                                     .whenComplete((r, e) -> timer.stop(e));
+        return transactionCoordinator.commit().whenComplete((r, e) -> timer.stop(e));
     }
 
     @Override
@@ -85,14 +85,7 @@ public class DefaultTransactionContext implements TransactionContext {
     }
 
     @Override
-    public <K, V> TransactionalMap<K, V> getTransactionalMap(String mapName,
-            Serializer serializer) {
-        // FIXME: Do not create duplicates.
-        DefaultTransactionalMap<K, V> txMap = new DefaultTransactionalMap<K, V>(mapName,
-                DistributedPrimitives.newMeteredMap(creator.<K, V>newAsyncConsistentMap(mapName, serializer)),
-                this,
-                serializer);
-        txParticipants.add(txMap);
-        return txMap;
+    public <K, V> TransactionalMap<K, V> getTransactionalMap(String mapName, Serializer serializer) {
+        return transactionCoordinator.getTransactionalMap(mapName, serializer);
     }
 }

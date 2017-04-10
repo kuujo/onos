@@ -15,11 +15,6 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import io.atomix.copycat.client.CopycatClient;
-import io.atomix.resource.AbstractResource;
-import io.atomix.resource.ResourceTypeInfo;
-
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.Collection;
 import java.util.ConcurrentModificationException;
 import java.util.List;
@@ -28,15 +23,23 @@ import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
+import io.atomix.copycat.client.CopycatClient;
+import io.atomix.resource.AbstractResource;
+import io.atomix.resource.ResourceTypeInfo;
 import org.onlab.util.Match;
 import org.onlab.util.Tools;
 import org.onosproject.store.primitives.TransactionId;
+import org.onosproject.store.primitives.impl.AsyncTransactionalMap;
+import org.onosproject.store.primitives.impl.MapRecord;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.Clear;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.ContainsKey;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.ContainsValue;
@@ -45,30 +48,29 @@ import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapComman
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.IsEmpty;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.KeySet;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.Listen;
+import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.LockMap;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.Size;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.TransactionCommit;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.TransactionPrepare;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.TransactionPrepareAndCommit;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.TransactionRollback;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.Unlisten;
+import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.UnlockMap;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.UpdateAndGet;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.Values;
 import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.ConsistentMapException;
+import org.onosproject.store.service.LockVersion;
 import org.onosproject.store.service.MapEvent;
 import org.onosproject.store.service.MapEventListener;
-import org.onosproject.store.service.MapTransaction;
 import org.onosproject.store.service.Versioned;
-
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Sets;
 
 /**
  * Distributed resource providing the {@link AsyncConsistentMap} primitive.
  */
 @ResourceTypeInfo(id = -151, factory = AtomixConsistentMapFactory.class)
 public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
-    implements AsyncConsistentMap<String, byte[]> {
+        implements AsyncTransactionalMap<String, byte[]> {
 
     private final Set<Consumer<Status>> statusChangeListeners = Sets.newCopyOnWriteArraySet();
     private final Map<MapEventListener<String, byte[]>, Executor> mapEventListeners = new ConcurrentHashMap<>();
@@ -288,8 +290,24 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
     }
 
     @Override
-    public CompletableFuture<Boolean> prepare(MapTransaction<String, byte[]> transaction) {
-        return client.submit(new TransactionPrepare(transaction)).thenApply(v -> v == PrepareResult.OK);
+    public CompletableFuture<LockVersion> begin() {
+        return client.submit(new LockMap()).thenApply(LockVersion::new);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> prepare(
+            TransactionId transactionId,
+            List<MapRecord<String, byte[]>> transactionLog) {
+        return client.submit(new TransactionPrepare(transactionId, transactionLog))
+                .thenApply(v -> v == PrepareResult.OK);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> prepareAndCommit(
+            TransactionId transactionId,
+            List<MapRecord<String, byte[]>> transactionLog) {
+        return client.submit(new TransactionPrepareAndCommit(transactionId, transactionLog))
+                .thenApply(v -> v == PrepareResult.OK);
     }
 
     @Override
@@ -299,13 +317,7 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
 
     @Override
     public CompletableFuture<Void> rollback(TransactionId transactionId) {
-        return client.submit(new TransactionRollback(transactionId))
-                .thenApply(v -> null);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepareAndCommit(MapTransaction<String, byte[]> transaction) {
-        return client.submit(new TransactionPrepareAndCommit(transaction)).thenApply(v -> v == PrepareResult.OK);
+        return client.submit(new TransactionRollback(transactionId)).thenApply(v -> null);
     }
 
     @Override

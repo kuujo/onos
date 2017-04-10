@@ -24,8 +24,6 @@ import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 
-import org.onosproject.store.primitives.TransactionId;
-
 /**
  * Testing adapter for the AsyncConsistenMap interface.
  */
@@ -134,26 +132,6 @@ public class AsyncConsistentMapAdapter<K, V> implements AsyncConsistentMap<K, V>
 
     @Override
     public CompletableFuture<Void> removeListener(MapEventListener<K, V> listener) {
-        return null;
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepare(MapTransaction<K, V> transaction) {
-        return null;
-    }
-
-    @Override
-    public CompletableFuture<Void> commit(TransactionId transactionId) {
-        return null;
-    }
-
-    @Override
-    public CompletableFuture<Void> rollback(TransactionId transactionId) {
-        return null;
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepareAndCommit(MapTransaction<K, V> transaction) {
         return null;
     }
 }

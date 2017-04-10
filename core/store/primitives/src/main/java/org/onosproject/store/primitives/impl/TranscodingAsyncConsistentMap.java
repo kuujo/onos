@@ -17,6 +17,7 @@
 package org.onosproject.store.primitives.impl;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -28,15 +29,13 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import com.google.common.collect.Maps;
 import org.onlab.util.Tools;
 import org.onosproject.store.primitives.TransactionId;
-import org.onosproject.store.service.AsyncConsistentMap;
+import org.onosproject.store.service.LockVersion;
 import org.onosproject.store.service.MapEvent;
 import org.onosproject.store.service.MapEventListener;
-import org.onosproject.store.service.MapTransaction;
 import org.onosproject.store.service.Versioned;
-
-import com.google.common.collect.Maps;
 
 /**
  * An {@code AsyncConsistentMap} that maps its operations to operations on a
@@ -47,9 +46,9 @@ import com.google.common.collect.Maps;
  * @param <K1> key type of this map
  * @param <V1> value type of this map
  */
-public class TranscodingAsyncConsistentMap<K1, V1, K2, V2> implements AsyncConsistentMap<K1, V1> {
+public class TranscodingAsyncConsistentMap<K1, V1, K2, V2> implements AsyncTransactionalMap<K1, V1> {
 
-    private final AsyncConsistentMap<K2, V2> backingMap;
+    private final AsyncTransactionalMap<K2, V2> backingMap;
     private final Function<K1, K2> keyEncoder;
     private final Function<K2, K1> keyDecoder;
     private final Function<V2, V1> valueDecoder;
@@ -58,7 +57,7 @@ public class TranscodingAsyncConsistentMap<K1, V1, K2, V2> implements AsyncConsi
     private final Map<MapEventListener<K1, V1>, InternalBackingMapEventListener> listeners =
             Maps.newIdentityHashMap();
 
-    public TranscodingAsyncConsistentMap(AsyncConsistentMap<K2, V2> backingMap,
+    public TranscodingAsyncConsistentMap(AsyncTransactionalMap<K2, V2> backingMap,
                                    Function<K1, K2> keyEncoder,
                                    Function<K2, K1> keyDecoder,
                                    Function<V1, V2> valueEncoder,
@@ -237,6 +236,59 @@ public class TranscodingAsyncConsistentMap<K1, V1, K2, V2> implements AsyncConsi
     }
 
     @Override
+    public CompletableFuture<LockVersion> begin() {
+        try {
+            return backingMap.begin();
+        } catch (Exception e) {
+            return Tools.exceptionalFuture(e);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Boolean> prepare(
+            TransactionId transactionId,
+            List<MapRecord<K1, V1>> transactionLog) {
+        try {
+            return backingMap.prepare(transactionId, transactionLog.stream()
+                            .map(record -> record.map(keyEncoder, valueEncoder))
+                            .collect(Collectors.toList()));
+        } catch (Exception e) {
+            return Tools.exceptionalFuture(e);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Boolean> prepareAndCommit(
+            TransactionId transactionId,
+            List<MapRecord<K1, V1>> transactionLog) {
+        try {
+            return backingMap.prepareAndCommit(transactionId, transactionLog.stream()
+                            .map(record -> record.map(keyEncoder, valueEncoder))
+                            .collect(Collectors.toList()));
+        } catch (Exception e) {
+            return Tools.exceptionalFuture(e);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Void> commit(TransactionId transactionId) {
+        try {
+            return backingMap.commit(transactionId);
+        } catch (Exception e) {
+            return Tools.exceptionalFuture(e);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Void> rollback(TransactionId transactionId) {
+        try {
+            return backingMap.rollback(transactionId);
+        } catch (Exception e) {
+            return Tools.exceptionalFuture(e);
+        }
+    }
+
+    @Override
     public CompletableFuture<Void> addListener(MapEventListener<K1, V1> listener, Executor executor) {
         synchronized (listeners) {
             InternalBackingMapEventListener backingMapListener =
@@ -252,34 +304,6 @@ public class TranscodingAsyncConsistentMap<K1, V1, K2, V2> implements AsyncConsi
             return backingMap.removeListener(backingMapListener);
         } else {
             return CompletableFuture.completedFuture(null);
-        }
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepare(MapTransaction<K1, V1> transaction) {
-        try {
-            return backingMap.prepare(transaction.map(keyEncoder, valueEncoder));
-        } catch (Exception e) {
-            return Tools.exceptionalFuture(e);
-        }
-    }
-
-    @Override
-    public CompletableFuture<Void> commit(TransactionId transactionId) {
-        return backingMap.commit(transactionId);
-    }
-
-    @Override
-    public CompletableFuture<Void> rollback(TransactionId transactionId) {
-        return backingMap.rollback(transactionId);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepareAndCommit(MapTransaction<K1, V1> transaction) {
-        try {
-            return backingMap.prepareAndCommit(transaction.map(keyEncoder, valueEncoder));
-        } catch (Exception e) {
-            return Tools.exceptionalFuture(e);
         }
     }
 

@@ -17,13 +17,73 @@ package org.onosproject.store.service;
 
 import org.onosproject.store.primitives.DistributedPrimitiveBuilder;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 /**
  * Abstract base class for a transaction context builder.
  */
 public abstract class TransactionContextBuilder
     extends DistributedPrimitiveBuilder<TransactionContextBuilder, TransactionContext> {
 
-    public TransactionContextBuilder() {
+    protected IsolationLevel isolationLevel = IsolationLevel.REPEATABLE_READ;
+
+    protected TransactionContextBuilder() {
         super(DistributedPrimitive.Type.TRANSACTION_CONTEXT);
     }
+
+    /**
+     * Sets the transaction isolation level.
+     * <p>
+     * The isolation level dictates how the transaction is coordinated with concurrent transactions. Stronger isolation
+     * levels like {@link IsolationLevel#SERIALIZABLE} will ensure that no other transaction can modified shared state
+     * during the course of this transaction, while weaker isolation levels will sacrifice those consistency guarantees
+     * in exchange for better performance.
+     *
+     * @param isolationLevel the transaction isolation level
+     * @return the transaction context builder
+     * @see IsolationLevel
+     */
+    public TransactionContextBuilder withIsolationLevel(IsolationLevel isolationLevel) {
+        this.isolationLevel = checkNotNull(isolationLevel);
+        return this;
+    }
+
+    /**
+     * Configures the transaction context with the {@link IsolationLevel#SERIALIZABLE SERIALIZABLE} isolation level.
+     *
+     * @return the transaction context builder
+     */
+    public TransactionContextBuilder serializable() {
+        return withIsolationLevel(IsolationLevel.SERIALIZABLE);
+    }
+
+    /**
+     * Configures the transaction context with the {@link IsolationLevel#REPEATABLE_READ REPEATABLE_READ} isolation
+     * level.
+     *
+     * @return the transaction context builder
+     */
+    public TransactionContextBuilder repeatableRead() {
+        return withIsolationLevel(IsolationLevel.REPEATABLE_READ);
+    }
+
+    /**
+     * Configures the transaction context with the {@link IsolationLevel#READ_COMMITTED READ_COMMITTED} isolation level.
+     *
+     * @return the transaction context builder
+     */
+    public TransactionContextBuilder readCommitted() {
+        return withIsolationLevel(IsolationLevel.READ_COMMITTED);
+    }
+
+    /**
+     * Configures the transaction context with the {@link IsolationLevel#READ_UNCOMMITTED READ_UNCOMMITTED} isolation
+     * level.
+     *
+     * @return the transaction context builder
+     */
+    public TransactionContextBuilder readUncommitted() {
+        return withIsolationLevel(IsolationLevel.READ_UNCOMMITTED);
+    }
+
 }

@@ -15,6 +15,12 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import com.google.common.base.MoreObjects;
 import io.atomix.catalyst.buffer.BufferInput;
 import io.atomix.catalyst.buffer.BufferOutput;
 import io.atomix.catalyst.serializer.CatalystSerializable;
@@ -24,17 +30,10 @@ import io.atomix.catalyst.serializer.SerializerRegistry;
 import io.atomix.catalyst.util.Assert;
 import io.atomix.copycat.Command;
 import io.atomix.copycat.Query;
-
-import java.util.Collection;
-import java.util.Map;
-import java.util.Set;
-
 import org.onlab.util.Match;
 import org.onosproject.store.primitives.TransactionId;
-import org.onosproject.store.service.MapTransaction;
+import org.onosproject.store.primitives.impl.MapRecord;
 import org.onosproject.store.service.Versioned;
-
-import com.google.common.base.MoreObjects;
 
 /**
  * {@link AtomixConsistentMap} resource state machine operations.
@@ -176,6 +175,53 @@ public final class AtomixConsistentMapCommands {
     }
 
     /**
+     * Pessimistic lock query.
+     */
+    public static class LockMap extends MapQuery<Long> {
+        @Override
+        public ConsistencyLevel consistency() {
+            return ConsistencyLevel.LINEARIZABLE;
+        }
+    }
+
+    /**
+     * Pessimistic unlock query.
+     */
+    public static class UnlockMap extends MapQuery<Boolean> {
+        private long version;
+
+        public UnlockMap(long version) {
+            this.version = version;
+        }
+
+        /**
+         * Returns the lock version.
+         *
+         * @return the lock version
+         */
+        public long version() {
+            return version;
+        }
+
+        @Override
+        public ConsistencyLevel consistency() {
+            return ConsistencyLevel.LINEARIZABLE;
+        }
+
+        @Override
+        public void writeObject(BufferOutput<?> buffer, Serializer serializer) {
+            super.writeObject(buffer, serializer);
+            buffer.writeLong(version);
+        }
+
+        @Override
+        public void readObject(BufferInput<?> buffer, Serializer serializer) {
+            super.readObject(buffer, serializer);
+            version = buffer.readLong();
+        }
+    }
+
+    /**
      * Contains key command.
      */
     @SuppressWarnings("serial")
@@ -206,35 +252,46 @@ public final class AtomixConsistentMapCommands {
      */
     @SuppressWarnings("serial")
     public static class TransactionPrepare extends MapCommand<PrepareResult> {
-        private MapTransaction<String, byte[]> mapTransaction;
+        private TransactionId transactionId;
+        private List<MapRecord<String, byte[]>> transactionLog;
 
         public TransactionPrepare() {
         }
 
-        public TransactionPrepare(MapTransaction<String, byte[]> mapTransaction) {
-            this.mapTransaction = mapTransaction;
+        public TransactionPrepare(
+                TransactionId transactionId,
+                List<MapRecord<String, byte[]>> transactionLog) {
+            this.transactionId = transactionId;
+            this.transactionLog = transactionLog;
         }
 
-        public MapTransaction<String, byte[]> transaction() {
-            return mapTransaction;
+        public TransactionId transactionId() {
+            return transactionId;
+        }
+
+        public List<MapRecord<String, byte[]>> transactionLog() {
+            return transactionLog;
         }
 
         @Override
         public void writeObject(BufferOutput<?> buffer, Serializer serializer) {
             super.writeObject(buffer, serializer);
-            serializer.writeObject(mapTransaction, buffer);
+            serializer.writeObject(transactionId, buffer);
+            serializer.writeObject(transactionLog, buffer);
         }
 
         @Override
         public void readObject(BufferInput<?> buffer, Serializer serializer) {
             super.readObject(buffer, serializer);
-            mapTransaction = serializer.readObject(buffer);
+            transactionId = serializer.readObject(buffer);
+            transactionLog = serializer.readObject(buffer);
         }
 
         @Override
         public String toString() {
             return MoreObjects.toStringHelper(getClass())
-                    .add("mapTransaction", mapTransaction)
+                    .add("transactionId", transactionId)
+                    .add("transactionLog", transactionLog)
                     .toString();
         }
     }
@@ -247,8 +304,10 @@ public final class AtomixConsistentMapCommands {
         public TransactionPrepareAndCommit() {
         }
 
-        public TransactionPrepareAndCommit(MapTransaction<String, byte[]> mapTransaction) {
-            super(mapTransaction);
+        public TransactionPrepareAndCommit(
+                TransactionId transactionId,
+                List<MapRecord<String, byte[]>> transactionLog) {
+            super(transactionId, transactionLog);
         }
 
         @Override
@@ -559,6 +618,8 @@ public final class AtomixConsistentMapCommands {
             registry.register(TransactionRollback.class, -774);
             registry.register(TransactionPrepareAndCommit.class, -775);
             registry.register(UpdateAndGet.class, -776);
+            registry.register(LockMap.class, -777);
+            registry.register(UnlockMap.class, -778);
         }
     }
 }

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.onosproject.store.primitives;
+package org.onosproject.store.primitives.impl;
 
 import com.google.common.testing.EqualsTester;
 
@@ -23,63 +23,37 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 
 /**
- * Unit Tests for MapUpdate class.
+ * Unit Tests for MapRecord class.
  */
+public class MapRecordTest {
 
-public class MapUpdateTest {
-
-    private final MapUpdate<String, byte[]> stats1 = MapUpdate.<String, byte[]>newBuilder()
+    private final MapRecord<String, byte[]> stats1 = MapRecord.<String, byte[]>newBuilder()
             .withCurrentValue("1".getBytes())
             .withValue("2".getBytes())
             .withCurrentVersion(3)
             .withKey("4")
-            .withMapName("5")
-            .withType(MapUpdate.Type.PUT)
+            .withType(MapRecord.Type.PUT_IF_ABSENT)
             .build();
 
-    private final MapUpdate<String, byte[]> stats2 = MapUpdate.<String, byte[]>newBuilder()
-            .withCurrentValue("1".getBytes())
-            .withValue("2".getBytes())
-            .withCurrentVersion(3)
-            .withKey("4")
-            .withMapName("5")
-            .withType(MapUpdate.Type.REMOVE)
+    private final MapRecord<String, byte[]> stats2 = MapRecord.<String, byte[]>newBuilder()
+            .withType(MapRecord.Type.VERSION_MATCH)
+            .withCurrentVersion(10)
             .build();
 
-    private final MapUpdate<String, byte[]> stats3 = MapUpdate.<String, byte[]>newBuilder()
+    private final MapRecord<String, byte[]> stats3 = MapRecord.<String, byte[]>newBuilder()
             .withCurrentValue("1".getBytes())
             .withValue("2".getBytes())
             .withCurrentVersion(3)
             .withKey("4")
-            .withMapName("5")
-            .withType(MapUpdate.Type.REMOVE_IF_VALUE_MATCH)
+            .withType(MapRecord.Type.REMOVE_IF_VERSION_MATCH)
             .build();
 
-    private final MapUpdate<String, byte[]> stats4 = MapUpdate.<String, byte[]>newBuilder()
+    private final MapRecord<String, byte[]> stats4 = MapRecord.<String, byte[]>newBuilder()
             .withCurrentValue("1".getBytes())
             .withValue("2".getBytes())
             .withCurrentVersion(3)
             .withKey("4")
-            .withMapName("5")
-            .withType(MapUpdate.Type.REMOVE_IF_VERSION_MATCH)
-            .build();
-
-    private final MapUpdate<String, byte[]> stats5 = MapUpdate.<String, byte[]>newBuilder()
-            .withCurrentValue("1".getBytes())
-            .withValue("2".getBytes())
-            .withCurrentVersion(3)
-            .withKey("4")
-            .withMapName("5")
-            .withType(MapUpdate.Type.PUT_IF_VALUE_MATCH)
-            .build();
-
-    private final MapUpdate<String, byte[]> stats6 = MapUpdate.<String, byte[]>newBuilder()
-            .withCurrentValue("1".getBytes())
-            .withValue("2".getBytes())
-            .withCurrentVersion(3)
-            .withKey("4")
-            .withMapName("5")
-            .withType(MapUpdate.Type.PUT_IF_VERSION_MATCH)
+            .withType(MapRecord.Type.PUT_IF_VERSION_MATCH)
             .build();
 
     /**
@@ -91,8 +65,7 @@ public class MapUpdateTest {
         assertThat(stats1.value(), is("2".getBytes()));
         assertThat(stats1.currentVersion(), is(3L));
         assertThat(stats1.key(), is("4"));
-        assertThat(stats1.mapName(), is("5"));
-        assertThat(stats1.type(), is(MapUpdate.Type.PUT));
+        assertThat(stats1.type(), is(MapRecord.Type.PUT_IF_ABSENT));
     }
 
     /**
@@ -108,11 +81,6 @@ public class MapUpdateTest {
         new EqualsTester()
                 .addEqualityGroup(stats3, stats3)
                 .addEqualityGroup(stats4)
-                .testEquals();
-
-        new EqualsTester()
-                .addEqualityGroup(stats5, stats5)
-                .addEqualityGroup(stats6)
                 .testEquals();
     }
 

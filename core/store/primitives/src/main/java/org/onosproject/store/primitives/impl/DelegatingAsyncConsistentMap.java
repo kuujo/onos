@@ -16,9 +16,8 @@
 
 package org.onosproject.store.primitives.impl;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import java.util.Collection;
+import java.util.List;
 import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Set;
@@ -28,14 +27,15 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
+import com.google.common.base.MoreObjects;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.service.AsyncConsistentMap;
+import org.onosproject.store.service.LockVersion;
 import org.onosproject.store.service.MapEventListener;
-import org.onosproject.store.service.MapTransaction;
 import org.onosproject.store.service.Versioned;
 
-import com.google.common.base.MoreObjects;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * {@code AsyncConsistentMap} that merely delegates control to
@@ -44,7 +44,7 @@ import com.google.common.base.MoreObjects;
  * @param <K> key type
  * @param <V> value type
  */
-public class DelegatingAsyncConsistentMap<K, V> implements AsyncConsistentMap<K, V> {
+public class DelegatingAsyncConsistentMap<K, V> implements AsyncTransactionalMap<K, V> {
 
     private final AsyncConsistentMap<K, V> delegateMap;
 
@@ -155,6 +155,55 @@ public class DelegatingAsyncConsistentMap<K, V> implements AsyncConsistentMap<K,
     }
 
     @Override
+    public CompletableFuture<LockVersion> begin() {
+        if (delegateMap instanceof AsyncTransactionalMap) {
+            return ((AsyncTransactionalMap<K, V>) delegateMap).begin();
+        } else {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    @Override
+    public CompletableFuture<Boolean> prepare(
+            TransactionId transactionId,
+            List<MapRecord<K, V>> transactionLog) {
+        if (delegateMap instanceof AsyncTransactionalMap) {
+            return ((AsyncTransactionalMap<K, V>) delegateMap).prepare(transactionId, transactionLog);
+        } else {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    @Override
+    public CompletableFuture<Boolean> prepareAndCommit(
+            TransactionId transactionId,
+            List<MapRecord<K, V>> transactionLog) {
+        if (delegateMap instanceof AsyncTransactionalMap) {
+            return ((AsyncTransactionalMap<K, V>) delegateMap).prepareAndCommit(transactionId, transactionLog);
+        } else {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    @Override
+    public CompletableFuture<Void> commit(TransactionId transactionId) {
+        if (delegateMap instanceof AsyncTransactionalMap) {
+            return ((AsyncTransactionalMap<K, V>) delegateMap).commit(transactionId);
+        } else {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    @Override
+    public CompletableFuture<Void> rollback(TransactionId transactionId) {
+        if (delegateMap instanceof AsyncTransactionalMap) {
+            return ((AsyncTransactionalMap<K, V>) delegateMap).rollback(transactionId);
+        } else {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    @Override
     public CompletableFuture<Void> addListener(MapEventListener<K, V> listener, Executor executor) {
         return delegateMap.addListener(listener, executor);
     }
@@ -162,26 +211,6 @@ public class DelegatingAsyncConsistentMap<K, V> implements AsyncConsistentMap<K,
     @Override
     public CompletableFuture<Void> removeListener(MapEventListener<K, V> listener) {
         return delegateMap.removeListener(listener);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepare(MapTransaction<K, V> transaction) {
-        return delegateMap.prepare(transaction);
-    }
-
-    @Override
-    public CompletableFuture<Void> commit(TransactionId transactionId) {
-        return delegateMap.commit(transactionId);
-    }
-
-    @Override
-    public CompletableFuture<Void> rollback(TransactionId transactionId) {
-        return delegateMap.rollback(transactionId);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepareAndCommit(MapTransaction<K, V> transaction) {
-        return delegateMap.prepareAndCommit(transaction);
     }
 
     @Override
@@ -202,8 +231,8 @@ public class DelegatingAsyncConsistentMap<K, V> implements AsyncConsistentMap<K,
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(getClass())
-                          .add("delegateMap", delegateMap)
-                          .toString();
+                .add("delegateMap", delegateMap)
+                .toString();
     }
 
     @Override

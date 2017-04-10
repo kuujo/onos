@@ -16,12 +16,6 @@
 
 package org.onosproject.store.primitives.impl;
 
-import org.onosproject.store.primitives.TransactionId;
-import org.onosproject.store.service.AsyncConsistentTreeMap;
-import org.onosproject.store.service.MapEventListener;
-import org.onosproject.store.service.MapTransaction;
-import org.onosproject.store.service.Versioned;
-
 import java.util.Collection;
 import java.util.Map;
 import java.util.NavigableMap;
@@ -32,6 +26,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
+
+import org.onosproject.store.service.AsyncConsistentTreeMap;
+import org.onosproject.store.service.MapEventListener;
+import org.onosproject.store.service.Versioned;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
@@ -245,28 +243,6 @@ public class DelegatingAsyncConsistentTreeMap<V>
     public CompletableFuture<Void> removeListener(
             MapEventListener<String, V> listener) {
         return delegateMap.removeListener(listener);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepare(
-            MapTransaction<String, V> transaction) {
-        return delegateMap.prepare(transaction);
-    }
-
-    @Override
-    public CompletableFuture<Void> commit(TransactionId transactionId) {
-        return delegateMap.commit(transactionId);
-    }
-
-    @Override
-    public CompletableFuture<Void> rollback(TransactionId transactionId) {
-        return delegateMap.rollback(transactionId);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepareAndCommit(
-            MapTransaction<String, V> transaction) {
-        return delegateMap.prepareAndCommit(transaction);
     }
 
     @Override
