@@ -1,0 +1,128 @@
+<!--
+  ~ Copyright 2017-present Open Networking Laboratory
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<scenario name="distributed-transaction-test"
+          description="ONOS Transaction test">
+    <group name="Distributed-Transaction">
+
+        <group name="Distributed-Transaction.Test-Serializable">
+            <group name="Distributed-Transaction.Test-Serializable-Put">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Serializable-Put-${#}"
+                          exec="onos ${OC#} transactional-map-test-put 10000 ${#} SERIALIZABLE"/>
+                </parallel>
+            </group>
+
+            <group name="Distributed-Transaction.Test-Serializable-Get-Parallel">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Serializable-Get-Parallel-${#}"
+                          exec="onos-execute-expect ${OC#} transactional-map-test-get 10000 SERIALIZABLE --expect single"/>
+                </parallel>
+            </group>
+
+            <group name="Distributed-Transaction.Test-Serializable-Get-Sequential"
+                   requires="Distributed-Transaction.Test-Serializable-Put">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Serializable-Get-Sequential-${#}"
+                          exec="onos-execute-expect ${OC#} transactional-map-test-get 10000 SERIALIZABLE --expect single"/>
+                </parallel>
+            </group>
+        </group>
+
+        <group name="Distributed-Transaction.Test-Repeatable-Read">
+            <group name="Distributed-Transaction.Test-Repeatable-Read-Put">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Repeatable-Read-Put-${#}"
+                          exec="onos ${OC#} transactional-map-test-put 10000 ${#} REPEATABLE_READ"/>
+                </parallel>
+            </group>
+
+            <group name="Distributed-Transaction.Test-Repeatable-Read-Get-Parallel">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Repeatable-Read-Get-Parallel-${#}"
+                          exec="onos-execute-expect ${OC#} transactional-map-test-get 10000 REPEATABLE_READ --expect single"/>
+                </parallel>
+            </group>
+
+            <group name="Distributed-Transaction.Test-Repeatable-Read-Get-Sequential"
+                   requires="Distributed-Transaction.Test-Repeatable-Read-Put">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Repeatable-Read-Get-Sequential-${#}"
+                          exec="onos-execute-expect ${OC#} transactional-map-test-get 10000 REPEATABLE_READ --expect single"/>
+                </parallel>
+            </group>
+        </group>
+
+        <group name="Distributed-Transaction.Test-Read-Committed">
+            <group name="Distributed-Transaction.Test-Read-Committed-Put">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Read-Committed-Put-${#}"
+                          exec="onos ${OC#} transactional-map-test-put 10000 ${#} READ_COMMITTED"/>
+                </parallel>
+            </group>
+
+            <group name="Distributed-Transaction.Test-Read-Committed-Get-Parallel">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Read-Committed-Get-Parallel-${#}"
+                          exec="onos-execute-expect ${OC#} transactional-map-test-get 10000 READ_COMMITTED --expect single"/>
+                </parallel>
+            </group>
+
+            <group name="Distributed-Transaction.Test-Read-Committed-Get-Sequential"
+                   requires="Distributed-Transaction.Test-Read-Committed-Put">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Read-Committed-Get-Sequential-${#}"
+                          exec="onos-execute-expect ${OC#} transactional-map-test-get 10000 READ_COMMITTED --expect single"/>
+                </parallel>
+            </group>
+        </group>
+
+        <group name="Distributed-Transaction.Test-Read-Uncommitted">
+            <group name="Distributed-Transaction.Test-Read-Uncommitted-Put">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Read-Uncommitted-Put-${#}"
+                          exec="onos ${OC#} transactional-map-test-put 10000 ${#} READ_UNCOMMITTED"/>
+                </parallel>
+            </group>
+
+            <group name="Distributed-Transaction.Test-Read-Uncommitted-Get-Parallel">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Read-Uncommitted-Get-Parallel-${#}"
+                          exec="onos-execute-expect ${OC#} transactional-map-test-get 10000 READ_UNCOMMITTED --expect single"/>
+                </parallel>
+            </group>
+
+            <group name="Distributed-Transaction.Test-Read-Uncommitted-Get-Sequential"
+                   requires="Distributed-Transaction.Test-Read-Uncommitted-Put">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Read-Uncommitted-Get-Sequential-${#}"
+                          exec="onos-execute-expect ${OC#} transactional-map-test-get 10000 READ_UNCOMMITTED --expect single"/>
+                </parallel>
+            </group>
+        </group>
+
+        <group name="Distributed-Transaction.Check-Log-Exceptions"
+               requires="Distributed-Transaction.Test-Serializable,
+                         Distributed-Transaction.Test-Repeatable-Read,
+                         Distributed-Transaction.Test-Read-Committed,
+                         Distributed-Transaction.Test-Read-Uncommitted">
+            <parallel var="${OC#}">
+                <step name="Distributed-Transaction.Check-Log-Exceptions-${#}"
+                      exec="onos-check-logs ${OC#}"/>
+            </parallel>
+        </group>
+    </group>
+</scenario>

@@ -19,6 +19,7 @@ import org.apache.karaf.shell.commands.Argument;
 import org.apache.karaf.shell.commands.Command;
 import org.onosproject.cli.AbstractShellCommand;
 import org.onosproject.store.serializers.KryoNamespaces;
+import org.onosproject.store.service.IsolationLevel;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.TransactionContext;
@@ -41,6 +42,11 @@ public class TransactionalMapTestPutCommand extends AbstractShellCommand {
             required = true, multiValued = false)
     private String value = null;
 
+    @Argument(index = 2, name = "isolationLevel",
+            description = "Transaction isolation level",
+            required = false, multiValued = false)
+    private IsolationLevel isolationLevel = IsolationLevel.SERIALIZABLE;
+
     TransactionalMap<String, String> map;
     String prefix = "Key";
     String mapName = "Test-Map";
@@ -50,7 +56,9 @@ public class TransactionalMapTestPutCommand extends AbstractShellCommand {
     protected void execute() {
         StorageService storageService = get(StorageService.class);
         TransactionContext context;
-        context = storageService.transactionContextBuilder().build();
+        context = storageService.transactionContextBuilder()
+                .withIsolationLevel(isolationLevel)
+                .build();
         context.begin();
         try {
             map = context.getTransactionalMap(mapName, serializer);
