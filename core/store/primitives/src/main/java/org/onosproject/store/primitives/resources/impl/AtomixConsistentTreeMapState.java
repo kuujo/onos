@@ -20,12 +20,9 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import io.atomix.copycat.server.Commit;
-import io.atomix.copycat.server.Snapshottable;
 import io.atomix.copycat.server.StateMachineExecutor;
 import io.atomix.copycat.server.session.ServerSession;
 import io.atomix.copycat.server.session.SessionListener;
-import io.atomix.copycat.server.storage.snapshot.SnapshotReader;
-import io.atomix.copycat.server.storage.snapshot.SnapshotWriter;
 import io.atomix.resource.ResourceStateMachine;
 import org.onlab.util.Match;
 import org.onosproject.store.service.MapEvent;
@@ -55,6 +52,7 @@ import static org.onosproject.store.primitives.resources.impl.AtomixConsistentTr
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.FloorEntry;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.FloorKey;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.Get;
+import static org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.GetOrDefault;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.HigherEntry;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.HigherKey;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands.IsEmpty;
@@ -77,13 +75,13 @@ import static org.onosproject.store.primitives.resources.impl.MapEntryUpdateResu
  * State machine corresponding to {@link AtomixConsistentTreeMap} backed by a
  * {@link TreeMap}.
  */
-public class AtomixConsistentTreeMapState extends ResourceStateMachine implements SessionListener, Snapshottable {
+public class AtomixConsistentTreeMapState extends ResourceStateMachine implements SessionListener {
 
     private final Map<Long, Commit<? extends Listen>> listeners =
             Maps.newHashMap();
     private TreeMap<String, TreeMapEntryValue> tree = Maps.newTreeMap();
     private final Set<String> preparedKeys = Sets.newHashSet();
-    private AtomicLong versionCounter = new AtomicLong(0);
+    private long version;
 
     private Function<Commit<SubMap>, NavigableMap<String, TreeMapEntryValue>> subMapFunction = this::subMap;
     private Function<Commit<FirstKey>, String> firstKeyFunction = this::firstKey;
@@ -114,16 +112,6 @@ public class AtomixConsistentTreeMapState extends ResourceStateMachine implement
     }
 
     @Override
-    public void snapshot(SnapshotWriter writer) {
-        writer.writeLong(versionCounter.get());
-    }
-
-    @Override
-    public void install(SnapshotReader reader) {
-        versionCounter = new AtomicLong(reader.readLong());
-    }
-
-    @Override
     public void configure(StateMachineExecutor executor) {
         // Listeners
         executor.register(Listen.class, this::listen);
@@ -133,6 +121,7 @@ public class AtomixConsistentTreeMapState extends ResourceStateMachine implement
         executor.register(ContainsValue.class, this::containsValue);
         executor.register(EntrySet.class, this::entrySet);
         executor.register(Get.class, this::get);
+        executor.register(GetOrDefault.class, this::getOrDefault);
         executor.register(IsEmpty.class, this::isEmpty);
         executor.register(KeySet.class, this::keySet);
         executor.register(Size.class, this::size);
@@ -188,6 +177,15 @@ public class AtomixConsistentTreeMapState extends ResourceStateMachine implement
     protected Versioned<byte[]> get(Commit<? extends Get> commit) {
         try {
             return toVersioned(tree.get(commit.operation().key()));
+        } finally {
+            commit.close();
+        }
+    }
+
+    protected Versioned<byte[]> getOrDefault(Commit<? extends GetOrDefault> commit) {
+        try {
+            Versioned<byte[]> value = toVersioned(tree.get(commit.operation().key()));
+            return value != null ? value : new Versioned<>(commit.operation().defaultValue(), 0);
         } finally {
             commit.close();
         }
@@ -255,9 +253,9 @@ public class AtomixConsistentTreeMapState extends ResourceStateMachine implement
         }
 
         byte[] newValue = commit.operation().value();
-        long newVersion = versionCounter.incrementAndGet();
+        this.version = commit.index();
         Versioned<byte[]> newTreeValue = newValue == null ? null
-                : new Versioned<byte[]>(newValue, newVersion);
+                : new Versioned<byte[]>(newValue, version);
 
         MapEvent.Type updateType = newValue == null ? MapEvent.Type.REMOVE
                 : oldCommitValue == null ? MapEvent.Type.INSERT :
@@ -269,7 +267,7 @@ public class AtomixConsistentTreeMapState extends ResourceStateMachine implement
         }
         if (updateType == MapEvent.Type.INSERT ||
                 updateType == MapEvent.Type.UPDATE) {
-            tree.put(key, new NonTransactionalCommit(newVersion, commit));
+            tree.put(key, new NonTransactionalCommit(version, commit));
         } else {
             commit.close();
         }

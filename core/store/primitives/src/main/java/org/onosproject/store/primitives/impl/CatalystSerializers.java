@@ -15,6 +15,10 @@
  */
 package org.onosproject.store.primitives.impl;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Optional;
+
 import com.google.common.collect.HashMultiset;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
@@ -27,7 +31,6 @@ import org.onosproject.cluster.Leader;
 import org.onosproject.cluster.Leadership;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.event.Change;
-import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapFactory;
@@ -49,14 +52,11 @@ import org.onosproject.store.primitives.resources.impl.RollbackResult;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.DocumentPath;
 import org.onosproject.store.service.DocumentTreeEvent;
+import org.onosproject.store.service.LockVersion;
 import org.onosproject.store.service.MapEvent;
-import org.onosproject.store.service.MapTransaction;
 import org.onosproject.store.service.Task;
 import org.onosproject.store.service.Versioned;
 import org.onosproject.store.service.WorkQueueStats;
-
-import java.util.Arrays;
-import java.util.Optional;
 
 /**
  * Serializer utility for Atomix Catalyst.
@@ -70,7 +70,7 @@ public final class CatalystSerializers {
         Serializer serializer = new Serializer();
         TypeSerializerFactory factory =
                 new DefaultCatalystTypeSerializerFactory(
-                        org.onosproject.store.service.Serializer.using(Arrays.asList((KryoNamespaces.API)),
+                        org.onosproject.store.service.Serializer.using(Collections.singletonList(KryoNamespaces.API),
                                                                        MapEntryUpdateResult.class,
                                                                        MapEntryUpdateResult.Status.class,
                                                                        Transaction.State.class,
@@ -81,7 +81,9 @@ public final class CatalystSerializers {
                                                                        DocumentTreeUpdateResult.Status.class,
                                                                        DocumentTreeEvent.class,
                                                                        DocumentTreeEvent.Type.class,
-                                                                       RollbackResult.class));
+                                                                       RollbackResult.class,
+                                                                       MapRecord.class,
+                                                                       MapRecord.Type.class));
         // ONOS classes
         serializer.register(Change.class, factory);
         serializer.register(Leader.class, factory);
@@ -95,9 +97,9 @@ public final class CatalystSerializers {
         serializer.register(CommitResult.class, factory);
         serializer.register(RollbackResult.class, factory);
         serializer.register(TransactionId.class, factory);
-        serializer.register(MapUpdate.class, factory);
-        serializer.register(MapUpdate.Type.class, factory);
-        serializer.register(MapTransaction.class, factory);
+        serializer.register(MapRecord.class, factory);
+        serializer.register(MapRecord.Type.class, factory);
+        serializer.register(LockVersion.class, factory);
         serializer.register(Versioned.class, factory);
         serializer.register(MapEvent.class, factory);
         serializer.register(Task.class, factory);

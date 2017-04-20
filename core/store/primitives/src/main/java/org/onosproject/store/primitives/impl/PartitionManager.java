@@ -128,6 +128,17 @@ public class PartitionManager extends AbstractListenerManager<PartitionEvent, Pa
         return partitions.keySet();
     }
 
+    /**
+     * Returns a {@link StoragePartition} for the given {@link PartitionId}.
+     *
+     * @param partitionId the partition identifier
+     * @return the storage partition or {@code null} if the partition doesn't exist
+     */
+    StoragePartition getPartition(PartitionId partitionId) {
+        checkPermission(PARTITION_READ);
+        return partitions.get(partitionId);
+    }
+
     @Override
     public DistributedPrimitiveCreator getDistributedPrimitiveCreator(PartitionId partitionId) {
         checkPermission(PARTITION_READ);

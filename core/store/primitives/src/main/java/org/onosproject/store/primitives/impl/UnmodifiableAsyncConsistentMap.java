@@ -16,11 +16,13 @@
 
 package org.onosproject.store.primitives.impl;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 
 import org.onlab.util.Tools;
+import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.Versioned;
 
@@ -96,5 +98,27 @@ public class UnmodifiableAsyncConsistentMap<K, V> extends DelegatingAsyncConsist
     @Override
     public CompletableFuture<Boolean> replace(K key, long oldVersion, V newValue) {
         return Tools.exceptionalFuture(new UnsupportedOperationException(ERROR_MSG));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> prepare(TransactionId transactionId, List<MapRecord<K, V>> transactionLog) {
+        return Tools.exceptionalFuture(new UnsupportedOperationException(ERROR_MSG));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> prepareAndCommit(
+            TransactionId transactionId,
+            List<MapRecord<K, V>> transactionLog) {
+        return super.prepareAndCommit(transactionId, transactionLog);
+    }
+
+    @Override
+    public CompletableFuture<Void> commit(TransactionId transactionId) {
+        return super.commit(transactionId);
+    }
+
+    @Override
+    public CompletableFuture<Void> rollback(TransactionId transactionId) {
+        return super.rollback(transactionId);
     }
 }

@@ -77,7 +77,7 @@ public interface DistributedPrimitiveCreator {
      * @return atomic counter map
      */
     <K> AsyncAtomicCounterMap<K> newAsyncAtomicCounterMap(
-        String name, Serializer serializer);
+            String name, Serializer serializer);
 
     /**
      * Creates a new {@code AsyncAtomicCounter}.
