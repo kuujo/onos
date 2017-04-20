@@ -15,10 +15,15 @@
  */
 package org.onosproject.distributedprimitives.cli;
 
+import java.util.Set;
+
+import com.google.common.base.Joiner;
+import com.google.common.collect.Sets;
 import org.apache.karaf.shell.commands.Argument;
 import org.apache.karaf.shell.commands.Command;
 import org.onosproject.cli.AbstractShellCommand;
 import org.onosproject.store.serializers.KryoNamespaces;
+import org.onosproject.store.service.CommitStatus;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.TransactionContext;
@@ -31,34 +36,48 @@ import org.onosproject.store.service.TransactionalMap;
         description = "Get a value associated with a specific key in a transactional map")
 public class TransactionalMapTestGetCommand extends AbstractShellCommand {
 
-    @Argument(index = 0, name = "key",
-            description = "Key to get the value of",
+    @Argument(index = 0, name = "numKeys",
+            description = "Number of keys to get",
             required = true, multiValued = false)
-    private String key = null;
+    private int numKeys = 1;
 
-    TransactionalMap<String, String> map;
+    String prefix = "Key";
     String mapName = "Test-Map";
     Serializer serializer = Serializer.using(KryoNamespaces.BASIC);
 
     @Override
     protected void execute() {
         StorageService storageService = get(StorageService.class);
-        TransactionContext context;
-        context = storageService.transactionContextBuilder().build();
-        context.begin();
-        try {
-            map = context.getTransactionalMap(mapName, serializer);
-            String response = map.get(key);
-            context.commit();
+        CommitStatus status = null;
+        while (status != CommitStatus.SUCCESS) {
+            TransactionContext context = storageService.transactionContextBuilder().build();
+            context.begin();
+            try {
+                TransactionalMap<String, String> map = context.getTransactionalMap(mapName, serializer);
+                Set<String> values = Sets.newHashSet();
+                for (int i = 1; i <= numKeys; i++) {
+                    String key = prefix + i;
+                    String value = map.get(key);
+                    if (value != null) {
+                        values.add(value);
+                    }
+                }
 
-            if (response == null) {
-                print("Key %s not found.", key);
-            } else {
-                print("Key-value pair (%s, %s) found.", key, response);
+                if ((status = context.commit().join()) == CommitStatus.SUCCESS) {
+                    if (values.size() == 1) {
+                        print("single");
+                    } else if (values.isEmpty()) {
+                        print("none");
+                    } else {
+                        print("multiple (" + Joiner.on(',').join(values) + ")");
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                print("Aborting transaction: %s", e.getMessage());
+                context.abort();
+                break;
             }
-        } catch (Exception e) {
-            context.abort();
-            throw e;
         }
     }
 }

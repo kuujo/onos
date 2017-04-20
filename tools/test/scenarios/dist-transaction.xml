@@ -1,0 +1,60 @@
+<!--
+  ~ Copyright 2017-present Open Networking Laboratory
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<scenario name="distributed-transaction-test"
+          description="ONOS Transaction test">
+    <group name="Distributed-Transaction">
+
+        <group name="Distributed-Transaction.Test-Initialize">
+            <parallel var="${OC#}">
+                <step name="Distributed-Transaction.Test-Initialize-Put-${#}"
+                      exec="onos ${OC#} transactional-map-test-put 100 ${#}"/>
+            </parallel>
+        </group>
+
+        <group name="Distributed-Transaction.Test-Transaction" requires="Distributed-Transaction.Test-Initialize">
+            <group name="Distributed-Transaction.Test-Transaction-Put">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Transaction-Put-${#}"
+                          exec="onos ${OC#} transactional-map-test-put 100 ${#}"/>
+                </parallel>
+            </group>
+
+            <group name="Distributed-Transaction.Test-Transaction-Get-Parallel">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Transaction-Get-Parallel-${#}"
+                          exec="onos-execute-expect ${OC#} transactional-map-test-get 100 --expect single"/>
+                </parallel>
+            </group>
+
+            <group name="Distributed-Transaction.Test-Transaction-Get-Sequential"
+                   requires="Distributed-Transaction.Test-Transaction-Put">
+                <parallel var="${OC#}">
+                    <step name="Distributed-Transaction.Test-Transaction-Get-Sequential-${#}"
+                          exec="onos-execute-expect ${OC#} transactional-map-test-get 100 --expect single"/>
+                </parallel>
+            </group>
+        </group>
+
+        <group name="Distributed-Transaction.Check-Log-Exceptions"
+               requires="Distributed-Transaction.Test-Transaction">
+            <parallel var="${OC#}">
+                <step name="Distributed-Transaction.Check-Log-Exceptions-${#}"
+                      exec="onos-check-logs ${OC#}"/>
+            </parallel>
+        </group>
+    </group>
+</scenario>
