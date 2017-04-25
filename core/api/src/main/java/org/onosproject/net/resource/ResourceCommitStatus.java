@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-present Open Networking Laboratory
+ * Copyright 2017-present Open Networking Laboratory
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,20 +15,23 @@
  */
 package org.onosproject.net.resource;
 
-import com.google.common.annotations.Beta;
-import org.onosproject.store.Store;
-
 /**
- * Service for storing resource and consumer information.
+ * Resource transaction commit status.
  */
-@Beta
-public interface ResourceStore extends Store<ResourceEvent, ResourceStoreDelegate>, ResourceStoreBase {
+public enum ResourceCommitStatus {
+    /**
+     * Indicates that a resource transaction succeeded.
+     */
+    SUCCEEDED,
 
     /**
-     * Creates a new resource transaction context.
-     *
-     * @return a new resource transaction context
+     * Indicates that a resource transaction failed due to an allocation conflict.
      */
-    ResourceTransactionContext newTransaction();
+    FAILED_ALLOCATION,
 
+    /**
+     * Indicates that a resource transaction failed due to a concurrent transaction holding a lock on shared keys.
+     * Transactions failed with this status can be retried.
+     */
+    FAILED_CONCURRENT_TRANSACTION,
 }

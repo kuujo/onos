@@ -26,7 +26,8 @@ import java.util.Set;
 /**
  * Interface for transaction resource substores.
  */
-interface TransactionalResourceSubStore<T extends ResourceId, U extends Resource> {
+interface TransactionalResourceSubStore<T extends ResourceId, U extends Resource>
+        extends ConsistentResourceSubStore<T, U> {
 
     /**
      * Reads the given resource from the substore.

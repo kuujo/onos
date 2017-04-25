@@ -15,6 +15,11 @@
  */
 package org.onosproject.store.resource.impl;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Stream;
+
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import org.onosproject.net.resource.DiscreteResource;
@@ -25,21 +30,14 @@ import org.onosproject.net.resource.ResourceConsumerId;
 import org.onosproject.net.resource.Resources;
 import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.StorageService;
-import org.onosproject.store.service.TransactionContext;
 import org.onosproject.store.service.Versioned;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Stream;
 
 import static org.onosproject.store.resource.impl.ConsistentResourceStore.SERIALIZER;
 
 /**
  * Consistent substore for discrete resources.
  */
-class ConsistentDiscreteResourceSubStore implements ConsistentResourceSubStore
-        <DiscreteResourceId, DiscreteResource, TransactionalDiscreteResourceSubStore> {
+class ConsistentDiscreteResourceSubStore implements DiscreteResourceSubStore {
     private ConsistentMap<DiscreteResourceId, ResourceConsumerId> consumers;
     private ConsistentMap<DiscreteResourceId, DiscreteResources> childMap;
 
@@ -54,11 +52,6 @@ class ConsistentDiscreteResourceSubStore implements ConsistentResourceSubStore
                 .build();
 
         childMap.put(Resource.ROOT.id(), DiscreteResources.empty());
-    }
-
-    @Override
-    public TransactionalDiscreteResourceSubStore transactional(TransactionContext tx) {
-        return new TransactionalDiscreteResourceSubStore(tx);
     }
 
     // computational complexity: O(1)

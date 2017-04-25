@@ -15,6 +15,12 @@
  */
 package org.onosproject.store.resource.impl;
 
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import org.onosproject.net.resource.ContinuousResource;
@@ -25,14 +31,7 @@ import org.onosproject.net.resource.ResourceAllocation;
 import org.onosproject.net.resource.ResourceConsumerId;
 import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.StorageService;
-import org.onosproject.store.service.TransactionContext;
 import org.onosproject.store.service.Versioned;
-
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static org.onosproject.store.resource.impl.ConsistentResourceStore.SERIALIZER;
 
@@ -40,8 +39,7 @@ import static org.onosproject.store.resource.impl.ConsistentResourceStore.SERIAL
 /**
  * Consistent substore for continuous resources.
  */
-class ConsistentContinuousResourceSubStore implements ConsistentResourceSubStore
-        <ContinuousResourceId, ContinuousResource, TransactionalContinuousResourceSubStore> {
+class ConsistentContinuousResourceSubStore implements ContinuousResourceSubStore {
     private ConsistentMap<ContinuousResourceId, ContinuousResourceAllocation> consumers;
     private ConsistentMap<DiscreteResourceId, Set<ContinuousResource>> childMap;
 
@@ -56,11 +54,6 @@ class ConsistentContinuousResourceSubStore implements ConsistentResourceSubStore
                 .build();
 
         childMap.put(Resource.ROOT.id(), new LinkedHashSet<>());
-    }
-
-    @Override
-    public TransactionalContinuousResourceSubStore transactional(TransactionContext tx) {
-        return new TransactionalContinuousResourceSubStore(tx);
     }
 
     // computational complexity: O(n) where n is the number of the existing allocations for the resource
@@ -138,10 +131,7 @@ class ConsistentContinuousResourceSubStore implements ConsistentResourceSubStore
                 // .filter(x -> !continuousConsumers.get(x.id()).value().allocations().isEmpty());
                 .filter(resource -> {
                     Versioned<ContinuousResourceAllocation> allocation = consumers.get(resource.id());
-                    if (allocation == null) {
-                        return false;
-                    }
-                    return !allocation.value().allocations().isEmpty();
+                    return allocation != null && !allocation.value().allocations().isEmpty();
                 });
     }
 
