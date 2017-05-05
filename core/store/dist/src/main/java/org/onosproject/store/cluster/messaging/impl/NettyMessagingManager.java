@@ -16,10 +16,7 @@
 package org.onosproject.store.cluster.messaging.impl;
 
 import com.google.common.base.Strings;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.RemovalListener;
-import com.google.common.cache.RemovalNotification;
+import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.MoreExecutors;
 
 import io.netty.bootstrap.Bootstrap;
@@ -42,6 +39,8 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+import org.apache.commons.math3.stat.descriptive.SynchronizedDescriptiveStatistics;
 import org.apache.commons.pool.KeyedPoolableObjectFactory;
 import org.apache.commons.pool.impl.GenericKeyedObjectPool;
 import org.apache.felix.scr.annotations.Activate;
@@ -69,19 +68,20 @@ import javax.net.ssl.TrustManagerFactory;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.security.KeyStore;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
-import java.util.function.Consumer;
 
 import static org.onlab.util.Tools.groupedThreads;
 import static org.onosproject.security.AppGuard.checkPermission;
@@ -94,7 +94,12 @@ import static org.onosproject.security.AppPermission.Type.CLUSTER_WRITE;
 @Service
 public class NettyMessagingManager implements MessagingService {
 
-    private static final int REPLY_TIME_OUT_MILLIS = 250;
+    private static final int DEFAULT_TIMEOUT_MILLIS = 500;
+    private static final long MIN_TIMEOUT_MILLIS = 100;
+    private static final int WINDOW_SIZE = 100;
+    private static final int MIN_SAMPLES = 10;
+    private static final int TIMEOUT_PERCENTILE = 90;
+    private static final double TIMEOUT_MULTIPLIER = 1.5;
     private static final short MIN_KS_LENGTH = 6;
 
     private final Logger log = LoggerFactory.getLogger(getClass());
@@ -107,19 +112,9 @@ public class NettyMessagingManager implements MessagingService {
     private Endpoint localEp;
     private int preamble;
     private final AtomicBoolean started = new AtomicBoolean(false);
-    private final Map<String, Consumer<InternalMessage>> handlers = new ConcurrentHashMap<>();
+    private final Map<String, BiConsumer<InternalMessage, Connection>> handlers = new ConcurrentHashMap<>();
+    private final Map<Channel, Connection> connections = Maps.newConcurrentMap();
     private final AtomicLong messageIdGenerator = new AtomicLong(0);
-    private final Cache<Long, Callback> callbacks = CacheBuilder.newBuilder()
-            .expireAfterWrite(REPLY_TIME_OUT_MILLIS, TimeUnit.MILLISECONDS)
-            .removalListener(new RemovalListener<Long, Callback>() {
-                @Override
-                public void onRemoval(RemovalNotification<Long, Callback> entry) {
-                    if (entry.wasEvicted()) {
-                        entry.getValue().completeExceptionally(new TimeoutException("Timedout waiting for reply"));
-                    }
-                }
-            })
-            .build();
 
     private final GenericKeyedObjectPool<Endpoint, Connection> channels
             = new GenericKeyedObjectPool<>(new OnosCommunicationChannelFactory());
@@ -159,7 +154,6 @@ public class NettyMessagingManager implements MessagingService {
         initEventLoopGroup();
         startAcceptingConnections();
         started.set(true);
-        serverGroup.scheduleWithFixedDelay(callbacks::cleanUp, 0, REPLY_TIME_OUT_MILLIS, TimeUnit.MILLISECONDS);
         log.info("Started");
     }
 
@@ -201,6 +195,7 @@ public class NettyMessagingManager implements MessagingService {
             }
         }
     }
+
     private void initEventLoopGroup() {
         // try Epoll first and if that does work, use nio.
         try {
@@ -228,35 +223,33 @@ public class NettyMessagingManager implements MessagingService {
                                                       localEp,
                                                       type,
                                                       payload);
-        return sendAsync(ep, message);
+        return sendAsync(ep, message, null);
     }
 
-    protected CompletableFuture<Void> sendAsync(Endpoint ep, InternalMessage message) {
+    protected CompletableFuture<Void> sendAsync(Endpoint ep, InternalMessage message, Callback callback) {
         checkPermission(CLUSTER_WRITE);
         if (ep.equals(localEp)) {
             try {
-                dispatchLocally(message);
+                dispatchLocally(message, null);
             } catch (IOException e) {
                 return Tools.exceptionalFuture(e);
             }
             return CompletableFuture.completedFuture(null);
         }
 
-        CompletableFuture<Void> future = new CompletableFuture<>();
         try {
             Connection connection = null;
             try {
                 connection = channels.borrowObject(ep);
-                connection.send(message, future);
+                return connection.send(message, callback);
             } finally {
                 if (connection != null) {
                     channels.returnObject(ep, connection);
                 }
             }
         } catch (Exception e) {
-            future.completeExceptionally(e);
+            return Tools.exceptionalFuture(e);
         }
-        return future;
     }
 
     @Override
@@ -271,7 +264,6 @@ public class NettyMessagingManager implements MessagingService {
         CompletableFuture<byte[]> future = new CompletableFuture<>();
         Callback callback = new Callback(future, executor);
         Long messageId = messageIdGenerator.incrementAndGet();
-        callbacks.put(messageId, callback);
         InternalMessage message = new InternalMessage(preamble,
                                                       clockService.timeNow(),
                                                       messageId,
@@ -279,9 +271,8 @@ public class NettyMessagingManager implements MessagingService {
                                                       type,
                                                       payload);
 
-        sendAsync(ep, message).whenComplete((response, error) -> {
+        sendAsync(ep, message, callback).whenComplete((response, error) -> {
             if (error != null) {
-                callbacks.invalidate(messageId);
                 callback.completeExceptionally(error);
             }
         });
@@ -291,13 +282,13 @@ public class NettyMessagingManager implements MessagingService {
     @Override
     public void registerHandler(String type, BiConsumer<Endpoint, byte[]> handler, Executor executor) {
         checkPermission(CLUSTER_WRITE);
-        handlers.put(type, message -> executor.execute(() -> handler.accept(message.sender(), message.payload())));
+        handlers.put(type, (message, connection) -> executor.execute(() -> handler.accept(message.sender(), message.payload())));
     }
 
     @Override
     public void registerHandler(String type, BiFunction<Endpoint, byte[], byte[]> handler, Executor executor) {
         checkPermission(CLUSTER_WRITE);
-        handlers.put(type, message -> executor.execute(() -> {
+        handlers.put(type, (message, connection) -> executor.execute(() -> {
             byte[] responsePayload = null;
             Status status = Status.OK;
             try {
@@ -305,17 +296,17 @@ public class NettyMessagingManager implements MessagingService {
             } catch (Exception e) {
                 status = Status.ERROR_HANDLER_EXCEPTION;
             }
-            sendReply(message, status, Optional.ofNullable(responsePayload));
+            connection.reply(message, status, Optional.ofNullable(responsePayload));
         }));
     }
 
     @Override
     public void registerHandler(String type, BiFunction<Endpoint, byte[], CompletableFuture<byte[]>> handler) {
         checkPermission(CLUSTER_WRITE);
-        handlers.put(type, message -> {
+        handlers.put(type, (message, connection) -> {
             handler.apply(message.sender(), message.payload()).whenComplete((result, error) -> {
                 Status status = error == null ? Status.OK : Status.ERROR_HANDLER_EXCEPTION;
-                sendReply(message, status, Optional.ofNullable(result));
+                connection.reply(message, status, Optional.ofNullable(result));
             });
         });
     }
@@ -504,7 +495,7 @@ public class NettyMessagingManager implements MessagingService {
         protected void channelRead0(ChannelHandlerContext ctx, Object rawMessage) throws Exception {
             InternalMessage message = (InternalMessage) rawMessage;
             try {
-                dispatchLocally(message);
+                dispatchLocally(message, connections.get(ctx.channel()));
             } catch (RejectedExecutionException e) {
                 log.warn("Unable to dispatch message due to {}", e.getMessage());
             }
@@ -530,64 +521,49 @@ public class NettyMessagingManager implements MessagingService {
         }
     }
 
-    private void dispatchLocally(InternalMessage message) throws IOException {
+    private void dispatchLocally(InternalMessage message, Connection connection) throws IOException {
         if (message.preamble() != preamble) {
             log.debug("Received {} with invalid preamble from {}", message.type(), message.sender());
-            sendReply(message, Status.PROTOCOL_EXCEPTION, Optional.empty());
+            connection.reply(message, Status.PROTOCOL_EXCEPTION, Optional.empty());
+            return;
         }
+
         clockService.recordEventTime(message.time());
         String type = message.type();
         if (REPLY_MESSAGE_TYPE.equals(type)) {
-            try {
-                Callback callback =
-                        callbacks.getIfPresent(message.id());
-                if (callback != null) {
-                    if (message.status() == Status.OK) {
-                        callback.complete(message.payload());
-                    } else if (message.status() == Status.ERROR_NO_HANDLER) {
-                        callback.completeExceptionally(new MessagingException.NoRemoteHandler());
-                    } else if (message.status() == Status.ERROR_HANDLER_EXCEPTION) {
-                        callback.completeExceptionally(new MessagingException.RemoteHandlerFailure());
-                    } else if (message.status() == Status.PROTOCOL_EXCEPTION) {
-                        callback.completeExceptionally(new MessagingException.ProtocolException());
-                    }
-                } else {
-                    log.debug("Received a reply for message id:[{}]. "
-                                     + " from {}. But was unable to locate the"
-                                     + " request handle", message.id(), message.sender());
+            Callback callback = connection.callbacks.remove(message.id());
+            if (callback != null) {
+                if (message.status() == Status.OK) {
+                    callback.complete(message.payload());
+                } else if (message.status() == Status.ERROR_NO_HANDLER) {
+                    callback.completeExceptionally(new MessagingException.NoRemoteHandler());
+                } else if (message.status() == Status.ERROR_HANDLER_EXCEPTION) {
+                    callback.completeExceptionally(new MessagingException.RemoteHandlerFailure());
+                } else if (message.status() == Status.PROTOCOL_EXCEPTION) {
+                    callback.completeExceptionally(new MessagingException.ProtocolException());
                 }
-            } finally {
-                callbacks.invalidate(message.id());
+                connection.samples.addValue(System.currentTimeMillis() - callback.time);
+            } else {
+                log.debug("Received a reply for message id:[{}]. "
+                        + " from {}. But was unable to locate the"
+                        + " request handle", message.id(), message.sender());
             }
             return;
         }
-        Consumer<InternalMessage> handler = handlers.get(type);
+
+        BiConsumer<InternalMessage, Connection> handler = handlers.get(type);
         if (handler != null) {
-            handler.accept(message);
+            handler.accept(message, connection);
         } else {
             log.debug("No handler for message type {} from {}", message.type(), message.sender());
-            sendReply(message, Status.ERROR_NO_HANDLER, Optional.empty());
+            connection.reply(message, Status.ERROR_NO_HANDLER, Optional.empty());
         }
-    }
-
-    private void sendReply(InternalMessage message, Status status, Optional<byte[]> responsePayload) {
-        InternalMessage response = new InternalMessage(preamble,
-                clockService.timeNow(),
-                message.id(),
-                localEp,
-                REPLY_MESSAGE_TYPE,
-                responsePayload.orElse(new byte[0]),
-                status);
-        sendAsync(message.sender(), response).whenComplete((result, error) -> {
-            if (error != null) {
-                log.debug("Failed to respond", error);
-            }
-        });
     }
 
     private final class Callback {
         private final CompletableFuture<byte[]> future;
         private final Executor executor;
+        private final long time = System.currentTimeMillis();
 
         public Callback(CompletableFuture<byte[]> future, Executor executor) {
             this.future = future;
@@ -602,34 +578,89 @@ public class NettyMessagingManager implements MessagingService {
             executor.execute(() -> future.completeExceptionally(error));
         }
     }
+
     private final class Connection {
+        private final DescriptiveStatistics samples = new SynchronizedDescriptiveStatistics(WINDOW_SIZE);
         private final CompletableFuture<Channel> internalFuture;
+        private final Map<Long, Callback> callbacks = Maps.newConcurrentMap();
+        private ScheduledFuture<?> cleanupFuture;
 
         public Connection(CompletableFuture<Channel> internalFuture) {
             this.internalFuture = internalFuture;
+            internalFuture.thenAccept(channel -> connections.put(channel, this));
+            cleanupFuture = serverGroup.schedule(this::cleanup, DEFAULT_TIMEOUT_MILLIS / 2, TimeUnit.MILLISECONDS);
+        }
+
+        /**
+         * Cleans up callbacks.
+         */
+        private void cleanup() {
+            long currentTime = System.currentTimeMillis();
+            long currentTimeout = computeTimeoutMillis();
+            Iterator<Map.Entry<Long, Callback>> iterator = callbacks.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Callback callback = iterator.next().getValue();
+                if (currentTime - callback.time > currentTimeout) {
+                    iterator.remove();
+                    callback.completeExceptionally(new TimeoutException("Request timed out in " + (currentTime - callback.time) + " milliseconds"));
+                }
+            }
+            cleanupFuture = serverGroup.schedule(this::cleanup, currentTimeout / 2, TimeUnit.MILLISECONDS);
+        }
+
+        /**
+         * Computes the current timeout.
+         *
+         * @return the current timeout
+         */
+        private long computeTimeoutMillis() {
+            if (samples.getN() < MIN_SAMPLES) {
+                return DEFAULT_TIMEOUT_MILLIS;
+            }
+            long timeout = (long) (samples.getPercentile(TIMEOUT_PERCENTILE) * TIMEOUT_MULTIPLIER);
+            return Math.max(MIN_TIMEOUT_MILLIS, timeout);
         }
 
         /**
          * Sends a message out on its channel and associated the message with a
          * completable future used for signaling.
          * @param message the message to be sent
-         * @param future a future that is completed normally or exceptionally if
-         *               message sending succeeds or fails respectively
+         * @param callback a callback to call with the response or {@code null} if no response is expected
+         * @return a future to be completed once the message has been sent
          */
-        public void send(Object message, CompletableFuture<Void> future) {
+        public CompletableFuture<Void> send(InternalMessage message, Callback callback) {
+            callbacks.put(message.id(), callback);
+            CompletableFuture<Void> future = new CompletableFuture<>();
             internalFuture.whenComplete((channel, throwable) -> {
                 if (throwable == null) {
                     channel.writeAndFlush(message).addListener(channelFuture -> {
                         if (!channelFuture.isSuccess()) {
+                            callbacks.remove(message.id());
                             future.completeExceptionally(channelFuture.cause());
                         } else {
                             future.complete(null);
                         }
                     });
                 } else {
+                    callbacks.remove(message.id());
                     future.completeExceptionally(throwable);
                 }
             });
+            return future;
+        }
+
+        /**
+         * Replies to a message.
+         */
+        public void reply(InternalMessage message, Status status, Optional<byte[]> responsePayload) {
+            InternalMessage response = new InternalMessage(preamble,
+                    clockService.timeNow(),
+                    message.id(),
+                    localEp,
+                    REPLY_MESSAGE_TYPE,
+                    responsePayload.orElse(new byte[0]),
+                    status);
+            internalFuture.thenAccept(channel -> channel.writeAndFlush(response));
         }
 
         /**
@@ -640,6 +671,11 @@ public class NettyMessagingManager implements MessagingService {
             Channel channel = internalFuture.getNow(null);
             if (channel != null) {
                 channel.close();
+                connections.remove(channel);
+            }
+            ScheduledFuture<?> cleanupFuture = this.cleanupFuture;
+            if (cleanupFuture != null) {
+                cleanupFuture.cancel(false);
             }
             internalFuture.cancel(false);
         }
