@@ -105,10 +105,19 @@ public final class InternalMessage {
                            Endpoint sender,
                            String type,
                            byte[] payload) {
-        this(preamble, time, id, sender, type, payload, Status.OK);
+        this(preamble, time, id, sender, type, payload, null);
     }
 
     public InternalMessage(int preamble,
+            HybridLogicalTime time,
+            long id,
+            Endpoint sender,
+            byte[] payload,
+            Status status) {
+        this(preamble, time, id, sender, "", payload, status);
+    }
+
+    InternalMessage(int preamble,
                            HybridLogicalTime time,
                            long id,
                            Endpoint sender,
