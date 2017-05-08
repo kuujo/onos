@@ -58,7 +58,7 @@ import org.onosproject.core.HybridLogicalClockService;
 import org.onosproject.store.cluster.messaging.Endpoint;
 import org.onosproject.store.cluster.messaging.MessagingException;
 import org.onosproject.store.cluster.messaging.MessagingService;
-import org.onosproject.store.cluster.messaging.impl.InternalMessage.Status;
+import org.onosproject.store.cluster.messaging.impl.InternalReply.Status;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -71,7 +71,6 @@ import java.io.FileInputStream;
 import java.security.KeyStore;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
@@ -106,7 +105,7 @@ public class NettyMessagingManager implements MessagingService {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
-    private final Connection LOCAL_CONNECTION = new LocalConnection();
+    private final Connection localConnection = new LocalConnection();
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected HybridLogicalClockService clockService;
@@ -114,16 +113,17 @@ public class NettyMessagingManager implements MessagingService {
     private Endpoint localEndpoint;
     private int preamble;
     private final AtomicBoolean started = new AtomicBoolean(false);
-    private final Map<String, BiConsumer<InternalMessage, Connection>> handlers = new ConcurrentHashMap<>();
+    private final Map<String, BiConsumer<InternalRequest, Connection>> handlers = new ConcurrentHashMap<>();
     private final Map<Channel, RemoteConnection> remoteConnections = Maps.newConcurrentMap();
     private final AtomicLong messageIdGenerator = new AtomicLong(0);
 
-    private final ChannelPoolMap<Endpoint, SimpleChannelPool> channels = new AbstractChannelPoolMap<Endpoint, SimpleChannelPool>() {
-        @Override
-        protected SimpleChannelPool newPool(Endpoint endpoint) {
-            return new SimpleChannelPool(bootstrapClient(endpoint), new ClientChannelPoolHandler());
-        }
-    };
+    private final ChannelPoolMap<Endpoint, SimpleChannelPool> channels =
+            new AbstractChannelPoolMap<Endpoint, SimpleChannelPool>() {
+                @Override
+                protected SimpleChannelPool newPool(Endpoint endpoint) {
+                    return new SimpleChannelPool(bootstrapClient(endpoint), new ClientChannelPoolHandler());
+                }
+            };
 
     private EventLoopGroup serverGroup;
     private EventLoopGroup clientGroup;
@@ -217,7 +217,7 @@ public class NettyMessagingManager implements MessagingService {
     @Override
     public CompletableFuture<Void> sendAsync(Endpoint ep, String type, byte[] payload) {
         checkPermission(CLUSTER_WRITE);
-        InternalMessage message = new InternalMessage(preamble,
+        InternalRequest message = new InternalRequest(preamble,
                 clockService.timeNow(),
                 messageIdGenerator.incrementAndGet(),
                 localEndpoint,
@@ -236,7 +236,7 @@ public class NettyMessagingManager implements MessagingService {
     public CompletableFuture<byte[]> sendAndReceive(Endpoint ep, String type, byte[] payload, Executor executor) {
         checkPermission(CLUSTER_WRITE);
         Long messageId = messageIdGenerator.incrementAndGet();
-        InternalMessage message = new InternalMessage(preamble,
+        InternalRequest message = new InternalRequest(preamble,
                 clockService.timeNow(),
                 messageId,
                 localEndpoint,
@@ -259,7 +259,7 @@ public class NettyMessagingManager implements MessagingService {
             Executor executor) {
         if (endpoint.equals(localEndpoint)) {
             CompletableFuture<T> future = new CompletableFuture<>();
-            callback.apply(LOCAL_CONNECTION).whenComplete((result, error) -> {
+            callback.apply(localConnection).whenComplete((result, error) -> {
                if (error == null) {
                    executor.execute(() -> future.complete(result));
                } else {
@@ -314,7 +314,17 @@ public class NettyMessagingManager implements MessagingService {
             } catch (Exception e) {
                 status = Status.ERROR_HANDLER_EXCEPTION;
             }
-            connection.reply(message, status, Optional.ofNullable(responsePayload));
+
+            if (responsePayload == null) {
+                responsePayload = new byte[0];
+            }
+
+            connection.sendReply(new InternalReply(
+                    preamble,
+                    clockService.timeNow(),
+                    message.id(),
+                    responsePayload,
+                    status));
         }));
     }
 
@@ -324,7 +334,15 @@ public class NettyMessagingManager implements MessagingService {
         handlers.put(type, (message, connection) -> {
             handler.apply(message.sender(), message.payload()).whenComplete((result, error) -> {
                 Status status = error == null ? Status.OK : Status.ERROR_HANDLER_EXCEPTION;
-                connection.reply(message, status, Optional.ofNullable(result));
+                if (result == null) {
+                    result = new byte[0];
+                }
+                connection.sendReply(new InternalReply(
+                        preamble,
+                        clockService.timeNow(),
+                        message.id(),
+                        result,
+                        status));
             });
         });
     }
@@ -371,9 +389,11 @@ public class NettyMessagingManager implements MessagingService {
         // Bind and start to accept incoming connections.
         b.bind(localEndpoint.port()).sync().addListener(future -> {
             if (future.isSuccess()) {
-                log.info("{} accepting incoming connections on port {}", localEndpoint.host(), localEndpoint.port());
+                log.info("{} accepting incoming connections on port {}",
+                        localEndpoint.host(), localEndpoint.port());
             } else {
-                log.warn("{} failed to bind to port {} due to {}", localEndpoint.host(), localEndpoint.port(), future.cause());
+                log.warn("{} failed to bind to port {} due to {}",
+                        localEndpoint.host(), localEndpoint.port(), future.cause());
             }
         });
     }
@@ -553,7 +573,7 @@ public class NettyMessagingManager implements MessagingService {
          * @param message the message to send
          * @return a completable future to be completed once the message has been sent
          */
-        abstract CompletableFuture<Void> sendAsync(InternalMessage message);
+        abstract CompletableFuture<Void> sendAsync(InternalRequest message);
 
         /**
          * Sends a message to the other side of the connection, awaiting a reply.
@@ -561,16 +581,14 @@ public class NettyMessagingManager implements MessagingService {
          * @param message the message to send
          * @return a completable future to be completed once a reply is received or the request times out
          */
-        abstract CompletableFuture<byte[]> sendAndReceive(InternalMessage message);
+        abstract CompletableFuture<byte[]> sendAndReceive(InternalRequest message);
 
         /**
          * Sends a reply to the other side of the connection.
          *
-         * @param message the message to which to repl
-         * @param status the reply status
-         * @param payload the response payload
+         * @param reply the reply to send
          */
-        abstract void reply(InternalMessage message, Status status, Optional<byte[]> payload);
+        abstract void sendReply(InternalReply reply);
 
         /**
          * Closes the connection.
@@ -586,47 +604,47 @@ public class NettyMessagingManager implements MessagingService {
         private final Map<Long, CompletableFuture<byte[]>> futures = Maps.newConcurrentMap();
 
         @Override
-        CompletableFuture<Void> sendAsync(InternalMessage message) {
-            BiConsumer<InternalMessage, Connection> handler = handlers.get(message.type());
+        CompletableFuture<Void> sendAsync(InternalRequest message) {
+            BiConsumer<InternalRequest, Connection> handler = handlers.get(message.subject());
             if (handler != null) {
                 handler.accept(message, this);
             } else {
-                log.debug("No handler for message type {} from {}", message.type(), message.sender());
+                log.debug("No handler for message type {} from {}", message.subject(), message.sender());
             }
             return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        CompletableFuture<byte[]> sendAndReceive(InternalMessage message) {
+        CompletableFuture<byte[]> sendAndReceive(InternalRequest message) {
             CompletableFuture<byte[]> future = new CompletableFuture<>();
             futures.put(message.id(), future);
-            BiConsumer<InternalMessage, Connection> handler = handlers.get(message.type());
+            BiConsumer<InternalRequest, Connection> handler = handlers.get(message.subject());
             if (handler != null) {
                 handler.accept(message, this);
             } else {
-                log.debug("No handler for message type {} from {}", message.type(), message.sender());
-                reply(message, Status.ERROR_NO_HANDLER, Optional.empty());
+                log.debug("No handler for message type {} from {}", message.subject(), message.sender());
+                sendReply(new InternalReply(preamble, clockService.timeNow(), message.id(), Status.ERROR_NO_HANDLER));
             }
             return future;
         }
 
         @Override
-        void reply(InternalMessage message, Status status, Optional<byte[]> payload) {
-            CompletableFuture<byte[]> future = futures.remove(message.id());
+        void sendReply(InternalReply reply) {
+            CompletableFuture<byte[]> future = futures.remove(reply.id());
             if (future != null) {
-                if (message.status() == Status.OK) {
-                    future.complete(payload.orElse(new byte[0]));
-                } else if (message.status() == Status.ERROR_NO_HANDLER) {
+                if (reply.status() == Status.OK) {
+                    future.complete(reply.payload());
+                } else if (reply.status() == Status.ERROR_NO_HANDLER) {
                     future.completeExceptionally(new MessagingException.NoRemoteHandler());
-                } else if (message.status() == Status.ERROR_HANDLER_EXCEPTION) {
+                } else if (reply.status() == Status.ERROR_HANDLER_EXCEPTION) {
                     future.completeExceptionally(new MessagingException.RemoteHandlerFailure());
-                } else if (message.status() == Status.PROTOCOL_EXCEPTION) {
+                } else if (reply.status() == Status.PROTOCOL_EXCEPTION) {
                     future.completeExceptionally(new MessagingException.ProtocolException());
                 }
             } else {
-                log.debug("Received a reply for message id:[{}]. "
-                        + " from {}. But was unable to locate the"
-                        + " request handle", message.id(), message.sender());
+                log.debug("Received a reply for message id:[{}]"
+                        + " But was unable to locate the"
+                        + " request handle", reply.id());
             }
         }
     }
@@ -684,7 +702,7 @@ public class NettyMessagingManager implements MessagingService {
         }
 
         @Override
-        public CompletableFuture<Void> sendAsync(InternalMessage message) {
+        public CompletableFuture<Void> sendAsync(InternalRequest message) {
             CompletableFuture<Void> future = new CompletableFuture<>();
             channel.writeAndFlush(message).addListener(channelFuture -> {
                 if (!channelFuture.isSuccess()) {
@@ -697,7 +715,7 @@ public class NettyMessagingManager implements MessagingService {
         }
 
         @Override
-        public CompletableFuture<byte[]> sendAndReceive(InternalMessage message) {
+        public CompletableFuture<byte[]> sendAndReceive(InternalRequest message) {
             CompletableFuture<byte[]> future = new CompletableFuture<>();
             Callback callback = new Callback(future);
             callbacks.put(message.id(), callback);
@@ -711,14 +729,12 @@ public class NettyMessagingManager implements MessagingService {
         }
 
         @Override
-        public void reply(InternalMessage message, Status status, Optional<byte[]> payload) {
-            InternalMessage response = new InternalMessage(preamble,
-                    clockService.timeNow(),
-                    message.id(),
-                    localEndpoint,
-                    payload.orElse(new byte[0]),
-                    status);
-            channel.writeAndFlush(response);
+        public void sendReply(InternalReply reply) {
+            channel.writeAndFlush(reply).addListener(writeFuture -> {
+                if (!writeFuture.isSuccess()) {
+                    log.warn("Failed to send reply: {}", writeFuture.cause());
+                }
+            });
         }
 
         /**
@@ -727,41 +743,64 @@ public class NettyMessagingManager implements MessagingService {
          * @param message the message to dispatch
          */
         private void dispatch(InternalMessage message) {
+            switch (message.type()) {
+                case REQUEST:
+                    dispatchRequest((InternalRequest) message);
+                    break;
+                case REPLY:
+                    dispatchReply((InternalReply) message);
+                    break;
+                default:
+                    throw new AssertionError();
+            }
+        }
+
+        /**
+         * Dispatches a request message.
+         *
+         * @param message the request message to dispatch
+         */
+        private void dispatchRequest(InternalRequest message) {
             if (message.preamble() != preamble) {
-                log.debug("Received {} with invalid preamble from {}", message.type(), message.sender());
-                reply(message, Status.PROTOCOL_EXCEPTION, Optional.empty());
+                log.debug("Received {} with invalid preamble from {}", message.subject(), message.sender());
+                sendReply(new InternalReply(preamble, clockService.timeNow(), message.id(), Status.PROTOCOL_EXCEPTION));
                 return;
             }
 
             clockService.recordEventTime(message.time());
-            if (message.status() != null) {
-                Callback callback = callbacks.remove(message.id());
-                if (callback != null) {
-                    if (message.status() == Status.OK) {
-                        callback.complete(message.payload());
-                    } else if (message.status() == Status.ERROR_NO_HANDLER) {
-                        callback.completeExceptionally(new MessagingException.NoRemoteHandler());
-                    } else if (message.status() == Status.ERROR_HANDLER_EXCEPTION) {
-                        callback.completeExceptionally(new MessagingException.RemoteHandlerFailure());
-                    } else if (message.status() == Status.PROTOCOL_EXCEPTION) {
-                        callback.completeExceptionally(new MessagingException.ProtocolException());
-                    }
-                    roundTripTimes.addValue(System.currentTimeMillis() - callback.time);
-                } else {
-                    roundTripTimes.addValue(lastTimeout);
-                    log.debug("Received a reply for message id:[{}]. "
-                            + " from {}. But was unable to locate the"
-                            + " request handle", message.id(), message.sender());
-                }
-                return;
-            }
 
-            BiConsumer<InternalMessage, Connection> handler = handlers.get(message.type());
+            BiConsumer<InternalRequest, Connection> handler = handlers.get(message.subject());
             if (handler != null) {
                 handler.accept(message, this);
             } else {
-                log.debug("No handler for message type {} from {}", message.type(), message.sender());
-                reply(message, Status.ERROR_NO_HANDLER, Optional.empty());
+                log.debug("No handler for message type {} from {}", message.subject(), message.sender());
+                sendReply(new InternalReply(preamble, clockService.timeNow(), message.id(), Status.ERROR_NO_HANDLER));
+            }
+        }
+
+        /**
+         * Dispatches a reply message.
+         *
+         * @param message the reply message to dispatch
+         */
+        private void dispatchReply(InternalReply message) {
+            Callback callback = callbacks.remove(message.id());
+            if (callback != null) {
+                if (message.status() == Status.OK) {
+                    callback.complete(message.payload());
+                } else if (message.status() == Status.ERROR_NO_HANDLER) {
+                    callback.completeExceptionally(new MessagingException.NoRemoteHandler());
+                } else if (message.status() == Status.ERROR_HANDLER_EXCEPTION) {
+                    callback.completeExceptionally(new MessagingException.RemoteHandlerFailure());
+                } else if (message.status() == Status.PROTOCOL_EXCEPTION) {
+                    callback.completeExceptionally(new MessagingException.ProtocolException());
+                }
+                roundTripTimes.addValue(System.currentTimeMillis() - callback.time);
+            } else {
+                roundTripTimes.addValue(lastTimeout);
+                log.debug("Received a reply for message id:[{}]"
+                        + " But was unable to locate the"
+                        + " request handle", message.id());
             }
         }
 
