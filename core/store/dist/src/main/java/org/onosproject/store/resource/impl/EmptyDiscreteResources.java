@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableSet;
 import org.onosproject.net.resource.DiscreteResource;
 import org.onosproject.net.resource.DiscreteResourceId;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -60,6 +61,16 @@ final class EmptyDiscreteResources implements DiscreteResources {
     @Override
     public Set<DiscreteResource> values() {
         return ImmutableSet.of();
+    }
+
+    @Override
+    public int hashCode() {
+        return INSTANCE.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object object) {
+        return object instanceof DiscreteResources && ((DiscreteResources) object).isEmpty();
     }
 
     @Override
