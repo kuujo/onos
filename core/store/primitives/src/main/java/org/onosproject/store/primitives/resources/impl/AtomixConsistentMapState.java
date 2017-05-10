@@ -287,6 +287,7 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
      * @return update result
      */
     protected MapEntryUpdateResult<String, byte[]> updateAndGet(Commit<? extends UpdateAndGet> commit) {
+        log.warn("Identity - {}", System.identityHashCode(commit));
         try {
             MapEntryUpdateResult.Status updateStatus = validate(commit.operation());
             String key = commit.operation().key();
@@ -294,9 +295,9 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
             Versioned<byte[]> oldMapValue = toVersioned(oldCommitValue);
 
             if (updateStatus != MapEntryUpdateResult.Status.OK) {
+                log.warn("1 - Closing {}", System.identityHashCode(commit));
                 commit.close();
-                return new MapEntryUpdateResult<>(updateStatus, "", key,
-                        oldMapValue, oldMapValue);
+                return new MapEntryUpdateResult<>(updateStatus, "", key, oldMapValue, oldMapValue);
             }
 
             byte[] newValue = commit.operation().value();
@@ -321,20 +322,46 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
                 // for version checks.
                 TombstoneCommit tombstone = new TombstoneCommit(
                         commit.index(),
-                        new CountDownCompleter<>(commit, 1, Commit::close));
+                        new CountDownCompleter<>(commit, 1, c -> {
+                            log.warn("2 - Closing {}", System.identityHashCode(c));
+                            c.close();
+                        }));
                 mapEntries.put(key, tombstone);
             } else {
                 // If no transactions are in progress, we can safely delete the key from memory.
+                log.warn("3 - Closing {}", System.identityHashCode(commit));
                 commit.close();
             }
 
             publish(Lists.newArrayList(new MapEvent<>("", key, newMapValue, oldMapValue)));
-            return new MapEntryUpdateResult<>(updateStatus, "", key, oldMapValue,
-                    newMapValue);
+            return new MapEntryUpdateResult<>(updateStatus, "", key, oldMapValue, newMapValue);
         } catch (Exception e) {
             log.error("State machine operation failed", e);
             throw Throwables.propagate(e);
         }
+    }
+
+    /**
+     * Computes the update status that would result if the specified update were to applied to
+     * the state machine.
+     *
+     * @param update update
+     * @return status
+     */
+    private MapEntryUpdateResult.Status validate(UpdateAndGet update) {
+        MapEntryValue existingValue = mapEntries.get(update.key());
+        boolean isEmpty = existingValue == null || existingValue.type() == MapEntryValue.Type.TOMBSTONE;
+        if (isEmpty && update.value() == null) {
+            return MapEntryUpdateResult.Status.NOOP;
+        }
+        if (preparedKeys.contains(update.key())) {
+            return MapEntryUpdateResult.Status.WRITE_LOCK;
+        }
+        byte[] existingRawValue = isEmpty ? null : existingValue.value();
+        Long existingVersion = isEmpty ? null : existingValue.version();
+        return update.valueMatch().matches(existingRawValue)
+                && update.versionMatch().matches(existingVersion) ? MapEntryUpdateResult.Status.OK
+                : MapEntryUpdateResult.Status.PRECONDITION_FAILED;
     }
 
     /**
@@ -345,14 +372,12 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
      */
     protected MapEntryUpdateResult.Status clear(Commit<? extends Clear> commit) {
         try {
-            Iterator<Map.Entry<String, MapEntryValue>> iterator = mapEntries
-                    .entrySet().iterator();
+            Iterator<Map.Entry<String, MapEntryValue>> iterator = mapEntries.entrySet().iterator();
             while (iterator.hasNext()) {
                 Map.Entry<String, MapEntryValue> entry = iterator.next();
                 String key = entry.getKey();
                 MapEntryValue value = entry.getValue();
-                Versioned<byte[]> removedValue = new Versioned<>(value.value(),
-                        value.version());
+                Versioned<byte[]> removedValue = new Versioned<>(value.value(), value.version());
                 publish(Lists.newArrayList(new MapEvent<>("", key, null, removedValue)));
                 value.discard();
                 iterator.remove();
@@ -371,6 +396,7 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
     protected void listen(Commit<? extends Listen> commit) {
         Long sessionId = commit.session().id();
         if (listeners.putIfAbsent(sessionId, commit) != null) {
+            log.warn("4 - Closing {}", System.identityHashCode(commit));
             commit.close();
             return;
         }
@@ -381,6 +407,7 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
                                     || state == ServerSession.State.EXPIRED) {
                                 Commit<? extends Listen> listener = listeners.remove(sessionId);
                                 if (listener != null) {
+                                    log.warn("5 - Closing {}", System.identityHashCode(listener));
                                     listener.close();
                                 }
                             }
@@ -396,9 +423,11 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
         try {
             Commit<? extends Listen> listener = listeners.remove(commit.session().id());
             if (listener != null) {
+                log.warn("6 - Closing {}", System.identityHashCode(listener));
                 listener.close();
             }
         } finally {
+            log.warn("7 - Closing {}", System.identityHashCode(commit));
             commit.close();
         }
     }
@@ -426,19 +455,18 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
      * @return prepare result
      */
     protected PrepareResult prepareAndCommit(Commit<? extends TransactionPrepareAndCommit> commit) {
+        TransactionId transactionId = commit.operation().transactionLog().transactionId();
         PrepareResult prepareResult = prepare(commit);
-        TransactionScope transactionScope =
-                activeTransactions.remove(commit.operation().transactionLog().transactionId());
-        this.currentVersion = commit.index();
+        TransactionScope transactionScope = activeTransactions.remove(transactionId);
         if (prepareResult == PrepareResult.OK) {
+            this.currentVersion = commit.index();
             transactionScope = transactionScope.prepared(commit);
             commit(transactionScope);
-        } else {
+        } else if (transactionScope != null) {
             transactionScope.close();
         }
         discardTombstones();
         return prepareResult;
-
     }
 
     /**
@@ -520,6 +548,7 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
             throw Throwables.propagate(e);
         } finally {
             if (!ok) {
+                log.warn("9 - Closing {}", System.identityHashCode(commit));
                 commit.close();
             }
         }
@@ -621,6 +650,7 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
         } else if (!transactionScope.isPrepared()) {
             discardTombstones();
             transactionScope.close();
+            log.warn("10 - Closing {}", System.identityHashCode(commit));
             commit.close();
             return RollbackResult.OK;
         } else {
@@ -635,6 +665,7 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
             } finally {
                 discardTombstones();
                 transactionScope.close();
+                log.warn("11 - Closing {}", System.identityHashCode(commit));
                 commit.close();
             }
         }
@@ -667,30 +698,6 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
                 }
             }
         }
-    }
-
-    /**
-     * Computes the update status that would result if the specified update were to applied to
-     * the state machine.
-     *
-     * @param update update
-     * @return status
-     */
-    private MapEntryUpdateResult.Status validate(UpdateAndGet update) {
-        MapEntryValue existingValue = mapEntries.get(update.key());
-        if (existingValue == null && update.value() == null) {
-            return MapEntryUpdateResult.Status.NOOP;
-        }
-        if (preparedKeys.contains(update.key())) {
-            return MapEntryUpdateResult.Status.WRITE_LOCK;
-        }
-        byte[] existingRawValue = existingValue == null ? null : existingValue
-                .value();
-        Long existingVersion = existingValue == null ? null : existingValue
-                .version();
-        return update.valueMatch().matches(existingRawValue)
-                && update.versionMatch().matches(existingVersion) ? MapEntryUpdateResult.Status.OK
-                : MapEntryUpdateResult.Status.PRECONDITION_FAILED;
     }
 
     /**
@@ -734,6 +741,7 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
     private void closeListener(Long sessionId) {
         Commit<? extends Listen> commit = listeners.remove(sessionId);
         if (commit != null) {
+            log.warn("12 - Closing {}", System.identityHashCode(commit));
             commit.close();
         }
     }
@@ -793,7 +801,7 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
      * A {@code MapEntryValue} that is derived from a non-transactional update
      * i.e. via any standard map update operation.
      */
-    private static class NonTransactionalCommit extends MapEntryValue {
+    private class NonTransactionalCommit extends MapEntryValue {
         private final Commit<? extends UpdateAndGet> commit;
 
         NonTransactionalCommit(Commit<? extends UpdateAndGet> commit) {
@@ -808,6 +816,7 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
 
         @Override
         void discard() {
+            log.warn("13 - Closing {}", System.identityHashCode(commit));
             commit.close();
         }
     }
@@ -862,7 +871,7 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
     /**
      * Map transaction scope.
      */
-    private static final class TransactionScope {
+    private final class TransactionScope {
         private final long version;
         private final Commit<? extends TransactionPrepare> prepareCommit;
         private final Commit<? extends TransactionCommit> commitCommit;
@@ -940,9 +949,11 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
          */
         void close() {
             if (prepareCommit != null) {
+                log.warn("14 - Closing {}", System.identityHashCode(prepareCommit));
                 prepareCommit.close();
             }
             if (commitCommit != null) {
+                log.warn("15 - Closing {}", System.identityHashCode(commitCommit));
                 commitCommit.close();
             }
         }

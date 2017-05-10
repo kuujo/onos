@@ -201,9 +201,9 @@ public final class AtomixConsistentMapCommands {
     }
 
     /**
-     * Transaction begin command.
+     * Transaction begin query.
      */
-    public static class TransactionBegin extends MapCommand<Long> {
+    public static class TransactionBegin extends MapQuery<Long> {
         private TransactionId transactionId;
 
         public TransactionBegin() {
@@ -215,6 +215,11 @@ public final class AtomixConsistentMapCommands {
 
         public TransactionId transactionId() {
             return transactionId;
+        }
+
+        @Override
+        public ConsistencyLevel consistency() {
+            return ConsistencyLevel.LINEARIZABLE_LEASE;
         }
 
         @Override
