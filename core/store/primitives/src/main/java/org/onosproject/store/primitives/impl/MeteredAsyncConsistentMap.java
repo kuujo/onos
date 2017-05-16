@@ -70,7 +70,6 @@ public class MeteredAsyncConsistentMap<K, V>  extends DelegatingAsyncConsistentM
     private static final String PREPARE = "prepare";
     private static final String COMMIT = "commit";
     private static final String ROLLBACK = "rollback";
-    private static final String PREPARE_AND_COMMIT = "prepareAndCommit";
     private static final String ADD_LISTENER = "addListener";
     private static final String REMOVE_LISTENER = "removeListener";
     private static final String NOTIFY_LISTENER = "notifyListener";
@@ -285,13 +284,6 @@ public class MeteredAsyncConsistentMap<K, V>  extends DelegatingAsyncConsistentM
         final MeteringAgent.Context timer = monitor.startTimer(ROLLBACK);
         return super.rollback(transactionId)
                     .whenComplete((r, e) -> timer.stop(e));
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepareAndCommit(TransactionLog<MapUpdate<K, V>> transactionLog) {
-        final MeteringAgent.Context timer = monitor.startTimer(PREPARE_AND_COMMIT);
-        return super.prepareAndCommit(transactionLog)
-                .whenComplete((r, e) -> timer.stop(e));
     }
 
     private class InternalMeteredMapEventListener implements MapEventListener<K, V> {

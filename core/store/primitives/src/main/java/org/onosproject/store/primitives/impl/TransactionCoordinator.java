@@ -15,6 +15,8 @@
  */
 package org.onosproject.store.primitives.impl;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -65,36 +67,28 @@ public class TransactionCoordinator {
      * @return the transaction commit status
      */
     public CompletableFuture<CommitStatus> commit() {
-        long totalParticipants = transactionParticipants.stream()
-                .filter(TransactionParticipant::hasPendingUpdates)
-                .count();
+        List<TransactionParticipant> lockedParticipants = transactionParticipants.stream()
+                .filter(p -> p.isLocked() && !p.hasPendingUpdates())
+                .collect(Collectors.toList());
+        List<TransactionParticipant> updatedParticipants = transactionParticipants.stream()
+                .filter(p -> p.isLocked() && p.hasPendingUpdates())
+                .collect(Collectors.toList());
 
-        if (totalParticipants == 0) {
-            log.debug("No transaction participants, skipping commit", totalParticipants);
+        if (lockedParticipants.isEmpty() && updatedParticipants.isEmpty()) {
+            log.debug("No transaction participants, skipping commit");
             return CompletableFuture.completedFuture(CommitStatus.SUCCESS);
-        } else if (totalParticipants == 1) {
-            log.debug("Committing transaction {} via 1 participant", transactionId);
-            return transactionParticipants.stream()
-                    .filter(TransactionParticipant::hasPendingUpdates)
-                    .findFirst()
-                    .get()
-                    .prepareAndCommit()
-                    .thenApply(v -> v ? CommitStatus.SUCCESS : CommitStatus.FAILURE);
         } else {
-            log.debug("Committing transaction {} via {} participants", transactionId, totalParticipants);
-            Set<TransactionParticipant> transactionParticipants = this.transactionParticipants.stream()
-                    .filter(TransactionParticipant::hasPendingUpdates)
-                    .collect(Collectors.toSet());
-
+            log.debug("Committing transaction {} via {} participants", transactionId, updatedParticipants.size());
+            lockedParticipants.forEach(TransactionParticipant::rollback);
             CompletableFuture<CommitStatus> status = transactionManager.updateState(
                     transactionId, Transaction.State.PREPARING)
-                    .thenCompose(v -> prepare(transactionParticipants))
+                    .thenCompose(v -> prepare(updatedParticipants))
                     .thenCompose(result -> result
                             ? transactionManager.updateState(transactionId, Transaction.State.COMMITTING)
-                            .thenCompose(v -> commit(transactionParticipants))
+                            .thenCompose(v -> commit(updatedParticipants))
                             .thenApply(v -> CommitStatus.SUCCESS)
                             : transactionManager.updateState(transactionId, Transaction.State.ROLLING_BACK)
-                            .thenCompose(v -> rollback(transactionParticipants))
+                            .thenCompose(v -> rollback(updatedParticipants))
                             .thenApply(v -> CommitStatus.FAILURE));
             return status.thenCompose(v -> transactionManager.remove(transactionId).thenApply(u -> v));
         }
@@ -106,7 +100,7 @@ public class TransactionCoordinator {
      * @param transactionParticipants the transaction participants for which to prepare the transaction
      * @return a completable future indicating whether <em>all</em> prepares succeeded
      */
-    protected CompletableFuture<Boolean> prepare(Set<TransactionParticipant> transactionParticipants) {
+    protected CompletableFuture<Boolean> prepare(Collection<TransactionParticipant> transactionParticipants) {
         log.trace("Preparing transaction {} via {}", transactionId, transactionParticipants);
         return Tools.allOf(transactionParticipants.stream()
                 .map(TransactionParticipant::prepare)
@@ -120,7 +114,7 @@ public class TransactionCoordinator {
      * @param transactionParticipants the transaction participants for which to commit the transaction
      * @return a completable future to be completed once the commits are complete
      */
-    protected CompletableFuture<Void> commit(Set<TransactionParticipant> transactionParticipants) {
+    protected CompletableFuture<Void> commit(Collection<TransactionParticipant> transactionParticipants) {
         log.trace("Committing transaction {} via {}", transactionId, transactionParticipants);
         return CompletableFuture.allOf(transactionParticipants.stream()
                 .map(TransactionParticipant::commit)
@@ -133,7 +127,7 @@ public class TransactionCoordinator {
      * @param transactionParticipants the transaction participants for which to roll back the transaction
      * @return a completable future to be completed once the rollbacks are complete
      */
-    protected CompletableFuture<Void> rollback(Set<TransactionParticipant> transactionParticipants) {
+    protected CompletableFuture<Void> rollback(Collection<TransactionParticipant> transactionParticipants) {
         log.trace("Rolling back transaction {} via {}", transactionId, transactionParticipants);
         return CompletableFuture.allOf(transactionParticipants.stream()
                 .map(TransactionParticipant::rollback)

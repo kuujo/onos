@@ -209,11 +209,6 @@ public class PartitionedAsyncConsistentMap<K, V> implements AsyncConsistentMap<K
     }
 
     @Override
-    public CompletableFuture<Boolean> prepareAndCommit(TransactionLog<MapUpdate<K, V>> transactionLog) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public CompletableFuture<Void> commit(TransactionId transactionId) {
         throw new UnsupportedOperationException();
     }

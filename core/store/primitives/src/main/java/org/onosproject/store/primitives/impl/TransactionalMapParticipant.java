@@ -76,21 +76,17 @@ public abstract class TransactionalMapParticipant<K, V> implements Transactional
      */
     private void beginTransaction() {
         if (lock == null) {
-            synchronized (this) {
-                if (lock == null) {
-                    try {
-                        lock = transaction.begin()
-                                .get(DistributedPrimitive.DEFAULT_OPERTATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new TransactionException.Interrupted();
-                    } catch (TimeoutException e) {
-                        throw new TransactionException.Timeout();
-                    } catch (ExecutionException e) {
-                        Throwables.propagateIfPossible(e.getCause());
-                        throw new TransactionException(e.getCause());
-                    }
-                }
+            try {
+                lock = transaction.begin()
+                        .get(DistributedPrimitive.DEFAULT_OPERTATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new TransactionException.Interrupted();
+            } catch (TimeoutException e) {
+                throw new TransactionException.Timeout();
+            } catch (ExecutionException e) {
+                Throwables.propagateIfPossible(e.getCause());
+                throw new TransactionException(e.getCause());
             }
         }
     }
@@ -185,6 +181,11 @@ public abstract class TransactionalMapParticipant<K, V> implements Transactional
     }
 
     @Override
+    public boolean isLocked() {
+        return lock != null;
+    }
+
+    @Override
     public CompletableFuture<Boolean> prepare() {
         return transaction.prepare(log(lock));
     }
@@ -192,11 +193,6 @@ public abstract class TransactionalMapParticipant<K, V> implements Transactional
     @Override
     public CompletableFuture<Void> commit() {
         return transaction.commit();
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepareAndCommit() {
-        return transaction.prepareAndCommit(log(lock));
     }
 
     @Override

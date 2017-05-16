@@ -261,11 +261,6 @@ public class DelegatingAsyncConsistentTreeMap<V>
     }
 
     @Override
-    public CompletableFuture<Boolean> prepareAndCommit(TransactionLog<MapUpdate<String, V>> transactionLog) {
-        return delegateMap.prepareAndCommit(transactionLog);
-    }
-
-    @Override
     public CompletableFuture<Void> commit(TransactionId transactionId) {
         return delegateMap.commit(transactionId);
     }

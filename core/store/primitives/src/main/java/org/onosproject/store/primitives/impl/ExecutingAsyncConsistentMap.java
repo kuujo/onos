@@ -162,11 +162,6 @@ public class ExecutingAsyncConsistentMap<K, V>
     }
 
     @Override
-    public CompletableFuture<Boolean> prepareAndCommit(TransactionLog<MapUpdate<K, V>> transactionLog) {
-        return asyncFuture(delegateMap.prepareAndCommit(transactionLog));
-    }
-
-    @Override
     public CompletableFuture<Void> addListener(MapEventListener<K, V> listener) {
         return addListener(listener);
     }

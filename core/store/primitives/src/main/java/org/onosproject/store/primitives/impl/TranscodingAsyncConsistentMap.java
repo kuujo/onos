@@ -286,15 +286,6 @@ public class TranscodingAsyncConsistentMap<K1, V1, K2, V2> implements AsyncConsi
     }
 
     @Override
-    public CompletableFuture<Boolean> prepareAndCommit(TransactionLog<MapUpdate<K1, V1>> transactionLog) {
-        try {
-            return backingMap.prepareAndCommit(transactionLog.map(record -> record.map(keyEncoder, valueEncoder)));
-        } catch (Exception e) {
-            return Tools.exceptionalFuture(e);
-        }
-    }
-
-    @Override
     public CompletableFuture<Void> commit(TransactionId transactionId) {
         try {
             return backingMap.commit(transactionId);

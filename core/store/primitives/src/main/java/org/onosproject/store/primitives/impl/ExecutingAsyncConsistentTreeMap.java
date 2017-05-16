@@ -246,11 +246,6 @@ public class ExecutingAsyncConsistentTreeMap<V>
     }
 
     @Override
-    public CompletableFuture<Boolean> prepareAndCommit(TransactionLog<MapUpdate<String, V>> transactionLog) {
-        return asyncFuture(delegateMap.prepareAndCommit(transactionLog));
-    }
-
-    @Override
     public CompletableFuture<Void> addListener(MapEventListener<String, V> listener) {
         return addListener(listener);
     }

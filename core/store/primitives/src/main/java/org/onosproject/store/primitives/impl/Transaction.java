@@ -170,6 +170,13 @@ public class Transaction<T> {
     }
 
     /**
+     * Checks that the transaction is locked.
+     */
+    protected void checkLocked() {
+        checkState(lock != null, TX_INACTIVE_ERROR);
+    }
+
+    /**
      * Checks that the transaction state is {@code PREPARED} and throws an {@link IllegalStateException} if not.
      */
     protected void checkPrepared() {
@@ -229,29 +236,6 @@ public class Transaction<T> {
     }
 
     /**
-     * Prepares and commits the transaction in a single atomic operation.
-     * <p>
-     * Both the prepare and commit phases of the protocol must be executed within a single atomic operation. This method
-     * is used to optimize committing transactions that operate only on a single partition within a single primitive.
-     *
-     * @param updates the transaction updates
-     * @return a completable future to be completed once the transaction has been prepared
-     */
-    public CompletableFuture<Boolean> prepareAndCommit(List<T> updates) {
-        checkOpen();
-        checkActive();
-        log.debug("Preparing and committing transaction {} for {}", transactionId, transactionalObject);
-        Version lock = this.lock;
-        checkState(lock != null, TX_INACTIVE_ERROR);
-        setState(State.PREPARING);
-        return transactionalObject.prepareAndCommit(new TransactionLog<T>(transactionId, lock.value(), updates))
-                .thenApply(succeeded -> {
-                    setState(State.COMMITTED);
-                    return succeeded;
-                });
-    }
-
-    /**
      * Commits the transaction.
      * <p>
      * Performs the second phase of the two-phase commit protocol, committing the previously
@@ -278,7 +262,8 @@ public class Transaction<T> {
      */
     public CompletableFuture<Void> rollback() {
         checkOpen();
-        checkPrepared();
+        checkActive();
+        checkLocked();
         log.debug("Rolling back transaction {} for {}", transactionId, transactionalObject);
         setState(State.ROLLING_BACK);
         return transactionalObject.rollback(transactionId).thenRun(() -> {

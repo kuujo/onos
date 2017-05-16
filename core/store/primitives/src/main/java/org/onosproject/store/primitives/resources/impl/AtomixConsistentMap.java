@@ -51,7 +51,6 @@ import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapComman
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.TransactionBegin;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.TransactionCommit;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.TransactionPrepare;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.TransactionPrepareAndCommit;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.TransactionRollback;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.Unlisten;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.UpdateAndGet;
@@ -305,13 +304,6 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
     public CompletableFuture<Boolean> prepare(
             TransactionLog<MapUpdate<String, byte[]>> transactionLog) {
         return client.submit(new TransactionPrepare(transactionLog))
-                .thenApply(v -> v == PrepareResult.OK);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> prepareAndCommit(
-            TransactionLog<MapUpdate<String, byte[]>> transactionLog) {
-        return client.submit(new TransactionPrepareAndCommit(transactionLog))
                 .thenApply(v -> v == PrepareResult.OK);
     }
 

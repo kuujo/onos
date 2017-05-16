@@ -391,11 +391,6 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
     }
 
     @Override
-    public CompletableFuture<Boolean> prepareAndCommit(TransactionLog<MapUpdate<String, byte[]>> transactionLog) {
-        throw new UnsupportedOperationException("This operation is not yet supported.");
-    }
-
-    @Override
     public CompletableFuture<Void> commit(TransactionId transactionId) {
         throw new UnsupportedOperationException("This operation is not yet supported.");
     }

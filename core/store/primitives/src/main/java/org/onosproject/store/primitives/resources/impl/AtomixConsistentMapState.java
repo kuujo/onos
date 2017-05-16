@@ -55,7 +55,6 @@ import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapComman
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.TransactionBegin;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.TransactionCommit;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.TransactionPrepare;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.TransactionPrepareAndCommit;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.TransactionRollback;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.Unlisten;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.UpdateAndGet;
@@ -116,7 +115,6 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
         executor.register(TransactionPrepare.class, this::prepare);
         executor.register(TransactionCommit.class, this::commit);
         executor.register(TransactionRollback.class, this::rollback);
-        executor.register(TransactionPrepareAndCommit.class, this::prepareAndCommit);
     }
 
     @Override
@@ -415,27 +413,6 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
         } finally {
             commit.close();
         }
-    }
-
-    /**
-     * Handles an prepare and commit commit.
-     *
-     * @param commit transaction prepare and commit commit
-     * @return prepare result
-     */
-    protected PrepareResult prepareAndCommit(Commit<? extends TransactionPrepareAndCommit> commit) {
-        TransactionId transactionId = commit.operation().transactionLog().transactionId();
-        PrepareResult prepareResult = prepare(commit);
-        TransactionScope transactionScope = activeTransactions.remove(transactionId);
-        if (prepareResult == PrepareResult.OK) {
-            this.currentVersion = commit.index();
-            transactionScope = transactionScope.prepared(commit);
-            commit(transactionScope);
-        } else if (transactionScope != null) {
-            transactionScope.close();
-        }
-        discardTombstones();
-        return prepareResult;
     }
 
     /**

@@ -154,11 +154,6 @@ public class AsyncConsistentMapAdapter<K, V> implements AsyncConsistentMap<K, V>
     }
 
     @Override
-    public CompletableFuture<Boolean> prepareAndCommit(TransactionLog<MapUpdate<K, V>> transactionLog) {
-        return null;
-    }
-
-    @Override
     public CompletableFuture<Void> commit(TransactionId transactionId) {
         return null;
     }

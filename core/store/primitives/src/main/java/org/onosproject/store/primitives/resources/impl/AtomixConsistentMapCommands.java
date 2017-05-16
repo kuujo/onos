@@ -201,9 +201,9 @@ public final class AtomixConsistentMapCommands {
     }
 
     /**
-     * Transaction begin command.
+     * Transaction begin query.
      */
-    public static class TransactionBegin extends MapCommand<Long> {
+    public static class TransactionBegin extends MapQuery<Long> {
         private TransactionId transactionId;
 
         public TransactionBegin() {
@@ -215,6 +215,11 @@ public final class AtomixConsistentMapCommands {
 
         public TransactionId transactionId() {
             return transactionId;
+        }
+
+        @Override
+        public ConsistencyLevel consistency() {
+            return ConsistencyLevel.LINEARIZABLE_LEASE;
         }
 
         @Override
@@ -265,24 +270,6 @@ public final class AtomixConsistentMapCommands {
             return MoreObjects.toStringHelper(getClass())
                     .add("transactionLog", transactionLog)
                     .toString();
-        }
-    }
-
-    /**
-     * Map prepareAndCommit command.
-     */
-    @SuppressWarnings("serial")
-    public static class TransactionPrepareAndCommit extends TransactionPrepare {
-        public TransactionPrepareAndCommit() {
-        }
-
-        public TransactionPrepareAndCommit(TransactionLog<MapUpdate<String, byte[]>> transactionLog) {
-            super(transactionLog);
-        }
-
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.TOMBSTONE;
         }
     }
 
@@ -625,7 +612,6 @@ public final class AtomixConsistentMapCommands {
             registry.register(TransactionPrepare.class, -772);
             registry.register(TransactionCommit.class, -773);
             registry.register(TransactionRollback.class, -774);
-            registry.register(TransactionPrepareAndCommit.class, -775);
             registry.register(UpdateAndGet.class, -776);
         }
     }

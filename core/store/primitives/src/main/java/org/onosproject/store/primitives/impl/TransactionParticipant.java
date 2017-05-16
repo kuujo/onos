@@ -23,6 +23,13 @@ import java.util.concurrent.CompletableFuture;
 public interface TransactionParticipant {
 
     /**
+     * Returns a boolean indicating whether the participant is holding a transaction lock.
+     *
+     * @return indicates whether the participant is holding a transaction lock
+     */
+    boolean isLocked();
+
+    /**
      * Returns a boolean indicating whether the participant has pending updates.
      *
      * @return indicates whether the participant has pending updates
@@ -42,13 +49,6 @@ public interface TransactionParticipant {
      * @return future that is completed when the operation completes
      */
     CompletableFuture<Void> commit();
-
-    /**
-     * Executes the prepare and commit phases atomically.
-     *
-     * @return {@code true} is successful; {@code false} otherwise
-     */
-    CompletableFuture<Boolean> prepareAndCommit();
 
     /**
      * Attempts to execute the rollback phase for previously prepared transaction.

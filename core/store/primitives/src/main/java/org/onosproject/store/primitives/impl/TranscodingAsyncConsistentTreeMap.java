@@ -373,11 +373,6 @@ public class TranscodingAsyncConsistentTreeMap<V1, V2>
     }
 
     @Override
-    public CompletableFuture<Boolean> prepareAndCommit(TransactionLog<MapUpdate<String, V1>> transactionLog) {
-        throw new UnsupportedOperationException("This operation is not yet supported.");
-    }
-
-    @Override
     public CompletableFuture<Void> commit(TransactionId transactionId) {
         throw new UnsupportedOperationException("This operation is not yet supported.");
     }

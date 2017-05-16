@@ -42,15 +42,6 @@ public interface Transactional<T> {
     CompletableFuture<Boolean> prepare(TransactionLog<T> transactionLog);
 
     /**
-     * Prepares and commits a transaction.
-     *
-     * @param transactionLog transaction log
-     * @return {@code true} if prepare is successful and transaction was committed
-     * {@code false} otherwise
-     */
-    CompletableFuture<Boolean> prepareAndCommit(TransactionLog<T> transactionLog);
-
-    /**
      * Commits a previously prepared transaction and unlocks the object.
      *
      * @param transactionId transaction identifier
