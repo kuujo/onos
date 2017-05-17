@@ -18,6 +18,7 @@ package org.onosproject.store.primitives.impl;
 import com.google.common.collect.Collections2;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -96,6 +97,8 @@ public class EventuallyConsistentMapImpl<K, V>
 
     private final MessageSubject bootstrapMessageSubject;
     private final MessageSubject initializeMessageSubject;
+    private final MessageSubject completeMessageSubject;
+    private final MessageSubject readRepairMessageSubject;
     private final MessageSubject updateMessageSubject;
     private final MessageSubject antiEntropyAdvertisementSubject;
     private final MessageSubject updateRequestSubject;
@@ -115,6 +118,7 @@ public class EventuallyConsistentMapImpl<K, V>
 
     private final String mapName;
 
+    private volatile boolean initialized = false;
     private volatile boolean destroyed = false;
     private static final String ERROR_DESTROYED = " map is already destroyed";
     private final String destroyedMessage;
@@ -253,6 +257,18 @@ public class EventuallyConsistentMapImpl<K, V>
                 serializer::encode,
                 this.executor);
 
+        completeMessageSubject = new MessageSubject("ecm-" + mapName + "-complete");
+        clusterCommunicator.addSubscriber(bootstrapMessageSubject,
+                serializer::decode,
+                (Function<NodeId, CompletableFuture<Void>>) this::handleComplete,
+                serializer::encode);
+
+        readRepairMessageSubject = new MessageSubject("ecm-" + mapName + "-read-repair");
+        clusterCommunicator.addSubscriber(readRepairMessageSubject,
+                                          serializer::decode,
+                                          this::handleReadRepair,
+                                          serializer::encode);
+
         updateMessageSubject = new MessageSubject("ecm-" + mapName + "-update");
         clusterCommunicator.addSubscriber(updateMessageSubject,
                                           serializer::decode,
@@ -346,6 +362,9 @@ public class EventuallyConsistentMapImpl<K, V>
         checkNotNull(key, ERROR_NULL_KEY);
 
         MapValue<V> value = items.get(key);
+        if (value == null && !initialized) {
+            return readRepair(key);
+        }
         return (value == null || value.isTombstone()) ? null : value.get();
     }
 
@@ -550,6 +569,7 @@ public class EventuallyConsistentMapImpl<K, V>
 
         clusterCommunicator.removeSubscriber(bootstrapMessageSubject);
         clusterCommunicator.removeSubscriber(initializeMessageSubject);
+        clusterCommunicator.removeSubscriber(readRepairMessageSubject);
         clusterCommunicator.removeSubscriber(updateMessageSubject);
         clusterCommunicator.removeSubscriber(updateRequestSubject);
         clusterCommunicator.removeSubscriber(antiEntropyAdvertisementSubject);
@@ -698,6 +718,72 @@ public class EventuallyConsistentMapImpl<K, V>
         return externalEvents;
     }
 
+    private V readRepair(K key) {
+        Collection<NodeId> peers = peerUpdateFunction.apply(key, null);
+        if (peers.isEmpty()) {
+            return null;
+        }
+
+        CompletableFuture<V> readRepairFuture = requestReadRepairFromPeers(key, peers);
+        try {
+            return readRepairFuture.get(DistributedPrimitive.DEFAULT_OPERTATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+        } catch (ExecutionException | InterruptedException | TimeoutException e) {
+            log.warn("Read repair for {} key {} failed", mapName, key, e);
+        }
+        return null;
+    }
+
+    private CompletableFuture<V> requestReadRepairFromPeers(K key, Collection<NodeId> peers) {
+        if (peers.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        CompletableFuture<V> future = new CompletableFuture<>();
+
+        final int totalPeers = peers.size();
+
+        AtomicBoolean successful = new AtomicBoolean();
+        AtomicInteger totalCount = new AtomicInteger();
+        AtomicReference<Throwable> lastError = new AtomicReference<>();
+
+        UpdateRequest<K> updateRequest = new UpdateRequest<K>(localNodeId, ImmutableSet.of(key));
+
+        for (NodeId peer : peers) {
+            clusterCommunicator.<UpdateRequest<K>, Collection<UpdateEntry<K, V>>>sendAndReceive(
+                    updateRequest,
+                    readRepairMessageSubject,
+                    serializer::encode,
+                    serializer::decode,
+                    peer).whenComplete((updates, error) -> {
+                if (error == null) {
+                    if (successful.compareAndSet(false, true)) {
+                        processUpdates(updates);
+                        MapValue<V> value = items.get(key);
+                        future.complete(value != null && !value.isTombstone() ? value.get() : null);
+                    } else if (totalCount.incrementAndGet() == totalPeers) {
+                        Throwable e = lastError.get();
+                        if (e != null) {
+                            future.completeExceptionally(e);
+                        }
+                    }
+                } else {
+                    if (!successful.get() && totalCount.incrementAndGet() == totalPeers) {
+                        future.completeExceptionally(error);
+                    } else {
+                        lastError.set(error);
+                    }
+                }
+            });
+        }
+        return future;
+    }
+
+    private Collection<UpdateEntry<K, V>> handleReadRepair(UpdateRequest<K> request) {
+        return request.keys().stream()
+                .map(k -> new UpdateEntry<K, V>(k, items.get(k)))
+                .collect(Collectors.toList());
+    }
+
     private void handleUpdateRequests(UpdateRequest<K> request) {
         final Set<K> keys = request.keys();
         final NodeId sender = request.sender();
@@ -770,14 +856,7 @@ public class EventuallyConsistentMapImpl<K, V>
             return;
         }
 
-        try {
-            requestBootstrapFromPeers(activePeers)
-                    .get(DistributedPrimitive.DEFAULT_OPERTATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
-        } catch (ExecutionException e) {
-            log.debug("Failed to bootstrap ec map {}: {}", mapName, e.getCause());
-        } catch (InterruptedException | TimeoutException e) {
-            log.warn("Failed to bootstrap ec map {}: {}", mapName, e);
-        }
+        requestBootstrapFromPeers(activePeers);
     }
 
     /**
@@ -787,45 +866,15 @@ public class EventuallyConsistentMapImpl<K, V>
      * peers fail.
      *
      * @param peers the list of peers from which to request updates
-     * @return a future to be completed once updates have been received from at least one peer
      */
-    private CompletableFuture<Void> requestBootstrapFromPeers(List<NodeId> peers) {
-        if (peers.isEmpty()) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        CompletableFuture<Void> future = new CompletableFuture<>();
-
-        final int totalPeers = peers.size();
-
-        AtomicBoolean successful = new AtomicBoolean();
-        AtomicInteger totalCount = new AtomicInteger();
-        AtomicReference<Throwable> lastError = new AtomicReference<>();
-
-        // Iterate through all of the peers and send a bootstrap request. On the first peer that returns
-        // a successful bootstrap response, complete the future. Otherwise, if no peers respond with any
-        // successful bootstrap response, the future will be completed with the last exception.
+    private void requestBootstrapFromPeers(List<NodeId> peers) {
         for (NodeId peer : peers) {
             requestBootstrapFromPeer(peer).whenComplete((result, error) -> {
                 if (error == null) {
-                    if (successful.compareAndSet(false, true)) {
-                        future.complete(null);
-                    } else if (totalCount.incrementAndGet() == totalPeers) {
-                        Throwable e = lastError.get();
-                        if (e != null) {
-                            future.completeExceptionally(e);
-                        }
-                    }
-                } else {
-                    if (!successful.get() && totalCount.incrementAndGet() == totalPeers) {
-                        future.completeExceptionally(error);
-                    } else {
-                        lastError.set(error);
-                    }
+                    initialized = true;
                 }
             });
         }
-        return future;
     }
 
     /**
