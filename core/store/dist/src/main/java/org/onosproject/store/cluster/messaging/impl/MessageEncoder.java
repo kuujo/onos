@@ -15,6 +15,8 @@
  */
 package org.onosproject.store.cluster.messaging.impl;
 
+import java.io.IOException;
+
 import com.google.common.base.Charsets;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandler.Sharable;
@@ -25,8 +27,6 @@ import org.onlab.packet.IpAddress.Version;
 import org.onosproject.store.cluster.messaging.Endpoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
 
 /**
  * Encode InternalMessage out into a byte buffer.
@@ -45,15 +45,20 @@ public class MessageEncoder extends MessageToByteEncoder<Object> {
         this.preamble = preamble;
     }
 
-
     @Override
     protected void encode(
             ChannelHandlerContext context,
             Object rawMessage,
             ByteBuf out) throws Exception {
+        if (rawMessage instanceof InternalRequest) {
+            encodeRequest((InternalRequest) rawMessage, out);
+        } else if (rawMessage instanceof InternalReply) {
+            encodeReply((InternalReply) rawMessage, out);
+        }
+    }
 
-        InternalMessage message = (InternalMessage) rawMessage;
-
+    private void encodeMessage(InternalMessage message, ByteBuf out) {
+        out.writeByte(message.type().id());
         out.writeInt(this.preamble);
 
         // write time
@@ -63,7 +68,19 @@ public class MessageEncoder extends MessageToByteEncoder<Object> {
         // write message id
         out.writeLong(message.id());
 
-        Endpoint sender = message.sender();
+        byte[] payload = message.payload();
+
+        // write payload length
+        out.writeInt(payload.length);
+
+        // write payload.
+        out.writeBytes(payload);
+    }
+
+    private void encodeRequest(InternalRequest request, ByteBuf out) {
+        encodeMessage(request, out);
+
+        Endpoint sender = request.sender();
 
         IpAddress senderIp = sender.host();
         if (senderIp.version() == Version.INET) {
@@ -76,7 +93,7 @@ public class MessageEncoder extends MessageToByteEncoder<Object> {
         // write sender port
         out.writeInt(sender.port());
 
-        byte[] messageTypeBytes = message.type().getBytes(Charsets.UTF_8);
+        byte[] messageTypeBytes = request.subject().getBytes(Charsets.UTF_8);
 
         // write length of message type
         out.writeShort(messageTypeBytes.length);
@@ -84,21 +101,13 @@ public class MessageEncoder extends MessageToByteEncoder<Object> {
         // write message type bytes
         out.writeBytes(messageTypeBytes);
 
+    }
+
+    private void encodeReply(InternalReply reply, ByteBuf out) {
+        encodeMessage(reply, out);
+
         // write message status value
-        InternalMessage.Status status = message.status();
-        if (status == null) {
-            out.writeByte(-1);
-        } else {
-            out.writeByte(status.id());
-        }
-
-        byte[] payload = message.payload();
-
-        // write payload length
-        out.writeInt(payload.length);
-
-        // write payload.
-        out.writeBytes(payload);
+        out.writeByte(reply.status().id());
     }
 
     @Override
