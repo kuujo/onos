@@ -15,9 +15,13 @@
  */
 package org.onlab.util;
 
+import com.esotericsoftware.kryo.ClassResolver;
 import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.ReferenceResolver;
 import com.esotericsoftware.kryo.Registration;
 import com.esotericsoftware.kryo.Serializer;
+import com.esotericsoftware.kryo.StreamFactory;
+import com.esotericsoftware.kryo.factories.SerializerFactory;
 import com.esotericsoftware.kryo.io.ByteBufferInput;
 import com.esotericsoftware.kryo.io.ByteBufferOutput;
 import com.esotericsoftware.kryo.io.Input;
@@ -25,8 +29,13 @@ import com.esotericsoftware.kryo.io.Output;
 import com.esotericsoftware.kryo.pool.KryoCallback;
 import com.esotericsoftware.kryo.pool.KryoFactory;
 import com.esotericsoftware.kryo.pool.KryoPool;
+import com.esotericsoftware.kryo.util.DefaultClassResolver;
+import com.esotericsoftware.kryo.util.IdentityObjectIntMap;
+import com.esotericsoftware.kryo.util.MapReferenceResolver;
+import com.esotericsoftware.kryo.util.ObjectMap;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import org.apache.commons.lang3.tuple.Pair;
 import org.objenesis.strategy.StdInstantiatorStrategy;
 import org.slf4j.Logger;
@@ -35,9 +44,14 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
+import static com.esotericsoftware.kryo.util.Util.className;
+import static com.esotericsoftware.minlog.Log.TRACE;
+import static com.esotericsoftware.minlog.Log.trace;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.slf4j.LoggerFactory.getLogger;
 
@@ -76,6 +90,8 @@ public final class KryoNamespace implements KryoFactory, KryoPool {
                                         .build();
 
     private final ImmutableList<RegistrationBlock> registeredBlocks;
+    private final ImmutableList<RegistrationBlock> registeredAbstracts;
+    private final ImmutableMap<Class<?>, Serializer<?>> registeredDefaults;
 
     private final boolean registrationRequired;
     private final String friendlyName;
@@ -88,7 +104,10 @@ public final class KryoNamespace implements KryoFactory, KryoPool {
 
         private int blockHeadId = INITIAL_ID;
         private List<Pair<Class<?>, Serializer<?>>> types = new ArrayList<>();
+        private List<Pair<Class<?>, Serializer<?>>> abstracts = new ArrayList<>();
+        private Map<Class<?>, Serializer<?>> defaults = new HashMap<>();
         private List<RegistrationBlock> blocks = new ArrayList<>();
+        private List<RegistrationBlock> abstractBlocks = new ArrayList<>();
         private boolean registrationRequired = true;
 
         /**
@@ -107,10 +126,17 @@ public final class KryoNamespace implements KryoFactory, KryoPool {
          * @return KryoNamespace
          */
         public KryoNamespace build(String friendlyName) {
-            if (!types.isEmpty()) {
-                blocks.add(new RegistrationBlock(this.blockHeadId, types));
+            if (!abstracts.isEmpty()) {
+                abstractBlocks.add(new RegistrationBlock(this.blockHeadId, abstracts));
             }
-            return new KryoNamespace(blocks, registrationRequired, friendlyName).populate(1);
+            if (!types.isEmpty()) {
+                int id = this.blockHeadId;
+                if (id != FLOATING_ID) {
+                    id += abstracts.size();
+                }
+                blocks.add(new RegistrationBlock(id, types));
+            }
+            return new KryoNamespace(blocks, abstractBlocks, defaults, registrationRequired, friendlyName).populate(1);
         }
 
         /**
@@ -122,19 +148,59 @@ public final class KryoNamespace implements KryoFactory, KryoPool {
          * @see Kryo#register(Class, Serializer, int)
          */
         public Builder nextId(final int id) {
-            if (!types.isEmpty()) {
-                if (id != FLOATING_ID && id < blockHeadId + types.size()) {
-
+            if (!types.isEmpty() || !abstracts.isEmpty()) {
+                if (id != FLOATING_ID && id < blockHeadId + types.size() + abstracts.size()) {
                     if (log.isWarnEnabled()) {
                         log.warn("requested nextId {} could potentially overlap " +
                                  "with existing registrations {}+{} ",
-                                 id, blockHeadId, types.size(), new RuntimeException());
+                                 id, blockHeadId, types.size() + abstracts.size(), new RuntimeException());
                     }
                 }
-                blocks.add(new RegistrationBlock(this.blockHeadId, types));
-                types = new ArrayList<>();
+
+                int abstractCount = abstracts.size();
+                if (abstractCount > 0) {
+                    blocks.add(new RegistrationBlock(this.blockHeadId, abstracts));
+                    abstracts = new ArrayList<>();
+                }
+
+                if (!types.isEmpty()) {
+                    int headId = this.blockHeadId;
+                    if (headId != FLOATING_ID) {
+                        headId += abstractCount;
+                    }
+                    blocks.add(new RegistrationBlock(headId, types));
+                    types = new ArrayList<>();
+                }
             }
             this.blockHeadId = id;
+            return this;
+        }
+
+        /**
+         * Registers an abstract serializer.
+         *
+         * @param serializer the abstract serializer to register
+         * @param classes the classes for which to register the abstract serializer
+         * @return this
+         */
+        public Builder registerAbstract(Serializer<?> serializer, Class<?>... classes) {
+            for (Class<?> clazz : classes) {
+                abstracts.add(Pair.of(clazz, serializer));
+            }
+            return this;
+        }
+
+        /**
+         * Registers a default serializer.
+         *
+         * @param serializer the default serializer to register
+         * @param classes the classes for which to register the default serializer
+         * @return this
+         */
+        public Builder registerDefault(Serializer<?> serializer, Class<?>... classes) {
+            for (Class<?> clazz : classes) {
+                defaults.put(clazz, serializer);
+            }
             return this;
         }
 
@@ -165,7 +231,15 @@ public final class KryoNamespace implements KryoFactory, KryoPool {
             return this;
         }
 
+        private Builder registerAbstract(RegistrationBlock block) {
+            return register(block, abstractBlocks);
+        }
+
         private Builder register(RegistrationBlock block) {
+            return register(block, blocks);
+        }
+
+        private Builder register(RegistrationBlock block, List<RegistrationBlock> blocks) {
             if (block.begin() != FLOATING_ID) {
                 // flush pending types
                 nextId(block.begin());
@@ -173,7 +247,7 @@ public final class KryoNamespace implements KryoFactory, KryoPool {
                 nextId(block.begin() + block.types().size());
             } else {
                 // flush pending types
-                final int addedBlockBegin = blockHeadId + types.size();
+                final int addedBlockBegin = blockHeadId + abstracts.size() + types.size();
                 nextId(addedBlockBegin);
                 blocks.add(new RegistrationBlock(addedBlockBegin, block.types()));
                 nextId(addedBlockBegin + block.types().size());
@@ -188,14 +262,25 @@ public final class KryoNamespace implements KryoFactory, KryoPool {
          * @return this
          */
         public Builder register(final KryoNamespace ns) {
-
             if (blocks.containsAll(ns.registeredBlocks)) {
                 // Everything was already registered.
                 log.debug("Ignoring {}, already registered.", ns);
                 return this;
             }
+
+            // Copy abstract registrations.
+            for (RegistrationBlock abstractBlock : ns.registeredAbstracts) {
+                registerAbstract(abstractBlock);
+            }
+
+            // Copy concrete registrations.
             for (RegistrationBlock block : ns.registeredBlocks) {
-                this.register(block);
+                register(block);
+            }
+
+            // Copy default serializers.
+            for (Map.Entry<Class<?>, Serializer<?>> entry : ns.registeredDefaults.entrySet()) {
+                registerDefault(entry.getValue(), entry.getKey());
             }
             return this;
         }
@@ -227,13 +312,19 @@ public final class KryoNamespace implements KryoFactory, KryoPool {
      * Creates a Kryo instance pool.
      *
      * @param registeredTypes types to register
+     * @param registeredAbstracts abstract types to register
+     * @param registeredDefaults default types to register
      * @param registrationRequired
      * @param friendlyName friendly name for the namespace
      */
     private KryoNamespace(final List<RegistrationBlock> registeredTypes,
+                          final List<RegistrationBlock> registeredAbstracts,
+                          final Map<Class<?>, Serializer<?>> registeredDefaults,
                           boolean registrationRequired,
                           String friendlyName) {
         this.registeredBlocks = ImmutableList.copyOf(registeredTypes);
+        this.registeredAbstracts = ImmutableList.copyOf(registeredAbstracts);
+        this.registeredDefaults = ImmutableMap.copyOf(registeredDefaults);
         this.registrationRequired = registrationRequired;
         this.friendlyName =  checkNotNull(friendlyName);
     }
@@ -245,7 +336,6 @@ public final class KryoNamespace implements KryoFactory, KryoPool {
      * @return this
      */
     public KryoNamespace populate(int instances) {
-
         for (int i = 0; i < instances; ++i) {
             release(create());
         }
@@ -417,13 +507,30 @@ public final class KryoNamespace implements KryoFactory, KryoPool {
     @Override
     public Kryo create() {
         log.trace("Creating Kryo instance for {}", this);
-        Kryo kryo = new Kryo();
+        OnosKryo kryo = new OnosKryo();
         kryo.setRegistrationRequired(registrationRequired);
 
         // TODO rethink whether we want to use StdInstantiatorStrategy
         kryo.setInstantiatorStrategy(
                 new Kryo.DefaultInstantiatorStrategy(new StdInstantiatorStrategy()));
 
+        // Register default serializers.
+        for (Map.Entry<Class<?>, Serializer<?>> defaultSerializer : registeredDefaults.entrySet()) {
+            kryo.addDefaultSerializer(defaultSerializer.getKey(), defaultSerializer.getValue());
+        }
+
+        // Register abstract serializers.
+        for (RegistrationBlock block : registeredAbstracts) {
+            int id = block.begin();
+            if (id == FLOATING_ID) {
+                id = kryo.getNextRegistrationId();
+            }
+            for (Pair<Class<?>, Serializer<?>> entry : block.types()) {
+                kryo.registerAbstract(entry.getLeft(), id++, entry.getRight());
+            }
+        }
+
+        // Register concrete serializers.
         for (RegistrationBlock block : registeredBlocks) {
             int id = block.begin();
             if (id == FLOATING_ID) {
@@ -543,6 +650,136 @@ public final class KryoNamespace implements KryoFactory, KryoPool {
                 return Objects.equals(this.types, that.types);
             }
             return false;
+        }
+    }
+
+    /**
+     * Special implementation of {@link Kryo} that supports abstract serializers.
+     */
+    private static class OnosKryo extends Kryo {
+        private final OnosClassResolver classResolver;
+
+        private OnosKryo() {
+            super(new OnosClassResolver(), new MapReferenceResolver());
+            this.classResolver = (OnosClassResolver) super.getClassResolver();
+        }
+
+        /**
+         * Registers an abstract type.
+         *
+         * @param type the abstract serializable type
+         * @param id the abstract type ID
+         * @param serializer the abstract type serializer
+         * @return this
+         */
+        public OnosKryo registerAbstract(Class<?> type, int id, Serializer<?> serializer) {
+            classResolver.registerAbstract(new Registration(type, serializer, id));
+            return this;
+        }
+
+        /**
+         * Returns the abstract serializer for the given type.
+         *
+         * @param type the type for which to return the abstract serializer
+         * @return the abstract serializer for the given type
+         */
+        public Serializer<?> getAbstractSerializer(Class<?> type) {
+            return classResolver.getAbstractRegistration(type).getSerializer();
+        }
+
+        @Override
+        public Registration register(Class type) {
+            Registration registration = classResolver.getRegistration(type);
+            if (registration != null) {
+                return registration;
+            }
+
+            registration = classResolver.getAbstractRegistration(type);
+            if (registration != null) {
+                return registration;
+            }
+
+            Serializer abstractSerializer = getAbstractSerializer(type);
+            if (abstractSerializer != null) {
+
+            }
+            return register(type, getDefaultSerializer(type));
+        }
+
+        @Override
+        public Registration register(Class type, int id) {
+            return super.register(type, id);
+        }
+
+        static final class DefaultSerializerEntry {
+            final Class type;
+            final SerializerFactory serializerFactory;
+
+            DefaultSerializerEntry (Class type, SerializerFactory serializerFactory) {
+                this.type = type;
+                this.serializerFactory = serializerFactory;
+            }
+        }
+    }
+
+    /**
+     * Class resolver that resolves abstract types.
+     */
+    private static class OnosClassResolver extends DefaultClassResolver {
+        protected final ObjectMap<Class, Registration> abstractClassToRegistration = new ObjectMap();
+
+        /**
+         * Registers an abstract serializer.
+         *
+         * @param registration the abstract registration
+         * @return the registration
+         */
+        public Registration registerAbstract(Registration registration) {
+            checkNotNull(registration);
+
+            if (registration.getId() == NAME) {
+                throw new IllegalArgumentException("Abstract registration must contain a unique ID");
+            } else {
+                idToRegistration.put(registration.getId(), registration);
+            }
+            abstractClassToRegistration.put(registration.getType(), registration);
+            return registration;
+        }
+
+        /**
+         * Returns the abstract registration for the given type.
+         *
+         * @param type the type for which to return the abstract registration
+         * @return the abstract registration for the given type
+         */
+        @SuppressWarnings("unchecked")
+        public Registration getAbstractRegistration(Class type) {
+            Registration registration = abstractClassToRegistration.get(type);
+            if (registration != null) {
+                return registration;
+            }
+
+            for (ObjectMap.Entry<Class, Registration> entry : abstractClassToRegistration.entries()) {
+                if (entry.key.isAssignableFrom(type)) {
+                    abstractClassToRegistration.put(type, entry.value);
+                    return entry.value;
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public Registration getRegistration(Class type) {
+            Registration registration = classToRegistration.get(type);
+            if (registration != null) {
+                return registration;
+            }
+
+            registration = getAbstractRegistration(type);
+            if (registration != null) {
+                return registration;
+            }
+            return super.getRegistration(type);
         }
     }
 }

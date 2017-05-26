@@ -18,6 +18,8 @@ package org.onosproject.store.serializers;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableSortedMap;
+import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.testing.EqualsTester;
 
 import org.junit.After;
@@ -127,6 +129,21 @@ public class KryoSerializerTest {
     public void tearDown() throws Exception {
     }
 
+    private byte[] serialize(Object object) {
+        ByteBuffer buffer = ByteBuffer.allocate(1024);
+        serializer.encode(object, buffer);
+        buffer.flip();
+        byte[] bytes = new byte[buffer.remaining()];
+        buffer.get(bytes);
+        return bytes;
+    }
+
+    private <T> void testBytesEqual(T expected, T actual) {
+        byte[] expectedBytes = serialize(expected);
+        byte[] actualBytes = serialize(actual);
+        assertArrayEquals(expectedBytes, actualBytes);
+    }
+
     private <T> void testSerializedEquals(T original) {
         ByteBuffer buffer = ByteBuffer.allocate(1 * 1024 * 1024);
         serializer.encode(original, buffer);
@@ -188,6 +205,12 @@ public class KryoSerializerTest {
     }
 
     @Test
+    public void testImmutableSortedMap() {
+        testBytesEqual(ImmutableSortedMap.of("b", DEV1, "a", DEV1), ImmutableSortedMap.of("a", DEV1, "b", DEV1));
+        testSerializedEquals(ImmutableSortedMap.of("b", DEV1, "a", DEV1));
+    }
+
+    @Test
     public void testImmutableSet() {
         testSerializedEquals(ImmutableSet.of(DID1, DID2));
         testSerializedEquals(ImmutableSet.of(DID1));
@@ -195,7 +218,18 @@ public class KryoSerializerTest {
     }
 
     @Test
+    public void testImmutableSortedSet() {
+        testBytesEqual(ImmutableSortedSet.of("b", "a"), ImmutableSortedSet.of("a", "b"));
+        testBytesEqual(ImmutableSortedSet.of("a"), ImmutableSortedSet.of("a"));
+        testBytesEqual(ImmutableSortedSet.of(), ImmutableSortedSet.of());
+        testSerializedEquals(ImmutableSortedSet.of("b", "a"));
+        testSerializedEquals(ImmutableSortedSet.of("a"));
+        testSerializedEquals(ImmutableSortedSet.of());
+    }
+
+    @Test
     public void testImmutableList() {
+        testBytesEqual(ImmutableList.of(DID1, DID2), ImmutableList.of(DID1, DID2, DID1, DID2).subList(0, 2));
         testSerializedEquals(ImmutableList.of(DID1, DID2));
         testSerializedEquals(ImmutableList.of(DID1));
         testSerializedEquals(ImmutableList.of());

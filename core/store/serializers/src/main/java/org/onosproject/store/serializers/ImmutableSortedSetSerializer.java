@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-present Open Networking Laboratory
+ * Copyright 2017-present Open Networking Laboratory
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,23 +19,23 @@ import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.Serializer;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
-import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSortedSet;
 
 /**
- * Creates {@link ImmutableList} serializer instance.
- */
-public class ImmutableListSerializer extends Serializer<ImmutableList<?>> {
+* Kryo Serializer for {@link ImmutableSortedSet}.
+*/
+public class ImmutableSortedSetSerializer extends Serializer<ImmutableSortedSet<?>> {
 
     /**
-     * Creates {@link ImmutableList} serializer instance.
+     * Creates {@link ImmutableSortedSet} serializer instance.
      */
-    public ImmutableListSerializer() {
+    public ImmutableSortedSetSerializer() {
         // non-null, immutable
         super(false, true);
     }
 
     @Override
-    public void write(Kryo kryo, Output output, ImmutableList<?> object) {
+    public void write(Kryo kryo, Output output, ImmutableSortedSet<?> object) {
         output.writeInt(object.size());
         for (Object e : object) {
             kryo.writeClassAndObject(output, e);
@@ -43,20 +43,21 @@ public class ImmutableListSerializer extends Serializer<ImmutableList<?>> {
     }
 
     @Override
-    public ImmutableList<?> read(Kryo kryo, Input input,
-                                 Class<ImmutableList<?>> type) {
+    @SuppressWarnings("unchecked")
+    public ImmutableSortedSet<?> read(Kryo kryo, Input input,
+                                Class<ImmutableSortedSet<?>> type) {
         final int size = input.readInt();
         switch (size) {
         case 0:
-            return ImmutableList.of();
+            return ImmutableSortedSet.of();
         case 1:
-            return ImmutableList.of(kryo.readClassAndObject(input));
+            return ImmutableSortedSet.of((Comparable) kryo.readClassAndObject(input));
         default:
-            Object[] elms = new Object[size];
+            Comparable[] elms = new Comparable[size];
             for (int i = 0; i < size; ++i) {
-                elms[i] = kryo.readClassAndObject(input);
+                elms[i] = (Comparable) kryo.readClassAndObject(input);
             }
-            return ImmutableList.copyOf(elms);
+            return ImmutableSortedSet.copyOf(elms);
         }
     }
 }
