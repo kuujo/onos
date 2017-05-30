@@ -28,6 +28,7 @@ import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.codec.CodecService;
 import org.onosproject.codec.impl.CodecManager;
+import org.onosproject.core.Version;
 import org.onosproject.cpman.ControlLoad;
 import org.onosproject.cpman.ControlLoadSnapshot;
 import org.onosproject.cpman.ControlPlaneMonitorService;
@@ -91,6 +92,11 @@ public class ControlMetricsResourceTest extends ResourceTest {
         @Override
         public int tcpPort() {
             return 0;
+        }
+
+        @Override
+        public Version version() {
+            return Version.version("1.0.0");
         }
     }
 

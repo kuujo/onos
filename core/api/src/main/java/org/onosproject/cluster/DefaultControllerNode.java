@@ -16,6 +16,7 @@
 package org.onosproject.cluster;
 
 import org.onlab.packet.IpAddress;
+import org.onosproject.core.Version;
 
 import java.util.Objects;
 
@@ -32,12 +33,14 @@ public class DefaultControllerNode implements ControllerNode {
     private final NodeId id;
     private final IpAddress ip;
     private final int tcpPort;
+    private final Version version;
 
     // For serialization
     private DefaultControllerNode() {
         this.id = null;
         this.ip = null;
         this.tcpPort = 0;
+        this.version = null;
     }
 
     /**
@@ -58,9 +61,21 @@ public class DefaultControllerNode implements ControllerNode {
      * @param tcpPort TCP port
      */
     public DefaultControllerNode(NodeId id, IpAddress ip, int tcpPort) {
+        this(id, ip, tcpPort, null);
+    }
+
+    /**
+     * Creates a new instance with the specified id and IP address and TCP port.
+     *
+     * @param id      instance identifier
+     * @param ip      instance IP address
+     * @param tcpPort TCP port
+     */
+    public DefaultControllerNode(NodeId id, IpAddress ip, int tcpPort, Version version) {
         this.id = checkNotNull(id);
         this.ip = ip;
         this.tcpPort = tcpPort;
+        this.version = version;
     }
 
     @Override
@@ -76,6 +91,11 @@ public class DefaultControllerNode implements ControllerNode {
     @Override
     public int tcpPort() {
         return tcpPort;
+    }
+
+    @Override
+    public Version version() {
+        return version;
     }
 
     @Override
@@ -97,8 +117,12 @@ public class DefaultControllerNode implements ControllerNode {
 
     @Override
     public String toString() {
-        return toStringHelper(this).add("id", id)
-                .add("ip", ip).add("tcpPort", tcpPort).toString();
+        return toStringHelper(this)
+                .add("id", id)
+                .add("ip", ip)
+                .add("tcpPort", tcpPort)
+                .add("version", version)
+                .toString();
     }
 
 }

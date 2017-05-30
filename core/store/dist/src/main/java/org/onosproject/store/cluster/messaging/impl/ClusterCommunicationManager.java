@@ -26,6 +26,7 @@ import org.onlab.util.Tools;
 import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.NodeId;
+import org.onosproject.core.Version;
 import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
 import org.onosproject.store.cluster.messaging.ClusterMessage;
 import org.onosproject.store.cluster.messaging.ClusterMessageHandler;
@@ -95,7 +96,7 @@ public class ClusterCommunicationManager
     @Override
     public <M> void broadcast(M message,
                               MessageSubject subject,
-                              Function<M, byte[]> encoder) {
+                              BiFunction<Version, M, byte[]> encoder) {
         checkPermission(CLUSTER_WRITE);
         multicast(message,
                   subject,
@@ -110,7 +111,7 @@ public class ClusterCommunicationManager
     @Override
     public <M> void broadcastIncludeSelf(M message,
                                          MessageSubject subject,
-                                         Function<M, byte[]> encoder) {
+                                         BiFunction<Version, M, byte[]> encoder) {
         checkPermission(CLUSTER_WRITE);
         multicast(message,
                   subject,
@@ -124,14 +125,15 @@ public class ClusterCommunicationManager
     @Override
     public <M> CompletableFuture<Void> unicast(M message,
                                                MessageSubject subject,
-                                               Function<M, byte[]> encoder,
+                                               BiFunction<Version, M, byte[]> encoder,
                                                NodeId toNodeId) {
         checkPermission(CLUSTER_WRITE);
         try {
+            Version version = clusterService.getNode(toNodeId).version();
             byte[] payload = new ClusterMessage(
                     localNodeId,
                     subject,
-                    timeFunction(encoder, subjectMeteringAgent, SERIALIZING).apply(message)
+                    timeFunction(encoder, subjectMeteringAgent, SERIALIZING).apply(version, message)
                     ).getBytes();
             return doUnicast(subject, payload, toNodeId);
         } catch (Exception e) {
@@ -142,30 +144,33 @@ public class ClusterCommunicationManager
     @Override
     public <M> void multicast(M message,
                               MessageSubject subject,
-                              Function<M, byte[]> encoder,
+                              BiFunction<Version, M, byte[]> encoder,
                               Set<NodeId> nodes) {
         checkPermission(CLUSTER_WRITE);
-        byte[] payload = new ClusterMessage(
-                localNodeId,
-                subject,
-                timeFunction(encoder, subjectMeteringAgent, SERIALIZING).apply(message))
-                .getBytes();
-        nodes.forEach(nodeId -> doUnicast(subject, payload, nodeId));
+        nodes.forEach(nodeId -> {
+            Version version = clusterService.getNode(nodeId).version();
+            byte[] payload = new ClusterMessage(
+                    localNodeId,
+                    subject,
+                    timeFunction(encoder, subjectMeteringAgent, SERIALIZING).apply(version, message))
+                    .getBytes();
+            doUnicast(subject, payload, nodeId);
+        });
     }
 
     @Override
     public <M, R> CompletableFuture<R> sendAndReceive(M message,
                                                       MessageSubject subject,
-                                                      Function<M, byte[]> encoder,
+                                                      BiFunction<Version, M, byte[]> encoder,
                                                       Function<byte[], R> decoder,
                                                       NodeId toNodeId) {
         checkPermission(CLUSTER_WRITE);
         try {
+            Version version = clusterService.getNode(toNodeId).version();
             ClusterMessage envelope = new ClusterMessage(
                     clusterService.getLocalNode().id(),
                     subject,
-                    timeFunction(encoder, subjectMeteringAgent, SERIALIZING).
-                            apply(message));
+                    timeFunction(encoder, subjectMeteringAgent, SERIALIZING).apply(version, message));
             return sendAndReceive(subject, envelope.getBytes(), toNodeId).
                     thenApply(bytes -> timeFunction(decoder, subjectMeteringAgent, DESERIALIZING).apply(bytes));
         } catch (Exception e) {
@@ -216,7 +221,7 @@ public class ClusterCommunicationManager
     public <M, R> void addSubscriber(MessageSubject subject,
             Function<byte[], M> decoder,
             Function<M, R> handler,
-            Function<R, byte[]> encoder,
+            BiFunction<Version, R, byte[]> encoder,
             Executor executor) {
         checkPermission(CLUSTER_WRITE);
         messagingService.registerHandler(subject.value(),
@@ -237,7 +242,7 @@ public class ClusterCommunicationManager
     public <M, R> void addSubscriber(MessageSubject subject,
             Function<byte[], M> decoder,
             Function<M, CompletableFuture<R>> handler,
-            Function<R, byte[]> encoder) {
+            BiFunction<Version, R, byte[]> encoder) {
         checkPermission(CLUSTER_WRITE);
         messagingService.registerHandler(subject.value(),
                 new InternalMessageResponder<>(decoder, encoder, handler));
@@ -264,8 +269,41 @@ public class ClusterCommunicationManager
      * @param <B> The return type of the function
      * @return the value returned by the timed function
      */
+    private <A, B> BiFunction<Version, A, B> timeFunction(BiFunction<Version, A, B> timedFunction,
+            MeteringAgent meter, String opName) {
+        checkNotNull(timedFunction);
+        checkNotNull(meter);
+        checkNotNull(opName);
+        return new BiFunction<Version, A, B>() {
+            @Override
+            public B apply(Version v, A a) {
+                final MeteringAgent.Context context = meter.startTimer(opName);
+                B result = null;
+                try {
+                    result = timedFunction.apply(v, a);
+                    context.stop(null);
+                    return result;
+                } catch (Exception e) {
+                    context.stop(e);
+                    Throwables.propagate(e);
+                    return null;
+                }
+            }
+        };
+    }
+
+    /**
+     * Performs the timed function, returning the value it would while timing the operation.
+     *
+     * @param timedFunction the function to be timed
+     * @param meter the metering agent to be used to time the function
+     * @param opName the opname to be used when starting the meter
+     * @param <A> The param type of the function
+     * @param <B> The return type of the function
+     * @return the value returned by the timed function
+     */
     private <A, B> Function<A, B> timeFunction(Function<A, B> timedFunction,
-                                               MeteringAgent meter, String opName) {
+            MeteringAgent meter, String opName) {
         checkNotNull(timedFunction);
         checkNotNull(meter);
         checkNotNull(opName);
@@ -305,11 +343,11 @@ public class ClusterCommunicationManager
 
     private class InternalMessageResponder<M, R> implements BiFunction<Endpoint, byte[], CompletableFuture<byte[]>> {
         private final Function<byte[], M> decoder;
-        private final Function<R, byte[]> encoder;
+        private final BiFunction<Version, R, byte[]> encoder;
         private final Function<M, CompletableFuture<R>> handler;
 
         public InternalMessageResponder(Function<byte[], M> decoder,
-                                        Function<R, byte[]> encoder,
+                                        BiFunction<Version, R, byte[]> encoder,
                                         Function<M, CompletableFuture<R>> handler) {
             this.decoder = decoder;
             this.encoder = encoder;
@@ -318,9 +356,15 @@ public class ClusterCommunicationManager
 
         @Override
         public CompletableFuture<byte[]> apply(Endpoint sender, byte[] bytes) {
+            ControllerNode node = clusterService.getNodes()
+                    .stream()
+                    .filter(n -> n.ip().equals(sender.host()) && n.tcpPort() == sender.port())
+                    .findAny()
+                    .orElse(null);
             return handler.apply(timeFunction(decoder, subjectMeteringAgent, DESERIALIZING).
                     apply(ClusterMessage.fromBytes(bytes).payload())).
-                    thenApply(m -> timeFunction(encoder, subjectMeteringAgent, SERIALIZING).apply(m));
+                    thenApply(m -> timeFunction(encoder, subjectMeteringAgent, SERIALIZING)
+                            .apply(node != null ? node.version() : null, m));
         }
     }
 

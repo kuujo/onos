@@ -19,10 +19,12 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 import org.onosproject.cluster.NodeId;
+import org.onosproject.core.Version;
 
 /**
  * Service for assisting communications between controller cluster nodes.
@@ -48,9 +50,39 @@ public interface ClusterCommunicationService {
      * @param encoder function for encoding message to byte[]
      * @param <M> message type
      */
+    @Deprecated
+    default <M> void broadcast(M message,
+            MessageSubject subject,
+            Function<M, byte[]> encoder) {
+        broadcast(message, subject, (v, m) -> encoder.apply(m));
+    }
+
+    /**
+     * Broadcasts a message to all controller nodes.
+     *
+     * @param message message to send
+     * @param subject message subject
+     * @param encoder function for encoding message to byte[]
+     * @param <M> message type
+     */
     <M> void broadcast(M message,
-                       MessageSubject subject,
-                       Function<M, byte[]> encoder);
+            MessageSubject subject,
+            BiFunction<Version, M, byte[]> encoder);
+
+    /**
+     * Broadcasts a message to all controller nodes including self.
+     *
+     * @param message message to send
+     * @param subject message subject
+     * @param encoder function for encoding message to byte[]
+     * @param <M> message type
+     */
+    @Deprecated
+    default <M> void broadcastIncludeSelf(M message,
+            MessageSubject subject,
+            Function<M, byte[]> encoder) {
+        broadcastIncludeSelf(message, subject, (v, m) -> encoder.apply(m));
+    }
 
     /**
      * Broadcasts a message to all controller nodes including self.
@@ -61,8 +93,26 @@ public interface ClusterCommunicationService {
      * @param <M> message type
      */
     <M> void broadcastIncludeSelf(M message,
-                                  MessageSubject subject,
-                                  Function<M, byte[]> encoder);
+            MessageSubject subject,
+            BiFunction<Version, M, byte[]> encoder);
+
+    /**
+     * Sends a message to the specified controller node.
+     *
+     * @param message message to send
+     * @param subject message subject
+     * @param encoder function for encoding message to byte[]
+     * @param toNodeId destination node identifier
+     * @param <M> message type
+     * @return future that is completed when the message is sent
+     */
+    @Deprecated
+    default <M> CompletableFuture<Void> unicast(M message,
+            MessageSubject subject,
+            Function<M, byte[]> encoder,
+            NodeId toNodeId) {
+        return unicast(message, subject, (v, m) -> encoder.apply(m), toNodeId);
+    }
 
     /**
      * Sends a message to the specified controller node.
@@ -75,9 +125,26 @@ public interface ClusterCommunicationService {
      * @return future that is completed when the message is sent
      */
     <M> CompletableFuture<Void> unicast(M message,
-                        MessageSubject subject,
-                        Function<M, byte[]> encoder,
-                        NodeId toNodeId);
+            MessageSubject subject,
+            BiFunction<Version, M, byte[]> encoder,
+            NodeId toNodeId);
+
+    /**
+     * Multicasts a message to a set of controller nodes.
+     *
+     * @param message message to send
+     * @param subject message subject
+     * @param encoder function for encoding message to byte[]
+     * @param nodeIds  recipient node identifiers
+     * @param <M> message type
+     */
+    @Deprecated
+    default <M> void multicast(M message,
+            MessageSubject subject,
+            Function<M, byte[]> encoder,
+            Set<NodeId> nodeIds) {
+        multicast(message, subject, (v, m) -> encoder.apply(m), nodeIds);
+    }
 
     /**
      * Multicasts a message to a set of controller nodes.
@@ -89,9 +156,30 @@ public interface ClusterCommunicationService {
      * @param <M> message type
      */
     <M> void multicast(M message,
-                       MessageSubject subject,
-                       Function<M, byte[]> encoder,
-                       Set<NodeId> nodeIds);
+            MessageSubject subject,
+            BiFunction<Version, M, byte[]> encoder,
+            Set<NodeId> nodeIds);
+
+    /**
+     * Sends a message and expects a reply.
+     *
+     * @param message message to send
+     * @param subject message subject
+     * @param encoder function for encoding request to byte[]
+     * @param decoder function for decoding response from byte[]
+     * @param toNodeId recipient node identifier
+     * @param <M> request type
+     * @param <R> reply type
+     * @return reply future
+     */
+    @Deprecated
+    default <M, R> CompletableFuture<R> sendAndReceive(M message,
+            MessageSubject subject,
+            Function<M, byte[]> encoder,
+            Function<byte[], R> decoder,
+            NodeId toNodeId) {
+        return sendAndReceive(message, subject, (v, m) -> encoder.apply(m), decoder, toNodeId);
+    }
 
     /**
      * Sends a message and expects a reply.
@@ -106,10 +194,30 @@ public interface ClusterCommunicationService {
      * @return reply future
      */
     <M, R> CompletableFuture<R> sendAndReceive(M message,
-                                               MessageSubject subject,
-                                               Function<M, byte[]> encoder,
-                                               Function<byte[], R> decoder,
-                                               NodeId toNodeId);
+            MessageSubject subject,
+            BiFunction<Version, M, byte[]> encoder,
+            Function<byte[], R> decoder,
+            NodeId toNodeId);
+
+    /**
+     * Adds a new subscriber for the specified message subject.
+     *
+     * @param subject message subject
+     * @param decoder decoder for resurrecting incoming message
+     * @param handler handler function that processes the incoming message and produces a reply
+     * @param encoder encoder for serializing reply
+     * @param executor executor to run this handler on
+     * @param <M> incoming message type
+     * @param <R> reply message type
+     */
+    @Deprecated
+    default <M, R> void addSubscriber(MessageSubject subject,
+            Function<byte[], M> decoder,
+            Function<M, R> handler,
+            Function<R, byte[]> encoder,
+            Executor executor) {
+        addSubscriber(subject, decoder, handler, (v, m) -> encoder.apply(m), executor);
+    }
 
     /**
      * Adds a new subscriber for the specified message subject.
@@ -123,10 +231,28 @@ public interface ClusterCommunicationService {
      * @param <R> reply message type
      */
     <M, R> void addSubscriber(MessageSubject subject,
-                              Function<byte[], M> decoder,
-                              Function<M, R> handler,
-                              Function<R, byte[]> encoder,
-                              Executor executor);
+            Function<byte[], M> decoder,
+            Function<M, R> handler,
+            BiFunction<Version, R, byte[]> encoder,
+            Executor executor);
+
+    /**
+     * Adds a new subscriber for the specified message subject.
+     *
+     * @param subject message subject
+     * @param decoder decoder for resurrecting incoming message
+     * @param handler handler function that processes the incoming message and produces a reply
+     * @param encoder encoder for serializing reply
+     * @param <M> incoming message type
+     * @param <R> reply message type
+     */
+    @Deprecated
+    default <M, R> void addSubscriber(MessageSubject subject,
+            Function<byte[], M> decoder,
+            Function<M, CompletableFuture<R>> handler,
+            Function<R, byte[]> encoder) {
+        addSubscriber(subject, decoder, handler, (v, m) -> encoder.apply(m));
+    }
 
     /**
      * Adds a new subscriber for the specified message subject.
@@ -139,9 +265,9 @@ public interface ClusterCommunicationService {
      * @param <R> reply message type
      */
     <M, R> void addSubscriber(MessageSubject subject,
-                              Function<byte[], M> decoder,
-                              Function<M, CompletableFuture<R>> handler,
-                              Function<R, byte[]> encoder);
+            Function<byte[], M> decoder,
+            Function<M, CompletableFuture<R>> handler,
+            BiFunction<Version, R, byte[]> encoder);
 
     /**
      * Adds a new subscriber for the specified message subject.

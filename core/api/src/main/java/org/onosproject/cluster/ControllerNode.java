@@ -16,6 +16,7 @@
 package org.onosproject.cluster;
 
 import org.onlab.packet.IpAddress;
+import org.onosproject.core.Version;
 
 /**
  * Represents a controller instance as a member in a cluster.
@@ -74,12 +75,18 @@ public interface ControllerNode {
      */
     IpAddress ip();
 
-
     /**
      * Returns the TCP port on which the node listens for connections.
      *
      * @return TCP port
      */
     int tcpPort();
+
+    /**
+     * Returns the controller node version.
+     *
+     * @return controller node version
+     */
+    Version version();
 
 }

@@ -26,6 +26,7 @@ import org.onosproject.cluster.NodeId;
 import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.ControllerNode;
 import org.onosproject.core.CoreServiceAdapter;
+import org.onosproject.core.Version;
 import org.onosproject.mastership.MastershipServiceAdapter;
 import org.onosproject.net.device.DeviceServiceAdapter;
 import org.onosproject.net.DeviceId;
@@ -126,6 +127,11 @@ public class DistributedFlowRuleStoreTest {
         @Override
         public int tcpPort() {
             return 0;
+        }
+
+        @Override
+        public Version version() {
+            return Version.version("1.0.0");
         }
     }
 

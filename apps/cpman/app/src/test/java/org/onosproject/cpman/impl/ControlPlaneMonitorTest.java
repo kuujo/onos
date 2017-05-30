@@ -22,6 +22,7 @@ import org.onlab.packet.IpAddress;
 import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.NodeId;
+import org.onosproject.core.Version;
 import org.onosproject.cpman.ControlMetric;
 import org.onosproject.cpman.ControlMetricType;
 import org.onosproject.cpman.MetricValue;
@@ -105,6 +106,11 @@ public class ControlPlaneMonitorTest {
         @Override
         public int tcpPort() {
             return 0;
+        }
+
+        @Override
+        public Version version() {
+            return Version.version("1.0.0");
         }
     }
 
