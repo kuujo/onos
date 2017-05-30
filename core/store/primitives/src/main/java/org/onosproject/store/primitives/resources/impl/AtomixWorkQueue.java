@@ -18,13 +18,10 @@ package org.onosproject.store.primitives.resources.impl;
 import static java.util.concurrent.Executors.newSingleThreadExecutor;
 import static org.onlab.util.Tools.groupedThreads;
 import static org.slf4j.LoggerFactory.getLogger;
-import io.atomix.copycat.client.CopycatClient;
-import io.atomix.resource.AbstractResource;
-import io.atomix.resource.ResourceTypeInfo;
+import io.atomix.copycat.client.session.CopycatSession;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Properties;
 import java.util.Timer;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -53,9 +50,7 @@ import com.google.common.collect.ImmutableList;
 /**
  * Distributed resource providing the {@link WorkQueue} primitive.
  */
-@ResourceTypeInfo(id = -154, factory = AtomixWorkQueueFactory.class)
-public class AtomixWorkQueue extends AbstractResource<AtomixWorkQueue>
-    implements WorkQueue<byte[]> {
+public class AtomixWorkQueue extends AbstractCopycatPrimitive implements WorkQueue<byte[]> {
 
     private final Logger log = getLogger(getClass());
     public static final String TASK_AVAILABLE = "task-available";
@@ -64,8 +59,14 @@ public class AtomixWorkQueue extends AbstractResource<AtomixWorkQueue>
     private final Timer timer = new Timer("atomix-work-queue-completer");
     private final AtomicBoolean isRegistered = new AtomicBoolean(false);
 
-    protected AtomixWorkQueue(CopycatClient client, Properties options) {
-        super(client, options);
+    public AtomixWorkQueue(CopycatSession session) {
+        super(session);
+        session.onStateChange(state -> {
+            if (state == CopycatSession.State.OPEN && isRegistered.get()) {
+                session.submit(new Register());
+            }
+        });
+        session.onEvent(TASK_AVAILABLE, this::resumeWork);
     }
 
     @Override
@@ -77,20 +78,7 @@ public class AtomixWorkQueue extends AbstractResource<AtomixWorkQueue>
     public CompletableFuture<Void> destroy() {
         executor.shutdown();
         timer.cancel();
-        return client.submit(new Clear());
-    }
-
-    @Override
-    public CompletableFuture<AtomixWorkQueue> open() {
-        return super.open().thenApply(result -> {
-            client.onStateChange(state -> {
-                if (state == CopycatClient.State.CONNECTED && isRegistered.get()) {
-                    client.submit(new Register());
-                }
-            });
-            client.onEvent(TASK_AVAILABLE, this::resumeWork);
-            return result;
-        });
+        return session.submit(new Clear());
     }
 
     @Override
@@ -98,7 +86,7 @@ public class AtomixWorkQueue extends AbstractResource<AtomixWorkQueue>
         if (items.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
-        return client.submit(new Add(items));
+        return session.submit(new Add(items));
     }
 
     @Override
@@ -106,7 +94,7 @@ public class AtomixWorkQueue extends AbstractResource<AtomixWorkQueue>
         if (maxTasks <= 0) {
             return CompletableFuture.completedFuture(ImmutableList.of());
         }
-        return client.submit(new Take(maxTasks));
+        return session.submit(new Take(maxTasks));
     }
 
     @Override
@@ -114,7 +102,7 @@ public class AtomixWorkQueue extends AbstractResource<AtomixWorkQueue>
         if (taskIds.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
-        return client.submit(new Complete(taskIds));
+        return session.submit(new Complete(taskIds));
     }
 
     @Override
@@ -138,7 +126,7 @@ public class AtomixWorkQueue extends AbstractResource<AtomixWorkQueue>
 
     @Override
     public CompletableFuture<WorkQueueStats> stats() {
-        return client.submit(new Stats());
+        return session.submit(new Stats());
     }
 
     private void resumeWork() {
@@ -151,11 +139,11 @@ public class AtomixWorkQueue extends AbstractResource<AtomixWorkQueue>
     }
 
     private CompletableFuture<Void> register() {
-        return client.submit(new Register()).thenRun(() -> isRegistered.set(true));
+        return session.submit(new Register()).thenRun(() -> isRegistered.set(true));
     }
 
     private CompletableFuture<Void> unregister() {
-        return client.submit(new Unregister()).thenRun(() -> isRegistered.set(false));
+        return session.submit(new Unregister()).thenRun(() -> isRegistered.set(false));
     }
 
     // TaskId accumulator for paced triggering of task completion calls.

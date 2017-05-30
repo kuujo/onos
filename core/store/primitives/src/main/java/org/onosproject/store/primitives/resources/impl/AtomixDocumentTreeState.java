@@ -19,12 +19,12 @@ package org.onosproject.store.primitives.resources.impl;
 import static org.slf4j.LoggerFactory.getLogger;
 import io.atomix.copycat.server.Commit;
 import io.atomix.copycat.server.Snapshottable;
+import io.atomix.copycat.server.StateMachine;
 import io.atomix.copycat.server.StateMachineExecutor;
 import io.atomix.copycat.server.session.ServerSession;
 import io.atomix.copycat.server.session.SessionListener;
 import io.atomix.copycat.server.storage.snapshot.SnapshotReader;
 import io.atomix.copycat.server.storage.snapshot.SnapshotWriter;
-import io.atomix.resource.ResourceStateMachine;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -32,7 +32,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -62,18 +61,12 @@ import com.google.common.collect.Queues;
 /**
  * State Machine for {@link AtomixDocumentTree} resource.
  */
-public class AtomixDocumentTreeState
-    extends ResourceStateMachine
-    implements SessionListener, Snapshottable {
+public class AtomixDocumentTreeState extends StateMachine implements SessionListener, Snapshottable {
 
     private final Logger log = getLogger(getClass());
     private final Map<Long, SessionListenCommits> listeners = new HashMap<>();
     private AtomicLong versionCounter = new AtomicLong(0);
     private final DocumentTree<TreeNodeValue> docTree = new DefaultDocumentTree<>(versionCounter::incrementAndGet);
-
-    public AtomixDocumentTreeState(Properties properties) {
-        super(properties);
-    }
 
     @Override
     public void snapshot(SnapshotWriter writer) {

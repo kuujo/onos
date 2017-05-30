@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-present Open Networking Laboratory
+ * Copyright 2017-present Open Networking Laboratory
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,40 +15,33 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
-import static org.onlab.util.Tools.groupedThreads;
-import static org.onlab.util.Tools.maxPriority;
-import static org.slf4j.LoggerFactory.getLogger;
-
 import java.net.ConnectException;
 import java.nio.channels.ClosedChannelException;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
 
+import com.google.common.base.Throwables;
+import io.atomix.catalyst.transport.TransportException;
+import io.atomix.copycat.Query;
+import io.atomix.copycat.client.session.CopycatSession;
+import io.atomix.copycat.error.QueryException;
+import io.atomix.copycat.error.UnknownClientException;
+import io.atomix.copycat.error.UnknownSessionException;
+import io.atomix.copycat.session.ClosedSessionException;
 import org.onlab.util.Tools;
 import org.onosproject.store.service.StorageException;
 import org.slf4j.Logger;
 
-import com.google.common.base.Throwables;
-
-import io.atomix.catalyst.transport.TransportException;
-import io.atomix.copycat.Query;
-import io.atomix.copycat.client.CopycatClient;
-import io.atomix.copycat.error.QueryException;
-import io.atomix.copycat.error.UnknownSessionException;
-import io.atomix.copycat.session.ClosedSessionException;
+import static org.slf4j.LoggerFactory.getLogger;
 
 /**
- * Custom {@code CopycatClient} for injecting additional logic that runs before/after operation submission.
+ * Retrying Copycat session.
  */
-public class OnosCopycatClient extends DelegatingCopycatClient {
-
+public class RetryingCopycatSession extends DelegatingCopycatSession {
     private final int maxRetries;
     private final long delayBetweenRetriesMillis;
-    private final ScheduledExecutorService executor;
     private final Logger log = getLogger(getClass());
 
     private final Predicate<Throwable> retryableCheck = e -> e instanceof ConnectException
@@ -56,41 +49,35 @@ public class OnosCopycatClient extends DelegatingCopycatClient {
             || e instanceof TransportException
             || e instanceof ClosedChannelException
             || e instanceof QueryException
+            || e instanceof UnknownClientException
             || e instanceof UnknownSessionException
             || e instanceof ClosedSessionException
             || e instanceof StorageException.Unavailable;
 
-    OnosCopycatClient(CopycatClient client, int maxRetries, long delayBetweenRetriesMillis) {
-        super(client);
+    public RetryingCopycatSession(CopycatSession delegate, int maxRetries, long delayBetweenRetriesMillis) {
+        super(delegate);
         this.maxRetries = maxRetries;
         this.delayBetweenRetriesMillis = delayBetweenRetriesMillis;
-        this.executor = newSingleThreadScheduledExecutor(maxPriority(groupedThreads("OnosCopycat", "client", log)));
-    }
-
-    @Override
-    public CompletableFuture<Void> close() {
-        executor.shutdown();
-        return super.close();
     }
 
     @Override
     public <T> CompletableFuture<T> submit(Query<T> query) {
-        if (state() == State.CLOSED) {
+        if (state() == CopycatSession.State.CLOSED) {
             return Tools.exceptionalFuture(new StorageException.Unavailable());
         }
         CompletableFuture<T> future = new CompletableFuture<>();
-        executor.execute(() -> submit(query, 1, future));
+        submit(query, 1, future);
         return future;
     }
 
     private <T> void submit(Query<T> query, int attemptIndex, CompletableFuture<T> future) {
-        client.submit(query).whenComplete((r, e) -> {
+        delegate.submit(query).whenComplete((r, e) -> {
             if (e != null) {
                 if (attemptIndex < maxRetries + 1 && retryableCheck.test(Throwables.getRootCause(e))) {
                     log.debug("Retry attempt ({} of {}). Failure due to {}",
                             attemptIndex, maxRetries, Throwables.getRootCause(e).getClass());
-                    executor.schedule(() ->
-                        submit(query, attemptIndex + 1, future), delayBetweenRetriesMillis, TimeUnit.MILLISECONDS);
+                    delegate.context().schedule(Duration.ofMillis(delayBetweenRetriesMillis),
+                            () -> submit(query, attemptIndex + 1, future));
                 } else {
                     future.completeExceptionally(e);
                 }

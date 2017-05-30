@@ -15,9 +15,7 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import io.atomix.copycat.client.CopycatClient;
-import io.atomix.resource.AbstractResource;
-import io.atomix.resource.ResourceTypeInfo;
+import io.atomix.copycat.client.session.CopycatSession;
 import org.onosproject.store.primitives.resources.impl.AtomixAtomicCounterMapCommands.AddAndGet;
 import org.onosproject.store.primitives.resources.impl.AtomixAtomicCounterMapCommands.Clear;
 import org.onosproject.store.primitives.resources.impl.AtomixAtomicCounterMapCommands.DecrementAndGet;
@@ -35,18 +33,15 @@ import org.onosproject.store.primitives.resources.impl.AtomixAtomicCounterMapCom
 import org.onosproject.store.primitives.resources.impl.AtomixAtomicCounterMapCommands.Size;
 import org.onosproject.store.service.AsyncAtomicCounterMap;
 
-import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 
 /**
  * {@code AsyncAtomicCounterMap} implementation backed by Atomix.
  */
-@ResourceTypeInfo(id = -157, factory = AtomixAtomicCounterMapFactory.class)
-public class AtomixAtomicCounterMap extends AbstractResource<AtomixAtomicCounterMap>
-    implements AsyncAtomicCounterMap<String> {
+public class AtomixAtomicCounterMap extends AbstractCopycatPrimitive implements AsyncAtomicCounterMap<String> {
 
-    public AtomixAtomicCounterMap(CopycatClient client, Properties options) {
-        super(client, options);
+    public AtomixAtomicCounterMap(CopycatSession session) {
+        super(session);
     }
 
     @Override
@@ -56,76 +51,76 @@ public class AtomixAtomicCounterMap extends AbstractResource<AtomixAtomicCounter
 
     @Override
     public CompletableFuture<Long> incrementAndGet(String key) {
-        return client.submit(new IncrementAndGet(key));
+        return session.submit(new IncrementAndGet(key));
     }
 
     @Override
     public CompletableFuture<Long> decrementAndGet(String key) {
-        return client.submit(new DecrementAndGet(key));
+        return session.submit(new DecrementAndGet(key));
     }
 
     @Override
     public CompletableFuture<Long> getAndIncrement(String key) {
-        return client.submit(new GetAndIncrement(key));
+        return session.submit(new GetAndIncrement(key));
     }
 
     @Override
     public CompletableFuture<Long> getAndDecrement(String key) {
-        return client.submit(new GetAndDecrement(key));
+        return session.submit(new GetAndDecrement(key));
     }
 
     @Override
     public CompletableFuture<Long> addAndGet(String key, long delta) {
-        return client.submit(new AddAndGet(key, delta));
+        return session.submit(new AddAndGet(key, delta));
     }
 
     @Override
     public CompletableFuture<Long> getAndAdd(String key, long delta) {
-        return client.submit(new GetAndAdd(key, delta));
+        return session.submit(new GetAndAdd(key, delta));
     }
 
     @Override
     public CompletableFuture<Long> get(String key) {
-        return client.submit(new Get(key));
+        return session.submit(new Get(key));
     }
 
     @Override
     public CompletableFuture<Long> put(String key, long newValue) {
-        return client.submit(new Put(key, newValue));
+        return session.submit(new Put(key, newValue));
     }
 
     @Override
     public CompletableFuture<Long> putIfAbsent(String key, long newValue) {
-        return client.submit(new PutIfAbsent(key, newValue));
+        return session.submit(new PutIfAbsent(key, newValue));
     }
 
     @Override
     public CompletableFuture<Boolean> replace(String key, long expectedOldValue, long newValue) {
-        return client.submit(new Replace(key, expectedOldValue, newValue));
+        return session.submit(new Replace(key, expectedOldValue, newValue));
     }
 
     @Override
     public CompletableFuture<Long> remove(String key) {
-        return client.submit(new Remove(key));
+        return session.submit(new Remove(key));
     }
 
     @Override
     public CompletableFuture<Boolean> remove(String key, long value) {
-        return client.submit(new RemoveValue(key, value));
+        return session.submit(new RemoveValue(key, value));
     }
 
     @Override
     public CompletableFuture<Integer> size() {
-        return client.submit(new Size());
+        return session.submit(new Size());
     }
 
     @Override
     public CompletableFuture<Boolean> isEmpty() {
-        return client.submit(new IsEmpty());
+        return session.submit(new IsEmpty());
     }
 
     @Override
     public CompletableFuture<Void> clear() {
-        return client.submit(new Clear());
+        return session.submit(new Clear());
     }
 }

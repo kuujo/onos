@@ -17,9 +17,7 @@
 package org.onosproject.store.primitives.resources.impl;
 
 import com.google.common.collect.Maps;
-import io.atomix.copycat.client.CopycatClient;
-import io.atomix.resource.AbstractResource;
-import io.atomix.resource.ResourceTypeInfo;
+import io.atomix.copycat.client.session.CopycatSession;
 import org.onlab.util.Match;
 import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.primitives.TransactionId;
@@ -75,30 +73,21 @@ import static org.onosproject.store.primitives.resources.impl.AtomixConsistentTr
 /**
  * Implementation of {@link AsyncConsistentTreeMap}.
  */
-@ResourceTypeInfo(id = -155, factory = AtomixConsistentTreeMapFactory.class)
-public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTreeMap>
-        implements AsyncConsistentTreeMap<byte[]> {
+public class AtomixConsistentTreeMap extends AbstractCopycatPrimitive implements AsyncConsistentTreeMap<byte[]> {
 
     private final Map<MapEventListener<String, byte[]>, Executor>
             mapEventListeners = Maps.newConcurrentMap();
 
     public static final String CHANGE_SUBJECT = "changeEvents";
 
-    public AtomixConsistentTreeMap(CopycatClient client, Properties options) {
-        super(client, options);
+    public AtomixConsistentTreeMap(CopycatSession session) {
+        super(session);
+        session.onEvent(CHANGE_SUBJECT, this::handleEvent);
     }
 
     @Override
     public String name() {
         return null;
-    }
-
-    @Override
-    public CompletableFuture<AtomixConsistentTreeMap> open() {
-        return super.open().thenApply(result -> {
-            client.onEvent(CHANGE_SUBJECT, this::handleEvent);
-            return result;
-        });
     }
 
     private void handleEvent(List<MapEvent<String, byte[]>> events) {
@@ -110,53 +99,53 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
 
     @Override
     public CompletableFuture<Boolean> isEmpty() {
-        return client.submit(new IsEmpty());
+        return session.submit(new IsEmpty());
     }
 
     @Override
     public CompletableFuture<Integer> size() {
-        return client.submit(new Size());
+        return session.submit(new Size());
     }
 
     @Override
     public CompletableFuture<Boolean> containsKey(String key) {
-        return client.submit(new ContainsKey(key));
+        return session.submit(new ContainsKey(key));
     }
 
     @Override
     public CompletableFuture<Boolean> containsValue(byte[] value) {
-        return client.submit(new ContainsValue(value));
+        return session.submit(new ContainsValue(value));
     }
 
     @Override
     public CompletableFuture<Versioned<byte[]>> get(String key) {
-        return client.submit(new Get(key));
+        return session.submit(new Get(key));
     }
 
     @Override
     public CompletableFuture<Versioned<byte[]>> getOrDefault(String key, byte[] defaultValue) {
-        return client.submit(new GetOrDefault(key, defaultValue));
+        return session.submit(new GetOrDefault(key, defaultValue));
     }
 
     @Override
     public CompletableFuture<Set<String>> keySet() {
-        return client.submit(new KeySet());
+        return session.submit(new KeySet());
     }
 
     @Override
     public CompletableFuture<Collection<Versioned<byte[]>>> values() {
-        return client.submit(new Values());
+        return session.submit(new Values());
     }
 
     @Override
     public CompletableFuture<Set<Map.Entry<String, Versioned<byte[]>>>> entrySet() {
-        return client.submit(new EntrySet());
+        return session.submit(new EntrySet());
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> put(String key, byte[] value) {
-        return client.submit(new UpdateAndGet(key, value, Match.ANY, Match.ANY))
+        return session.submit(new UpdateAndGet(key, value, Match.ANY, Match.ANY))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.oldValue());
     }
@@ -164,7 +153,7 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> putAndGet(String key, byte[] value) {
-        return client.submit(new UpdateAndGet(key, value, Match.ANY, Match.ANY))
+        return session.submit(new UpdateAndGet(key, value, Match.ANY, Match.ANY))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.newValue());
     }
@@ -172,7 +161,7 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> putIfAbsent(String key, byte[] value) {
-        return client.submit(new UpdateAndGet(key, value, Match.NULL, Match.ANY))
+        return session.submit(new UpdateAndGet(key, value, Match.NULL, Match.ANY))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.oldValue());
     }
@@ -180,7 +169,7 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> remove(String key) {
-        return client.submit(new UpdateAndGet(key, null, Match.ANY, Match.ANY))
+        return session.submit(new UpdateAndGet(key, null, Match.ANY, Match.ANY))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.oldValue());
     }
@@ -188,7 +177,7 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Boolean> remove(String key, byte[] value) {
-        return client.submit(new UpdateAndGet(key, null, Match.ifValue(value), Match.ANY))
+        return session.submit(new UpdateAndGet(key, null, Match.ifValue(value), Match.ANY))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.updated());
     }
@@ -196,7 +185,7 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Boolean> remove(String key, long version) {
-        return client.submit(new UpdateAndGet(key, null, Match.ANY, Match.ifValue(version)))
+        return session.submit(new UpdateAndGet(key, null, Match.ANY, Match.ifValue(version)))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.updated());
     }
@@ -204,7 +193,7 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> replace(String key, byte[] value) {
-        return client.submit(new UpdateAndGet(key, value, Match.NOT_NULL, Match.ANY))
+        return session.submit(new UpdateAndGet(key, value, Match.NOT_NULL, Match.ANY))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.oldValue());
     }
@@ -212,7 +201,7 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Boolean> replace(String key, byte[] oldValue, byte[] newValue) {
-        return client.submit(new UpdateAndGet(key, newValue, Match.ifValue(oldValue), Match.ANY))
+        return session.submit(new UpdateAndGet(key, newValue, Match.ifValue(oldValue), Match.ANY))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.updated());
     }
@@ -220,14 +209,14 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Boolean> replace(String key, long oldVersion, byte[] newValue) {
-        return client.submit(new UpdateAndGet(key, newValue, Match.ANY, Match.ifValue(oldVersion)))
+        return session.submit(new UpdateAndGet(key, newValue, Match.ANY, Match.ifValue(oldVersion)))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.updated());
     }
 
     @Override
     public CompletableFuture<Void> clear() {
-        return client.submit(new Clear())
+        return session.submit(new Clear())
                 .whenComplete((r, e) -> throwIfLocked(r))
                 .thenApply(v -> null);
     }
@@ -259,7 +248,7 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
             }
             Match<byte[]> valueMatch = r1 == null ? Match.NULL : Match.ANY;
             Match<Long> versionMatch = r1 == null ? Match.ANY : Match.ifValue(r1.version());
-            return client.submit(new UpdateAndGet(key, computedValue.get(),
+            return session.submit(new UpdateAndGet(key, computedValue.get(),
                                                                       valueMatch, versionMatch))
                     .whenComplete((r, e) -> throwIfLocked(r.status()))
                     .thenApply(v -> v.newValue());
@@ -270,7 +259,7 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
     public CompletableFuture<Void> addListener(
             MapEventListener<String, byte[]> listener, Executor executor) {
         if (mapEventListeners.isEmpty()) {
-            return client.submit(new Listen()).thenRun(() ->
+            return session.submit(new Listen()).thenRun(() ->
                                    mapEventListeners.put(listener,
                                            executor));
         } else {
@@ -283,7 +272,7 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
     public synchronized CompletableFuture<Void> removeListener(MapEventListener<String, byte[]> listener) {
         if (mapEventListeners.remove(listener) != null &&
                 mapEventListeners.isEmpty()) {
-            return client.submit(new Unlisten())
+            return session.submit(new Unlisten())
                     .thenApply(v -> null);
         }
         return CompletableFuture.completedFuture(null);
@@ -298,74 +287,74 @@ public class AtomixConsistentTreeMap extends AbstractResource<AtomixConsistentTr
 
     @Override
     public CompletableFuture<String> firstKey() {
-        return client.submit(new FirstKey<String>());
+        return session.submit(new FirstKey<String>());
     }
 
     @Override
     public CompletableFuture<String> lastKey() {
-        return client.submit(new LastKey<String>());
+        return session.submit(new LastKey<String>());
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> ceilingEntry(String key) {
-        return client.submit(new CeilingEntry(key));
+        return session.submit(new CeilingEntry(key));
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> floorEntry(String key) {
-        return client.submit(new FloorEntry<String, Versioned<byte[]>>(key));
+        return session.submit(new FloorEntry<String, Versioned<byte[]>>(key));
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> higherEntry(
             String key) {
-        return client.submit(new HigherEntry<String, Versioned<byte[]>>(key));
+        return session.submit(new HigherEntry<String, Versioned<byte[]>>(key));
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> lowerEntry(
             String key) {
-        return client.submit(new LowerEntry<>(key));
+        return session.submit(new LowerEntry<>(key));
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> firstEntry() {
-        return client.submit(new FirstEntry());
+        return session.submit(new FirstEntry());
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> lastEntry() {
-        return client.submit(new LastEntry<String, Versioned<byte[]>>());
+        return session.submit(new LastEntry<String, Versioned<byte[]>>());
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> pollFirstEntry() {
-        return client.submit(new PollFirstEntry());
+        return session.submit(new PollFirstEntry());
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> pollLastEntry() {
-        return client.submit(new PollLastEntry());
+        return session.submit(new PollLastEntry());
     }
 
     @Override
     public CompletableFuture<String> lowerKey(String key) {
-        return client.submit(new LowerKey(key));
+        return session.submit(new LowerKey(key));
     }
 
     @Override
     public CompletableFuture<String> floorKey(String key) {
-        return client.submit(new FloorKey(key));
+        return session.submit(new FloorKey(key));
     }
 
     @Override
     public CompletableFuture<String> ceilingKey(String key) {
-        return client.submit(new CeilingKey(key));
+        return session.submit(new CeilingKey(key));
     }
 
     @Override
     public CompletableFuture<String> higherKey(String key) {
-        return client.submit(new HigherKey(key));
+        return session.submit(new HigherKey(key));
     }
 
     @Override

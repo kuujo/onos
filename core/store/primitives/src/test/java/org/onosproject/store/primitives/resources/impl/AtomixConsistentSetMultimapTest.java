@@ -19,12 +19,12 @@ package org.onosproject.store.primitives.resources.impl;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.TreeMultiset;
-import io.atomix.resource.ResourceType;
 import org.apache.commons.collections.keyvalue.DefaultMapEntry;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.onlab.util.Tools;
+import org.onosproject.store.service.DistributedPrimitive;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -63,11 +63,6 @@ public class AtomixConsistentSetMultimapTest extends AtomixTestBase {
     @AfterClass
     public static void postTestCleanup() throws Exception {
         clearTests();
-    }
-
-    @Override
-    protected ResourceType resourceType() {
-        return new ResourceType(AtomixConsistentSetMultimap.class);
     }
 
     /**
@@ -403,9 +398,10 @@ public class AtomixConsistentSetMultimapTest extends AtomixTestBase {
 
     private AtomixConsistentSetMultimap createResource(String mapName) {
         try {
-            AtomixConsistentSetMultimap map = createAtomixClient().
-                    getResource(mapName, AtomixConsistentSetMultimap.class)
-                    .join();
+            AtomixConsistentSetMultimap map = new AtomixConsistentSetMultimap(createCopycatClient().sessionBuilder()
+                    .withType(DistributedPrimitive.Type.CONSISTENT_MULTIMAP.name())
+                    .withName(mapName)
+                    .build());
             return map;
         } catch (Throwable e) {
             throw new RuntimeException(e.toString());

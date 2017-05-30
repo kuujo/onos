@@ -16,13 +16,11 @@
 package org.onosproject.store.primitives.resources.impl;
 
 import io.atomix.copycat.client.CopycatClient;
-import io.atomix.resource.AbstractResource;
-import io.atomix.resource.ResourceTypeInfo;
+import io.atomix.copycat.client.session.CopycatSession;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -51,8 +49,7 @@ import com.google.common.collect.Sets;
 /**
  * Distributed resource providing the {@link AsyncLeaderElector} primitive.
  */
-@ResourceTypeInfo(id = -152, factory = AtomixLeaderElectorFactory.class)
-public class AtomixLeaderElector extends AbstractResource<AtomixLeaderElector>
+public class AtomixLeaderElector extends AbstractCopycatPrimitive
     implements AsyncLeaderElector {
     private final Set<Consumer<Status>> statusChangeListeners =
             Sets.newCopyOnWriteArraySet();
@@ -77,11 +74,11 @@ public class AtomixLeaderElector extends AbstractResource<AtomixLeaderElector>
         }
     };
 
-    public AtomixLeaderElector(CopycatClient client, Properties properties) {
-        super(client, properties);
+    public AtomixLeaderElector(CopycatSession session) {
+        super(session);
         cache = CacheBuilder.newBuilder()
                 .maximumSize(1000)
-                .build(CacheLoader.from(topic -> this.client.submit(new GetLeadership(topic))));
+                .build(CacheLoader.from(topic -> this.session.submit(new GetLeadership(topic))));
 
         cacheUpdater = change -> {
             Leadership leadership = change.newValue();
@@ -93,7 +90,13 @@ public class AtomixLeaderElector extends AbstractResource<AtomixLeaderElector>
             }
         };
         addStatusChangeListener(statusListener);
-        client.onStateChange(this::handleStateChange);
+
+        session.onStateChange(state -> {
+            if (state == CopycatSession.State.OPEN && isListening()) {
+                session.submit(new Listen());
+            }
+        });
+        session.onEvent(CHANGE_SUBJECT, this::handleEvent);
     }
 
     @Override
@@ -107,19 +110,6 @@ public class AtomixLeaderElector extends AbstractResource<AtomixLeaderElector>
         return null;
     }
 
-    @Override
-    public CompletableFuture<AtomixLeaderElector> open() {
-        return super.open().thenApply(result -> {
-            client.onStateChange(state -> {
-                if (state == CopycatClient.State.CONNECTED && isListening()) {
-                    client.submit(new Listen());
-                }
-            });
-            client.onEvent(CHANGE_SUBJECT, this::handleEvent);
-            return result;
-        });
-    }
-
     public CompletableFuture<AtomixLeaderElector> setupCache() {
         return addChangeListener(cacheUpdater).thenApply(v -> this);
     }
@@ -130,27 +120,27 @@ public class AtomixLeaderElector extends AbstractResource<AtomixLeaderElector>
 
     @Override
     public CompletableFuture<Leadership> run(String topic, NodeId nodeId) {
-        return client.submit(new Run(topic, nodeId)).whenComplete((r, e) -> cache.invalidate(topic));
+        return session.submit(new Run(topic, nodeId)).whenComplete((r, e) -> cache.invalidate(topic));
     }
 
     @Override
     public CompletableFuture<Void> withdraw(String topic) {
-        return client.submit(new Withdraw(topic)).whenComplete((r, e) -> cache.invalidate(topic));
+        return session.submit(new Withdraw(topic)).whenComplete((r, e) -> cache.invalidate(topic));
     }
 
     @Override
     public CompletableFuture<Boolean> anoint(String topic, NodeId nodeId) {
-        return client.submit(new Anoint(topic, nodeId)).whenComplete((r, e) -> cache.invalidate(topic));
+        return session.submit(new Anoint(topic, nodeId)).whenComplete((r, e) -> cache.invalidate(topic));
     }
 
     @Override
     public CompletableFuture<Boolean> promote(String topic, NodeId nodeId) {
-        return client.submit(new Promote(topic, nodeId)).whenComplete((r, e) -> cache.invalidate(topic));
+        return session.submit(new Promote(topic, nodeId)).whenComplete((r, e) -> cache.invalidate(topic));
     }
 
     @Override
     public CompletableFuture<Void> evict(NodeId nodeId) {
-        return client.submit(new AtomixLeaderElectorCommands.Evict(nodeId));
+        return session.submit(new AtomixLeaderElectorCommands.Evict(nodeId));
     }
 
     @Override
@@ -165,17 +155,17 @@ public class AtomixLeaderElector extends AbstractResource<AtomixLeaderElector>
 
     @Override
     public CompletableFuture<Map<String, Leadership>> getLeaderships() {
-        return client.submit(new GetAllLeaderships());
+        return session.submit(new GetAllLeaderships());
     }
 
     public CompletableFuture<Set<String>> getElectedTopics(NodeId nodeId) {
-        return client.submit(new GetElectedTopics(nodeId));
+        return session.submit(new GetElectedTopics(nodeId));
     }
 
     @Override
     public synchronized CompletableFuture<Void> addChangeListener(Consumer<Change<Leadership>> consumer) {
         if (leadershipChangeListeners.isEmpty()) {
-            return client.submit(new Listen()).thenRun(() -> leadershipChangeListeners.add(consumer));
+            return session.submit(new Listen()).thenRun(() -> leadershipChangeListeners.add(consumer));
         } else {
             leadershipChangeListeners.add(consumer);
             return CompletableFuture.completedFuture(null);
@@ -185,7 +175,7 @@ public class AtomixLeaderElector extends AbstractResource<AtomixLeaderElector>
     @Override
     public synchronized CompletableFuture<Void> removeChangeListener(Consumer<Change<Leadership>> consumer) {
         if (leadershipChangeListeners.remove(consumer) && leadershipChangeListeners.isEmpty()) {
-            return client.submit(new Unlisten()).thenApply(v -> null);
+            return session.submit(new Unlisten()).thenApply(v -> null);
         }
         return CompletableFuture.completedFuture(null);
     }
@@ -207,9 +197,5 @@ public class AtomixLeaderElector extends AbstractResource<AtomixLeaderElector>
 
     private boolean isListening() {
         return !leadershipChangeListeners.isEmpty();
-    }
-
-    private void handleStateChange(CopycatClient.State state) {
-        statusChangeListeners().forEach(listener -> listener.accept(mapper.apply(state)));
     }
 }

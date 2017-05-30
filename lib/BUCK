@@ -2,10 +2,10 @@
 # ***** Use onos-lib-gen *****
 
 pass_thru_pom(
-    name = 'onos-dependencies-pom',
-    src = 'pom.xml',
-    out = 'onos-dependencies.pom',
-    artifactId = 'onos-dependencies',
+  name = 'onos-dependencies-pom',
+  src = 'pom.xml',
+  out = 'onos-dependencies.pom',
+  artifactId = 'onos-dependencies',
 )
 
 osgi_feature_group(
@@ -149,15 +149,6 @@ remote_jar (
 )
 
 remote_jar (
-  name = 'atomix',
-  out = 'atomix-all-1.0.8.jar',
-  url = 'mvn:io.atomix:atomix-all:jar:1.0.8',
-  sha1 = 'e8cbf8d93ceb151c89a62ed9eca8024bf6030c31',
-  maven_coords = 'io.atomix:atomix-all:1.0.8',
-  visibility = [ 'PUBLIC' ],
-)
-
-remote_jar (
   name = 'commons-codec',
   out = 'commons-codec-1.10.jar',
   url = 'mvn:commons-codec:commons-codec:jar:1.10',
@@ -253,6 +244,13 @@ remote_jar (
   url = 'mvn:com.googlecode.concurrent-trees:concurrent-trees:jar:2.6.0',
   sha1 = '3d120cafe57cd8d487e168db334487b00a7707b2',
   maven_coords = 'com.googlecode.concurrent-trees:concurrent-trees:2.6.0',
+  visibility = [ 'PUBLIC' ],
+)
+
+prebuilt_jar (
+  name = 'copycat',
+  binary_jar = 'copycat-all-2.0.0-SNAPSHOT.jar',
+  maven_coords = 'io.atomix.copycat:copycat-all:2.0.0-SNAPSHOT',
   visibility = [ 'PUBLIC' ],
 )
 
@@ -823,30 +821,24 @@ remote_jar (
   visibility = [ 'PUBLIC' ],
 )
 
-remote_jar (
+prebuilt_jar (
   name = 'catalyst-concurrent',
-  out = 'catalyst-concurrent-1.2.1.jar',
-  url = 'mvn:io.atomix.catalyst:catalyst-concurrent:jar:1.2.1',
-  sha1 = '8f62c04cfef9ea69f40d75eaa4728e60add4b79a',
-  maven_coords = 'io.atomix.catalyst:catalyst-concurrent:1.2.1',
+  binary_jar = 'catalyst-concurrent-1.3.0-SNAPSHOT.jar',
+  maven_coords = 'io.atomix.catalyst:catalyst-concurrent:1.3.0-SNAPSHOT',
   visibility = [ 'PUBLIC' ],
 )
 
-remote_jar (
+prebuilt_jar (
   name = 'catalyst-netty',
-  out = 'catalyst-netty-1.2.1.jar',
-  url = 'mvn:io.atomix.catalyst:catalyst-netty:jar:1.2.1',
-  sha1 = 'db6a1bf1704c009098bb78e17e8ded88c725fe79',
-  maven_coords = 'io.atomix.catalyst:catalyst-netty:1.2.1',
+  binary_jar = 'catalyst-netty-1.3.0-SNAPSHOT.jar',
+  maven_coords = 'io.atomix.catalyst:catalyst-netty:1.3.0-SNAPSHOT',
   visibility = [ 'PUBLIC' ],
 )
 
-remote_jar (
+prebuilt_jar (
   name = 'catalyst-transport',
-  out = 'catalyst-transport-1.2.1.jar',
-  url = 'mvn:io.atomix.catalyst:catalyst-transport:jar:1.2.1',
-  sha1 = 'a50e7ee0f8b76b9d081ab7531ea86f5bdb63bc09',
-  maven_coords = 'io.atomix.catalyst:catalyst-transport:1.2.1',
+  binary_jar = 'catalyst-transport-1.3.0-SNAPSHOT.jar',
+  maven_coords = 'io.atomix.catalyst:catalyst-transport:1.3.0-SNAPSHOT',
   visibility = [ 'PUBLIC' ],
 )
 
@@ -1270,4 +1262,3 @@ remote_jar (
   maven_coords = 'org.apache.sshd:sshd-core:1.4.0',
   visibility = [ 'PUBLIC' ],
 )
-

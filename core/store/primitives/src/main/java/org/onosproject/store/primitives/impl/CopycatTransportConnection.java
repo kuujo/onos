@@ -17,15 +17,15 @@ package org.onosproject.store.primitives.impl;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.SocketException;
 import java.nio.ByteBuffer;
-import java.util.Map;
+import java.nio.charset.StandardCharsets;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -37,7 +37,6 @@ import io.atomix.catalyst.serializer.SerializationException;
 import io.atomix.catalyst.transport.Connection;
 import io.atomix.catalyst.transport.TransportException;
 import io.atomix.catalyst.util.reference.ReferenceCounted;
-import org.apache.commons.io.IOUtils;
 import org.onlab.util.Tools;
 import org.onosproject.cluster.PartitionId;
 import org.onosproject.store.cluster.messaging.Endpoint;
@@ -47,9 +46,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static com.google.common.base.Preconditions.checkNotNull;
-import static org.onosproject.store.primitives.impl.CopycatTransport.CLOSE;
 import static org.onosproject.store.primitives.impl.CopycatTransport.FAILURE;
-import static org.onosproject.store.primitives.impl.CopycatTransport.MESSAGE;
 import static org.onosproject.store.primitives.impl.CopycatTransport.SUCCESS;
 
 /**
@@ -64,9 +61,9 @@ public class CopycatTransportConnection implements Connection {
     private final Endpoint endpoint;
     private final MessagingService messagingService;
     private final ThreadContext context;
-    private final Map<Class, InternalHandler> handlers = new ConcurrentHashMap<>();
     private final Listeners<Throwable> exceptionListeners = new Listeners<>();
     private final Listeners<Connection> closeListeners = new Listeners<>();
+    private final Set<String> registeredSubjects = new CopyOnWriteArraySet<>();
 
     CopycatTransportConnection(
             long connectionId,
@@ -82,27 +79,45 @@ public class CopycatTransportConnection implements Connection {
         this.endpoint = checkNotNull(endpoint, "endpoint cannot be null");
         this.messagingService = checkNotNull(messagingService, "messagingService cannot be null");
         this.context = checkNotNull(context, "context cannot be null");
-        messagingService.registerHandler(localSubject, this::handle);
+        messagingService.registerHandler(localSubject, (e, m) -> handleClose());
+    }
+
+    /**
+     * Returns the local subject for the given message type.
+     *
+     * @param type the message type for which to return the local subject
+     * @return the local subject for the given message type
+     */
+    private String localType(String type) {
+        return localSubject + "-" + type;
+    }
+
+    /**
+     * Returns the remote subject for the given message type.
+     *
+     * @param type the message type for which to return the remote subject
+     * @return the remote subject for the given message type
+     */
+    private String remoteType(String type) {
+        return remoteSubject + "-" + type;
     }
 
     @Override
-    public CompletableFuture<Void> send(Object message) {
+    public CompletableFuture<Void> send(String type, Object message) {
         ThreadContext context = ThreadContext.currentContextOrThrow();
         CompletableFuture<Void> future = new CompletableFuture<>();
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            DataOutputStream dos = new DataOutputStream(baos);
-            dos.writeByte(MESSAGE);
-            context.serializer().writeObject(message, baos);
+            context.serializer().writeObject(message, new DataOutputStream(baos));
             if (message instanceof ReferenceCounted) {
                 ((ReferenceCounted<?>) message).release();
             }
 
-            messagingService.sendAsync(endpoint, remoteSubject, baos.toByteArray())
+            messagingService.sendAsync(endpoint, remoteType(type), baos.toByteArray())
                     .whenComplete((r, e) -> {
                         if (e != null) {
-                            context.executor().execute(() -> future.completeExceptionally(e));
+                            context.execute(() -> future.completeExceptionally(e));
                         } else {
-                            context.executor().execute(() -> future.complete(null));
+                            context.execute(() -> future.complete(null));
                         }
                     });
         } catch (SerializationException | IOException e) {
@@ -112,20 +127,15 @@ public class CopycatTransportConnection implements Connection {
     }
 
     @Override
-    public <T, U> CompletableFuture<U> sendAndReceive(T message) {
+    public <T, U> CompletableFuture<U> sendAndReceive(String type, T message) {
         ThreadContext context = ThreadContext.currentContextOrThrow();
         CompletableFuture<U> future = new CompletableFuture<>();
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            DataOutputStream dos = new DataOutputStream(baos);
-            dos.writeByte(MESSAGE);
-            context.serializer().writeObject(message, baos);
+            context.serializer().writeObject(message, new DataOutputStream(baos));
             if (message instanceof ReferenceCounted) {
                 ((ReferenceCounted<?>) message).release();
             }
-            messagingService.sendAndReceive(endpoint,
-                                            remoteSubject,
-                                            baos.toByteArray(),
-                                            context.executor())
+            messagingService.sendAndReceive(endpoint, remoteType(type), baos.toByteArray(), context)
                     .whenComplete((response, error) -> handleResponse(response, error, future));
         } catch (SerializationException | IOException e) {
             future.completeExceptionally(e);
@@ -173,50 +183,41 @@ public class CopycatTransportConnection implements Connection {
     }
 
     /**
-     * Handles a message sent to the connection.
-     */
-    private CompletableFuture<byte[]> handle(Endpoint sender, byte[] payload) {
-        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(payload))) {
-            byte type = input.readByte();
-            switch (type) {
-                case MESSAGE:
-                    return handleMessage(IOUtils.toByteArray(input));
-                case CLOSE:
-                    return handleClose();
-                default:
-                    throw new IllegalStateException("Invalid message type");
-            }
-        } catch (IOException e) {
-            Throwables.propagate(e);
-            return null;
-        }
-    }
-
-    /**
      * Handles a message from the other side of the connection.
      */
     @SuppressWarnings("unchecked")
-    private CompletableFuture<byte[]> handleMessage(byte[] message) {
+    private CompletableFuture<byte[]> handleMessage(
+            byte[] message,
+            Function<Object, CompletableFuture<Object>> handler,
+            ThreadContext context) {
         try {
-            Object request = context.serializer().readObject(new ByteArrayInputStream(message));
-            InternalHandler handler = handlers.get(request.getClass());
-            if (handler == null) {
-                log.warn("No handler registered on connection {}-{} for type {}",
-                         partitionId, connectionId, request.getClass());
-                return Tools.exceptionalFuture(new IllegalStateException(
-                        "No handler registered for " + request.getClass()));
-            }
-
-            return handler.handle(request).handle((result, error) -> {
-                try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-                    baos.write(error != null ? FAILURE : SUCCESS);
-                    context.serializer().writeObject(error != null ? error : result, baos);
-                    return baos.toByteArray();
-                } catch (IOException e) {
-                    Throwables.propagate(e);
-                    return null;
+            CompletableFuture<byte[]> future = new CompletableFuture<>();
+            context.execute(() -> {
+                Object request = context.serializer().readObject(new ByteArrayInputStream(message));
+                CompletableFuture<Object> responseFuture = handler.apply(request);
+                if (responseFuture != null) {
+                    responseFuture.whenComplete((response, error) -> {
+                        if (error != null) {
+                            try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                                baos.write(FAILURE);
+                                context.serializer().writeObject(error, baos);
+                                future.complete(baos.toByteArray());
+                            } catch (IOException e) {
+                                Throwables.propagate(e);
+                            }
+                        } else {
+                            try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                                baos.write(SUCCESS);
+                                context.serializer().writeObject(response, baos);
+                                future.complete(baos.toByteArray());
+                            } catch (IOException e) {
+                                Throwables.propagate(e);
+                            }
+                        }
+                    });
                 }
             });
+            return future;
         } catch (Exception e) {
             return Tools.exceptionalFuture(e);
         }
@@ -227,7 +228,7 @@ public class CopycatTransportConnection implements Connection {
      */
     private CompletableFuture<byte[]> handleClose() {
         CompletableFuture<byte[]> future = new CompletableFuture<>();
-        context.executor().execute(() -> {
+        context.execute(() -> {
             close(null);
             ByteBuffer responseBuffer = ByteBuffer.allocate(1);
             responseBuffer.put(SUCCESS);
@@ -237,19 +238,25 @@ public class CopycatTransportConnection implements Connection {
     }
 
     @Override
-    public <T, U> Connection handler(Class<T> type, Consumer<T> handler) {
-        return handler(type, r -> {
-            handler.accept(r);
+    @SuppressWarnings("unchecked")
+    public <T> Connection registerHandler(String type, Consumer<T> handler) {
+        return registerHandler(type, r -> {
+            handler.accept((T) r);
             return null;
         });
     }
 
     @Override
-    public <T, U> Connection handler(Class<T> type, Function<T, CompletableFuture<U>> handler) {
+    @SuppressWarnings("unchecked")
+    public <T, U> Connection registerHandler(String type, Function<T, CompletableFuture<U>> handler) {
+        String subject = localType(type);
+        ThreadContext context = ThreadContext.currentContextOrThrow();
+        messagingService.registerHandler(subject,
+                (e, m) -> handleMessage(m, (Function) handler, context));
         if (log.isTraceEnabled()) {
             log.trace("Registered handler on connection {}-{}: {}", partitionId, connectionId, type);
         }
-        handlers.put(type, new InternalHandler(handler, ThreadContext.currentContextOrThrow()));
+        registeredSubjects.add(subject);
         return this;
     }
 
@@ -267,12 +274,9 @@ public class CopycatTransportConnection implements Connection {
     public CompletableFuture<Void> close() {
         log.debug("Closing connection {}-{}", partitionId, connectionId);
 
-        ByteBuffer requestBuffer = ByteBuffer.allocate(1);
-        requestBuffer.put(CLOSE);
-
         ThreadContext context = ThreadContext.currentContextOrThrow();
         CompletableFuture<Void> future = new CompletableFuture<>();
-        messagingService.sendAndReceive(endpoint, remoteSubject, requestBuffer.array(), context.executor())
+        messagingService.sendAndReceive(endpoint, remoteSubject, new byte[0], context)
                 .whenComplete((payload, error) -> {
                     close(error);
                     Throwable wrappedError = error;
@@ -299,6 +303,9 @@ public class CopycatTransportConnection implements Connection {
      */
     private void close(Throwable error) {
         log.debug("Connection {}-{} closed", partitionId, connectionId);
+        for (String subject : registeredSubjects) {
+            messagingService.unregisterHandler(subject);
+        }
         messagingService.unregisterHandler(localSubject);
         if (error != null) {
             exceptionListeners.accept(error);
@@ -378,7 +385,7 @@ public class CopycatTransportConnection implements Connection {
         @SuppressWarnings("unchecked")
         CompletableFuture<Object> handle(Object message) {
             CompletableFuture<Object> future = new CompletableFuture<>();
-            context.executor().execute(() -> {
+            context.execute(() -> {
                 CompletableFuture<Object> responseFuture = (CompletableFuture<Object>) handler.apply(message);
                 if (responseFuture != null) {
                     responseFuture.whenComplete((r, e) -> {

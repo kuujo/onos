@@ -22,19 +22,18 @@ import static org.onosproject.store.service.MapEvent.Type.UPDATE;
 import static org.slf4j.LoggerFactory.getLogger;
 import io.atomix.copycat.server.Commit;
 import io.atomix.copycat.server.Snapshottable;
+import io.atomix.copycat.server.StateMachine;
 import io.atomix.copycat.server.StateMachineExecutor;
 import io.atomix.copycat.server.session.ServerSession;
 import io.atomix.copycat.server.session.SessionListener;
 import io.atomix.copycat.server.storage.snapshot.SnapshotReader;
 import io.atomix.copycat.server.storage.snapshot.SnapshotWriter;
-import io.atomix.resource.ResourceStateMachine;
 
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -73,7 +72,7 @@ import com.google.common.collect.Sets;
 /**
  * State Machine for {@link AtomixConsistentMap} resource.
  */
-public class AtomixConsistentMapState extends ResourceStateMachine implements SessionListener, Snapshottable {
+public class AtomixConsistentMapState extends StateMachine implements SessionListener, Snapshottable {
 
     private final Logger log = getLogger(getClass());
     private final Map<Long, Commit<? extends Listen>> listeners = new HashMap<>();
@@ -81,10 +80,6 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
     private final Set<String> preparedKeys = Sets.newHashSet();
     private final Map<TransactionId, TransactionScope> activeTransactions = Maps.newHashMap();
     private long currentVersion;
-
-    public AtomixConsistentMapState(Properties properties) {
-        super(properties);
-    }
 
     @Override
     public void snapshot(SnapshotWriter writer) {
@@ -120,7 +115,7 @@ public class AtomixConsistentMapState extends ResourceStateMachine implements Se
     }
 
     @Override
-    public void delete() {
+    public void close() {
         // Delete Listeners
         listeners.values().forEach(Commit::close);
         listeners.clear();

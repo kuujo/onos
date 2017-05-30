@@ -15,63 +15,64 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import io.atomix.variables.DistributedLong;
-
 import java.util.concurrent.CompletableFuture;
 
+import io.atomix.copycat.client.session.CopycatSession;
 import org.onosproject.store.service.AsyncAtomicCounter;
 
+import static org.onosproject.store.primitives.resources.impl.AtomixCounterCommands.AddAndGet;
+import static org.onosproject.store.primitives.resources.impl.AtomixCounterCommands.CompareAndSet;
+import static org.onosproject.store.primitives.resources.impl.AtomixCounterCommands.Get;
+import static org.onosproject.store.primitives.resources.impl.AtomixCounterCommands.GetAndAdd;
+import static org.onosproject.store.primitives.resources.impl.AtomixCounterCommands.GetAndIncrement;
+import static org.onosproject.store.primitives.resources.impl.AtomixCounterCommands.IncrementAndGet;
+import static org.onosproject.store.primitives.resources.impl.AtomixCounterCommands.Set;
+
 /**
- * {@code AsyncAtomicCounter} implementation backed by Atomix
- * {@link DistributedLong}.
+ * Atomix counter implementation.
  */
-public class AtomixCounter implements AsyncAtomicCounter {
+public class AtomixCounter extends AbstractCopycatPrimitive implements AsyncAtomicCounter {
 
-    private final String name;
-    private final DistributedLong distLong;
-
-    public AtomixCounter(String name, DistributedLong distLong) {
-        this.name = name;
-        this.distLong = distLong;
+    public AtomixCounter(CopycatSession session) {
+        super(session);
     }
 
-    @Override
-    public String name() {
-        return name;
-    }
-
-    @Override
-    public CompletableFuture<Long> incrementAndGet() {
-        return distLong.incrementAndGet();
-    }
-
-    @Override
-    public CompletableFuture<Long> getAndIncrement() {
-        return distLong.getAndIncrement();
-    }
-
-    @Override
-    public CompletableFuture<Long> getAndAdd(long delta) {
-        return distLong.getAndAdd(delta);
-    }
-
-    @Override
-    public CompletableFuture<Long> addAndGet(long delta) {
-        return distLong.addAndGet(delta);
+    private long nullOrZero(Long value) {
+        return value != null ? value : 0;
     }
 
     @Override
     public CompletableFuture<Long> get() {
-        return distLong.get();
+        return session.submit(new Get()).thenApply(this::nullOrZero);
     }
 
     @Override
     public CompletableFuture<Void> set(long value) {
-        return distLong.set(value);
+        return session.submit(new Set(value));
     }
 
     @Override
     public CompletableFuture<Boolean> compareAndSet(long expectedValue, long updateValue) {
-        return distLong.compareAndSet(expectedValue, updateValue);
+        return session.submit(new CompareAndSet(expectedValue, updateValue));
+    }
+
+    @Override
+    public CompletableFuture<Long> addAndGet(long delta) {
+        return session.submit(new AddAndGet(delta));
+    }
+
+    @Override
+    public CompletableFuture<Long> getAndAdd(long delta) {
+        return session.submit(new GetAndAdd(delta));
+    }
+
+    @Override
+    public CompletableFuture<Long> incrementAndGet() {
+        return session.submit(new IncrementAndGet());
+    }
+
+    @Override
+    public CompletableFuture<Long> getAndIncrement() {
+        return session.submit(new GetAndIncrement());
     }
 }

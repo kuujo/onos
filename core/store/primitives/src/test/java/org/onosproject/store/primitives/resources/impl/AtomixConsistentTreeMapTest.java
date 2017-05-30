@@ -17,11 +17,11 @@ package org.onosproject.store.primitives.resources.impl;
 
 import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
-import io.atomix.resource.ResourceType;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.onlab.util.Tools;
+import org.onosproject.store.service.DistributedPrimitive;
 import org.onosproject.store.service.MapEvent;
 import org.onosproject.store.service.MapEventListener;
 
@@ -68,11 +68,6 @@ public class AtomixConsistentTreeMapTest extends AtomixTestBase {
     @AfterClass
     public static void postTestCleanup() throws Throwable {
         clearTests();
-    }
-
-    @Override
-    protected ResourceType resourceType() {
-        return new ResourceType(AtomixConsistentTreeMap.class);
     }
 
     /**
@@ -359,7 +354,7 @@ public class AtomixConsistentTreeMapTest extends AtomixTestBase {
         map.ceilingKey(keyOne).thenAccept(result -> assertNull(result))
                 .join();
         map.higherKey(keyOne).thenAccept(result -> assertNull(result)).join();
-        map.delete().join();
+        //map.delete().join();
 
         allKeys.forEach(key -> map.put(
                 key, allValues.get(allKeys.indexOf(key)))
@@ -481,15 +476,15 @@ public class AtomixConsistentTreeMapTest extends AtomixTestBase {
         map.higherKey(keyFour).thenAccept(
                 result -> assertNull(result))
                 .join();
-        map.delete().join();
-
+        //map.delete().join();
     }
 
     private AtomixConsistentTreeMap createResource(String mapName) {
         try {
-            AtomixConsistentTreeMap map = createAtomixClient().
-                    getResource(mapName, AtomixConsistentTreeMap.class)
-                    .join();
+            AtomixConsistentTreeMap map = new AtomixConsistentTreeMap(createCopycatClient().sessionBuilder()
+                    .withType(DistributedPrimitive.Type.CONSISTENT_TREEMAP.name())
+                    .withName(mapName)
+                    .build());
             return map;
         } catch (Throwable e) {
             throw new RuntimeException(e.toString());

@@ -15,15 +15,14 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import io.atomix.Atomix;
-import io.atomix.AtomixClient;
-import io.atomix.resource.ResourceType;
+import io.atomix.copycat.client.CopycatClient;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.onosproject.cluster.Leadership;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.event.Change;
+import org.onosproject.store.service.DistributedPrimitive;
 
 import java.util.LinkedList;
 import java.util.Queue;
@@ -53,29 +52,28 @@ public class AtomixLeaderElectorTest extends AtomixTestBase {
         clearTests();
     }
 
-    @Override
-    protected ResourceType resourceType() {
-        return new ResourceType(AtomixLeaderElector.class);
-    }
-
     @Test
     public void testRun() throws Throwable {
         leaderElectorRunTests();
     }
 
     private void leaderElectorRunTests() throws Throwable {
-        Atomix client1 = createAtomixClient();
-        AtomixLeaderElector elector1 = client1.getResource("test-elector-run",
-                                                           AtomixLeaderElector.class).join();
+        CopycatClient client1 = createCopycatClient();
+        AtomixLeaderElector elector1 = new AtomixLeaderElector(client1.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-run")
+                .build());
         elector1.run("foo", node1).thenAccept(result -> {
             assertEquals(node1, result.leaderNodeId());
             assertEquals(1, result.leader().term());
             assertEquals(1, result.candidates().size());
             assertEquals(node1, result.candidates().get(0));
         }).join();
-        Atomix client2 = createAtomixClient();
-        AtomixLeaderElector elector2 = client2.getResource("test-elector-run",
-                                                           AtomixLeaderElector.class).join();
+        CopycatClient client2 = createCopycatClient();
+        AtomixLeaderElector elector2 = new AtomixLeaderElector(client2.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-run")
+                .build());
         elector2.run("foo", node2).thenAccept(result -> {
             assertEquals(node1, result.leaderNodeId());
             assertEquals(1, result.leader().term());
@@ -91,13 +89,17 @@ public class AtomixLeaderElectorTest extends AtomixTestBase {
     }
 
     private void leaderElectorWithdrawTests() throws Throwable {
-        Atomix client1 = createAtomixClient();
-        AtomixLeaderElector elector1 = client1.getResource("test-elector-withdraw",
-                                                           AtomixLeaderElector.class).join();
+        CopycatClient client1 = createCopycatClient();
+        AtomixLeaderElector elector1 = new AtomixLeaderElector(client1.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-withdraw")
+                .build());
         elector1.run("foo", node1).join();
-        Atomix client2 = createAtomixClient();
-        AtomixLeaderElector elector2 = client2.getResource("test-elector-withdraw",
-                                                           AtomixLeaderElector.class).join();
+        CopycatClient client2 = createCopycatClient();
+        AtomixLeaderElector elector2 = new AtomixLeaderElector(client2.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-withdraw")
+                .build());
         elector2.run("foo", node2).join();
 
         LeaderEventListener listener1 = new LeaderEventListener();
@@ -129,15 +131,21 @@ public class AtomixLeaderElectorTest extends AtomixTestBase {
     }
 
     private void leaderElectorAnointTests() throws Throwable {
-        Atomix client1 = createAtomixClient();
-        AtomixLeaderElector elector1 = client1.getResource("test-elector-anoint",
-                                                           AtomixLeaderElector.class).join();
-        Atomix client2 = createAtomixClient();
-        AtomixLeaderElector elector2 = client2.getResource("test-elector-anoint",
-                                                           AtomixLeaderElector.class).join();
-        Atomix client3 = createAtomixClient();
-        AtomixLeaderElector elector3 = client3.getResource("test-elector-anoint",
-                                                           AtomixLeaderElector.class).join();
+        CopycatClient client1 = createCopycatClient();
+        AtomixLeaderElector elector1 = new AtomixLeaderElector(client1.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-anoint")
+                .build());
+        CopycatClient client2 = createCopycatClient();
+        AtomixLeaderElector elector2 = new AtomixLeaderElector(client2.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-anoint")
+                .build());
+        CopycatClient client3 = createCopycatClient();
+        AtomixLeaderElector elector3 = new AtomixLeaderElector(client3.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-anoint")
+                .build());
         elector1.run("foo", node1).join();
         elector2.run("foo", node2).join();
 
@@ -185,15 +193,21 @@ public class AtomixLeaderElectorTest extends AtomixTestBase {
     }
 
     private void leaderElectorPromoteTests() throws Throwable {
-        AtomixClient client1 = createAtomixClient();
-        AtomixLeaderElector elector1 = client1.getResource("test-elector-promote",
-                                                           AtomixLeaderElector.class).join();
-        AtomixClient client2 = createAtomixClient();
-        AtomixLeaderElector elector2 = client2.getResource("test-elector-promote",
-                                                           AtomixLeaderElector.class).join();
-        AtomixClient client3 = createAtomixClient();
-        AtomixLeaderElector elector3 = client3.getResource("test-elector-promote",
-                                                           AtomixLeaderElector.class).join();
+        CopycatClient client1 = createCopycatClient();
+        AtomixLeaderElector elector1 = new AtomixLeaderElector(client1.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-promote")
+                .build());
+        CopycatClient client2 = createCopycatClient();
+        AtomixLeaderElector elector2 = new AtomixLeaderElector(client2.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-promote")
+                .build());
+        CopycatClient client3 = createCopycatClient();
+        AtomixLeaderElector elector3 = new AtomixLeaderElector(client3.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-promote")
+                .build());
         elector1.run("foo", node1).join();
         elector2.run("foo", node2).join();
 
@@ -245,13 +259,17 @@ public class AtomixLeaderElectorTest extends AtomixTestBase {
     }
 
     private void leaderElectorLeaderSessionCloseTests() throws Throwable {
-        AtomixClient client1 = createAtomixClient();
-        AtomixLeaderElector elector1 = client1.getResource("test-elector-leader-session-close",
-                                                           AtomixLeaderElector.class).join();
+        CopycatClient client1 = createCopycatClient();
+        AtomixLeaderElector elector1 = new AtomixLeaderElector(client1.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-leader-session-close")
+                .build());
         elector1.run("foo", node1).join();
-        Atomix client2 = createAtomixClient();
-        AtomixLeaderElector elector2 = client2.getResource("test-elector-leader-session-close",
-                                                           AtomixLeaderElector.class).join();
+        CopycatClient client2 = createCopycatClient();
+        AtomixLeaderElector elector2 = new AtomixLeaderElector(client2.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-leader-session-close")
+                .build());
         LeaderEventListener listener = new LeaderEventListener();
         elector2.run("foo", node2).join();
         elector2.addChangeListener(listener).join();
@@ -269,13 +287,17 @@ public class AtomixLeaderElectorTest extends AtomixTestBase {
     }
 
     private void leaderElectorNonLeaderSessionCloseTests() throws Throwable {
-        Atomix client1 = createAtomixClient();
-        AtomixLeaderElector elector1 = client1.getResource("test-elector-non-leader-session-close",
-                                                           AtomixLeaderElector.class).join();
+        CopycatClient client1 = createCopycatClient();
+        AtomixLeaderElector elector1 = new AtomixLeaderElector(client1.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-non-leader-session-close")
+                .build());
         elector1.run("foo", node1).join();
-        AtomixClient client2 = createAtomixClient();
-        AtomixLeaderElector elector2 = client2.getResource("test-elector-non-leader-session-close",
-                                                           AtomixLeaderElector.class).join();
+        CopycatClient client2 = createCopycatClient();
+        AtomixLeaderElector elector2 = new AtomixLeaderElector(client2.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-non-leader-session-close")
+                .build());
         LeaderEventListener listener = new LeaderEventListener();
         elector2.run("foo", node2).join();
         elector1.addChangeListener(listener).join();
@@ -293,12 +315,16 @@ public class AtomixLeaderElectorTest extends AtomixTestBase {
     }
 
     private void leaderElectorQueryTests() throws Throwable {
-        Atomix client1 = createAtomixClient();
-        Atomix client2 = createAtomixClient();
-        AtomixLeaderElector elector1 = client1.getResource("test-elector-query",
-                                                           AtomixLeaderElector.class).join();
-        AtomixLeaderElector elector2 = client2.getResource("test-elector-query",
-                                                           AtomixLeaderElector.class).join();
+        CopycatClient client1 = createCopycatClient();
+        AtomixLeaderElector elector1 = new AtomixLeaderElector(client1.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-query")
+                .build());
+        CopycatClient client2 = createCopycatClient();
+        AtomixLeaderElector elector2 = new AtomixLeaderElector(client2.sessionBuilder()
+                .withType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+                .withName("test-elector-query")
+                .build());
         elector1.run("foo", node1).join();
         elector2.run("foo", node2).join();
         elector2.run("bar", node2).join();

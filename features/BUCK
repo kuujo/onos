@@ -3,10 +3,10 @@ osgi_feature (
   title="ONOS 3rd party dependencies",
   required_features = [],
   included_bundles = [
-    '//lib:atomix',
     '//lib:commons-lang',
     '//lib:commons-lang3',
     '//lib:commons-configuration',
+    '//lib:copycat',
     '//lib:guava',
     '//lib:netty',
     '//lib:netty-common',

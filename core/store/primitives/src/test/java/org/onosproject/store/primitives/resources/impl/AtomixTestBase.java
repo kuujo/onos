@@ -15,47 +15,35 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import com.google.common.util.concurrent.Uninterruptibles;
-
-import io.atomix.AtomixClient;
-import io.atomix.catalyst.serializer.Serializer;
-import io.atomix.catalyst.transport.Address;
-import io.atomix.catalyst.transport.local.LocalServerRegistry;
-import io.atomix.catalyst.transport.netty.NettyTransport;
-import io.atomix.copycat.client.CopycatClient;
-import io.atomix.copycat.server.CopycatServer;
-import io.atomix.copycat.server.storage.Storage;
-import io.atomix.copycat.server.storage.StorageLevel;
-import io.atomix.manager.internal.ResourceManagerState;
-import io.atomix.resource.ResourceType;
-import org.onlab.junit.TestTools;
-import org.onosproject.store.primitives.impl.CatalystSerializers;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.google.common.util.concurrent.Uninterruptibles;
+import io.atomix.catalyst.serializer.Serializer;
+import io.atomix.catalyst.transport.Address;
+import io.atomix.catalyst.transport.netty.NettyTransport;
+import io.atomix.copycat.client.CopycatClient;
+import io.atomix.copycat.server.CopycatServer;
+import io.atomix.copycat.server.storage.Storage;
+import io.atomix.copycat.server.storage.StorageLevel;
+import org.onlab.junit.TestTools;
+import org.onosproject.store.primitives.impl.CatalystSerializers;
+import org.onosproject.store.primitives.impl.RecoveringCopycatClient;
+import org.onosproject.store.primitives.impl.RetryingCopycatClient;
+import org.onosproject.store.primitives.impl.StoragePartition;
+
 /**
  * Base class for various Atomix tests.
  */
 public abstract class AtomixTestBase {
-    protected static LocalServerRegistry registry = new LocalServerRegistry();
     protected static List<Address> members = new ArrayList<>();
     protected static List<CopycatClient> copycatClients = new ArrayList<>();
     protected static List<CopycatServer> copycatServers = new ArrayList<>();
-    protected static List<AtomixClient> atomixClients = new ArrayList<>();
-    protected static List<CopycatServer> atomixServers = new ArrayList<>();
     protected static Serializer serializer = CatalystSerializers.getSerializer();
     protected static AtomicInteger port = new AtomicInteger(49200);
-
-    /**
-     * Creates a new resource state machine.
-     *
-     * @return A new resource state machine.
-     */
-    protected abstract ResourceType resourceType();
 
     /**
      * Returns the next server address.
@@ -97,25 +85,24 @@ public abstract class AtomixTestBase {
      * Creates a Copycat server.
      */
     protected static CopycatServer createCopycatServer(Address address) {
-        CopycatServer server = CopycatServer.builder(address)
+        CopycatServer.Builder builder = CopycatServer.builder(address)
                 .withTransport(NettyTransport.builder().withThreads(1).build())
                 .withStorage(Storage.builder()
                              .withStorageLevel(StorageLevel.MEMORY)
                              .build())
-                .withStateMachine(ResourceManagerState::new)
-                .withSerializer(serializer.clone())
-                .build();
+                .withSerializer(serializer.clone());
+        StoragePartition.STATE_MACHINES.forEach(builder::addStateMachine);
+        CopycatServer server = builder.build();
         copycatServers.add(server);
         return server;
     }
 
     public static void clearTests() throws Exception {
-        registry = new LocalServerRegistry();
         members = new ArrayList<>();
 
         CompletableFuture<Void> closeClients =
-                CompletableFuture.allOf(atomixClients.stream()
-                                                     .map(AtomixClient::close)
+                CompletableFuture.allOf(copycatClients.stream()
+                                                     .map(CopycatClient::close)
                                                      .toArray(CompletableFuture[]::new));
         closeClients.join();
 
@@ -125,22 +112,21 @@ public abstract class AtomixTestBase {
                                                       .toArray(CompletableFuture[]::new));
         closeServers.join();
 
-        atomixClients.clear();
+        copycatClients.clear();
         copycatServers.clear();
     }
 
 
     /**
-     * Creates a Atomix client.
+     * Creates a Copycat client.
      */
-    protected AtomixClient createAtomixClient() {
+    protected CopycatClient createCopycatClient() {
         CountDownLatch latch = new CountDownLatch(1);
-        AtomixClient client = AtomixClient.builder()
+        CopycatClient client = new RetryingCopycatClient(new RecoveringCopycatClient(CopycatClient.builder()
                 .withTransport(NettyTransport.builder().withThreads(1).build())
-                .withSerializer(serializer.clone())
-                .build();
+                .withSerializer(serializer.clone())));
         client.connect(members).thenRun(latch::countDown);
-        atomixClients.add(client);
+        copycatClients.add(client);
         Uninterruptibles.awaitUninterruptibly(latch);
         return client;
     }

@@ -18,6 +18,7 @@ package org.onosproject.store.primitives.resources.impl;
 import static org.slf4j.LoggerFactory.getLogger;
 
 import com.google.common.collect.ImmutableSet;
+import io.atomix.copycat.server.StateMachine;
 import io.atomix.copycat.server.session.ServerSession;
 import io.atomix.copycat.server.Commit;
 import io.atomix.copycat.server.Snapshottable;
@@ -25,7 +26,6 @@ import io.atomix.copycat.server.StateMachineExecutor;
 import io.atomix.copycat.server.session.SessionListener;
 import io.atomix.copycat.server.storage.snapshot.SnapshotReader;
 import io.atomix.copycat.server.storage.snapshot.SnapshotWriter;
-import io.atomix.resource.ResourceStateMachine;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -34,7 +34,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -67,7 +66,7 @@ import com.google.common.collect.Maps;
 /**
  * State machine for {@link AtomixLeaderElector} resource.
  */
-public class AtomixLeaderElectorState extends ResourceStateMachine
+public class AtomixLeaderElectorState extends StateMachine
     implements SessionListener, Snapshottable {
 
     private final Logger log = getLogger(getClass());
@@ -77,10 +76,6 @@ public class AtomixLeaderElectorState extends ResourceStateMachine
     private final Serializer serializer = Serializer.using(Arrays.asList(KryoNamespaces.API),
                                                            ElectionState.class,
                                                            Registration.class);
-
-    public AtomixLeaderElectorState(Properties properties) {
-        super(properties);
-    }
 
     @Override
     protected void configure(StateMachineExecutor executor) {
@@ -113,7 +108,7 @@ public class AtomixLeaderElectorState extends ResourceStateMachine
     }
 
     @Override
-    public void delete() {
+    public void close() {
       // Close and clear Listeners
       listeners.values().forEach(Commit::close);
       listeners.clear();

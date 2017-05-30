@@ -18,9 +18,7 @@ package org.onosproject.store.primitives.resources.impl;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import io.atomix.Atomix;
-import io.atomix.AtomixClient;
-import io.atomix.resource.ResourceType;
+import io.atomix.copycat.client.CopycatClient;
 
 import java.time.Duration;
 import java.util.Arrays;
@@ -34,6 +32,7 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.onlab.util.Tools;
+import org.onosproject.store.service.DistributedPrimitive;
 import org.onosproject.store.service.Task;
 import org.onosproject.store.service.WorkQueueStats;
 
@@ -57,21 +56,22 @@ public class AtomixWorkQueueTest extends AtomixTestBase {
         clearTests();
     }
 
-    @Override
-    protected ResourceType resourceType() {
-        return new ResourceType(AtomixWorkQueue.class);
-    }
-
     @Test
     public void testAdd() throws Throwable {
         String queueName = UUID.randomUUID().toString();
-        Atomix atomix1 = createAtomixClient();
-        AtomixWorkQueue queue1 = atomix1.getResource(queueName, AtomixWorkQueue.class).join();
+        CopycatClient client1 = createCopycatClient();
+        AtomixWorkQueue queue1 = new AtomixWorkQueue(client1.sessionBuilder()
+                .withType(DistributedPrimitive.Type.WORK_QUEUE.name())
+                .withName(queueName)
+                .build());
         byte[] item = DEFAULT_PAYLOAD;
         queue1.addOne(item).join();
 
-        Atomix atomix2 = createAtomixClient();
-        AtomixWorkQueue queue2 = atomix2.getResource(queueName, AtomixWorkQueue.class).join();
+        CopycatClient client2 = createCopycatClient();
+        AtomixWorkQueue queue2 = new AtomixWorkQueue(client2.sessionBuilder()
+                .withType(DistributedPrimitive.Type.WORK_QUEUE.name())
+                .withName(queueName)
+                .build());
         byte[] task2 = DEFAULT_PAYLOAD;
         queue2.addOne(task2).join();
 
@@ -84,8 +84,11 @@ public class AtomixWorkQueueTest extends AtomixTestBase {
     @Test
     public void testAddMultiple() throws Throwable {
         String queueName = UUID.randomUUID().toString();
-        Atomix atomix1 = createAtomixClient();
-        AtomixWorkQueue queue1 = atomix1.getResource(queueName, AtomixWorkQueue.class).join();
+        CopycatClient client1 = createCopycatClient();
+        AtomixWorkQueue queue1 = new AtomixWorkQueue(client1.sessionBuilder()
+                .withType(DistributedPrimitive.Type.WORK_QUEUE.name())
+                .withName(queueName)
+                .build());
         byte[] item1 = DEFAULT_PAYLOAD;
         byte[] item2 = DEFAULT_PAYLOAD;
         queue1.addMultiple(Arrays.asList(item1, item2)).join();
@@ -99,13 +102,19 @@ public class AtomixWorkQueueTest extends AtomixTestBase {
     @Test
     public void testTakeAndComplete() throws Throwable {
         String queueName = UUID.randomUUID().toString();
-        Atomix atomix1 = createAtomixClient();
-        AtomixWorkQueue queue1 = atomix1.getResource(queueName, AtomixWorkQueue.class).join();
+        CopycatClient client1 = createCopycatClient();
+        AtomixWorkQueue queue1 = new AtomixWorkQueue(client1.sessionBuilder()
+                .withType(DistributedPrimitive.Type.WORK_QUEUE.name())
+                .withName(queueName)
+                .build());
         byte[] item1 = DEFAULT_PAYLOAD;
         queue1.addOne(item1).join();
 
-        Atomix atomix2 = createAtomixClient();
-        AtomixWorkQueue queue2 = atomix2.getResource(queueName, AtomixWorkQueue.class).join();
+        CopycatClient client2 = createCopycatClient();
+        AtomixWorkQueue queue2 = new AtomixWorkQueue(client2.sessionBuilder()
+                .withType(DistributedPrimitive.Type.WORK_QUEUE.name())
+                .withName(queueName)
+                .build());
         Task<byte[]> removedTask = queue2.take().join();
 
         WorkQueueStats stats = queue2.stats().join();
@@ -128,13 +137,19 @@ public class AtomixWorkQueueTest extends AtomixTestBase {
     @Test
     public void testUnexpectedClientClose() throws Throwable {
         String queueName = UUID.randomUUID().toString();
-        Atomix atomix1 = createAtomixClient();
-        AtomixWorkQueue queue1 = atomix1.getResource(queueName, AtomixWorkQueue.class).join();
+        CopycatClient client1 = createCopycatClient();
+        AtomixWorkQueue queue1 = new AtomixWorkQueue(client1.sessionBuilder()
+                .withType(DistributedPrimitive.Type.WORK_QUEUE.name())
+                .withName(queueName)
+                .build());
         byte[] item1 = DEFAULT_PAYLOAD;
         queue1.addOne(item1).join();
 
-        AtomixClient atomix2 = createAtomixClient();
-        AtomixWorkQueue queue2 = atomix2.getResource(queueName, AtomixWorkQueue.class).join();
+        CopycatClient client2 = createCopycatClient();
+        AtomixWorkQueue queue2 = new AtomixWorkQueue(client2.sessionBuilder()
+                .withType(DistributedPrimitive.Type.WORK_QUEUE.name())
+                .withName(queueName)
+                .build());
         queue2.take().join();
 
         WorkQueueStats stats = queue1.stats().join();
@@ -142,7 +157,7 @@ public class AtomixWorkQueueTest extends AtomixTestBase {
         assertEquals(1, stats.totalInProgress());
         assertEquals(0, stats.totalCompleted());
 
-        atomix2.close().join();
+        client2.close().join();
 
         stats = queue1.stats().join();
         assertEquals(1, stats.totalPending());
@@ -153,15 +168,21 @@ public class AtomixWorkQueueTest extends AtomixTestBase {
     @Test
     public void testAutomaticTaskProcessing() throws Throwable {
         String queueName = UUID.randomUUID().toString();
-        Atomix atomix1 = createAtomixClient();
-        AtomixWorkQueue queue1 = atomix1.getResource(queueName, AtomixWorkQueue.class).join();
+        CopycatClient client1 = createCopycatClient();
+        AtomixWorkQueue queue1 = new AtomixWorkQueue(client1.sessionBuilder()
+                .withType(DistributedPrimitive.Type.WORK_QUEUE.name())
+                .withName(queueName)
+                .build());
         Executor executor = Executors.newSingleThreadExecutor();
 
         CountDownLatch latch1 = new CountDownLatch(1);
         queue1.registerTaskProcessor(s -> latch1.countDown(), 2, executor);
 
-        AtomixClient atomix2 = createAtomixClient();
-        AtomixWorkQueue queue2 = atomix2.getResource(queueName, AtomixWorkQueue.class).join();
+        CopycatClient client2 = createCopycatClient();
+        AtomixWorkQueue queue2 = new AtomixWorkQueue(client2.sessionBuilder()
+                .withType(DistributedPrimitive.Type.WORK_QUEUE.name())
+                .withName(queueName)
+                .build());
         byte[] item1 = DEFAULT_PAYLOAD;
         queue2.addOne(item1).join();
 
@@ -189,13 +210,19 @@ public class AtomixWorkQueueTest extends AtomixTestBase {
     @Test
     public void testDestroy() {
         String queueName = UUID.randomUUID().toString();
-        Atomix atomix1 = createAtomixClient();
-        AtomixWorkQueue queue1 = atomix1.getResource(queueName, AtomixWorkQueue.class).join();
+        CopycatClient client1 = createCopycatClient();
+        AtomixWorkQueue queue1 = new AtomixWorkQueue(client1.sessionBuilder()
+                .withType(DistributedPrimitive.Type.WORK_QUEUE.name())
+                .withName(queueName)
+                .build());
         byte[] item = DEFAULT_PAYLOAD;
         queue1.addOne(item).join();
 
-        Atomix atomix2 = createAtomixClient();
-        AtomixWorkQueue queue2 = atomix2.getResource(queueName, AtomixWorkQueue.class).join();
+        CopycatClient client2 = createCopycatClient();
+        AtomixWorkQueue queue2 = new AtomixWorkQueue(client2.sessionBuilder()
+                .withType(DistributedPrimitive.Type.WORK_QUEUE.name())
+                .withName(queueName)
+                .build());
         byte[] task2 = DEFAULT_PAYLOAD;
         queue2.addOne(task2).join();
 
@@ -215,8 +242,11 @@ public class AtomixWorkQueueTest extends AtomixTestBase {
     @Test
     public void testCompleteAttemptWithIncorrectSession() {
         String queueName = UUID.randomUUID().toString();
-        Atomix atomix1 = createAtomixClient();
-        AtomixWorkQueue queue1 = atomix1.getResource(queueName, AtomixWorkQueue.class).join();
+        CopycatClient client1 = createCopycatClient();
+        AtomixWorkQueue queue1 = new AtomixWorkQueue(client1.sessionBuilder()
+                .withType(DistributedPrimitive.Type.WORK_QUEUE.name())
+                .withName(queueName)
+                .build());
         byte[] item = DEFAULT_PAYLOAD;
         queue1.addOne(item).join();
 
@@ -224,8 +254,11 @@ public class AtomixWorkQueueTest extends AtomixTestBase {
         String taskId = task.taskId();
 
         // Create another client and get a handle to the same queue.
-        Atomix atomix2 = createAtomixClient();
-        AtomixWorkQueue queue2 = atomix2.getResource(queueName, AtomixWorkQueue.class).join();
+        CopycatClient client2 = createCopycatClient();
+        AtomixWorkQueue queue2 = new AtomixWorkQueue(client2.sessionBuilder()
+                .withType(DistributedPrimitive.Type.WORK_QUEUE.name())
+                .withName(queueName)
+                .build());
 
         // Attempt completing the task with new client and verify task is not completed
         queue2.complete(taskId).join();

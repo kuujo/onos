@@ -17,11 +17,10 @@ package org.onosproject.store.primitives.resources.impl;
 
 import java.util.concurrent.CompletableFuture;
 
-import io.atomix.resource.ResourceType;
-import io.atomix.variables.DistributedLong;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.onosproject.store.service.DistributedPrimitive;
 
 import static org.junit.Assert.assertEquals;
 
@@ -40,20 +39,21 @@ public class AtomixIdGeneratorTest extends AtomixTestBase {
         clearTests();
     }
 
-    @Override
-    protected ResourceType resourceType() {
-        return new ResourceType(DistributedLong.class);
-    }
-
     /**
      * Tests generating IDs.
      */
     @Test
     public void testNextId() throws Throwable {
         AtomixIdGenerator idGenerator1 = new AtomixIdGenerator("testNextId",
-                createAtomixClient().getLong("testNextId").join());
+                new AtomixCounter(createCopycatClient().sessionBuilder()
+                        .withType(DistributedPrimitive.Type.COUNTER.name())
+                        .withName("testNextId")
+                        .build()));
         AtomixIdGenerator idGenerator2 = new AtomixIdGenerator("testNextId",
-                createAtomixClient().getLong("testNextId").join());
+                new AtomixCounter(createCopycatClient().sessionBuilder()
+                        .withType(DistributedPrimitive.Type.COUNTER.name())
+                        .withName("testNextId")
+                        .build()));
 
         CompletableFuture<Long> future11 = idGenerator1.nextId();
         CompletableFuture<Long> future12 = idGenerator1.nextId();
@@ -83,9 +83,15 @@ public class AtomixIdGeneratorTest extends AtomixTestBase {
     @Test
     public void testNextIdBatchRollover() throws Throwable {
         AtomixIdGenerator idGenerator1 = new AtomixIdGenerator("testNextIdBatchRollover",
-                createAtomixClient().getLong("testNextIdBatchRollover").join(), 2);
+                new AtomixCounter(createCopycatClient().sessionBuilder()
+                        .withType(DistributedPrimitive.Type.COUNTER.name())
+                        .withName("testNextIdBatchRollover")
+                        .build()));
         AtomixIdGenerator idGenerator2 = new AtomixIdGenerator("testNextIdBatchRollover",
-                createAtomixClient().getLong("testNextIdBatchRollover").join(), 2);
+                new AtomixCounter(createCopycatClient().sessionBuilder()
+                        .withType(DistributedPrimitive.Type.COUNTER.name())
+                        .withName("testNextIdBatchRollover")
+                        .build()));
 
         CompletableFuture<Long> future11 = idGenerator1.nextId();
         CompletableFuture<Long> future12 = idGenerator1.nextId();

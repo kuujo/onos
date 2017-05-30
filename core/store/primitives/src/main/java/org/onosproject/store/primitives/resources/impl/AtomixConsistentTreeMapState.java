@@ -20,10 +20,10 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import io.atomix.copycat.server.Commit;
+import io.atomix.copycat.server.StateMachine;
 import io.atomix.copycat.server.StateMachineExecutor;
 import io.atomix.copycat.server.session.ServerSession;
 import io.atomix.copycat.server.session.SessionListener;
-import io.atomix.resource.ResourceStateMachine;
 import org.onlab.util.Match;
 import org.onosproject.store.service.MapEvent;
 import org.onosproject.store.service.Versioned;
@@ -34,7 +34,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
@@ -74,7 +73,7 @@ import static org.onosproject.store.primitives.resources.impl.MapEntryUpdateResu
  * State machine corresponding to {@link AtomixConsistentTreeMap} backed by a
  * {@link TreeMap}.
  */
-public class AtomixConsistentTreeMapState extends ResourceStateMachine implements SessionListener {
+public class AtomixConsistentTreeMapState extends StateMachine implements SessionListener {
 
     private final Map<Long, Commit<? extends Listen>> listeners =
             Maps.newHashMap();
@@ -104,10 +103,6 @@ public class AtomixConsistentTreeMapState extends ResourceStateMachine implement
     private Function<Commit<FloorKey>, String> floorKeyFunction = this::floorKey;
     private Function<Commit<CeilingKey>, String> ceilingKeyFunction = this::ceilingKey;
     private Function<Commit<HigherKey>, String> higherKeyFunction = this::higherKey;
-
-    public AtomixConsistentTreeMapState(Properties properties) {
-        super(properties);
-    }
 
     @Override
     public void configure(StateMachineExecutor executor) {
@@ -146,7 +141,7 @@ public class AtomixConsistentTreeMapState extends ResourceStateMachine implement
     }
 
     @Override
-    public void delete() {
+    public void close() {
         listeners.values().forEach(Commit::close);
         listeners.clear();
         tree.values().forEach(TreeMapEntryValue::discard);

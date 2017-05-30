@@ -15,10 +15,10 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import io.atomix.resource.ResourceType;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.onosproject.store.service.DistributedPrimitive;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -38,18 +38,15 @@ public class AtomixAtomicCounterMapTest extends AtomixTestBase {
         clearTests();
     }
 
-    @Override
-    protected ResourceType resourceType() {
-        return new ResourceType(AtomixAtomicCounterMap.class);
-    }
-
     /**
      * Tests basic counter map operations.
      */
     @Test
     public void testBasicCounterMapOperations() throws Throwable {
-        AtomixAtomicCounterMap map = createAtomixClient().getResource("testBasicCounterMapOperationMap",
-                AtomixAtomicCounterMap.class).join();
+        AtomixAtomicCounterMap map = new AtomixAtomicCounterMap(createCopycatClient().sessionBuilder()
+                .withType(DistributedPrimitive.Type.COUNTER_MAP.name())
+                .withName("testBasicCounterMapOperationMap")
+                .build());
 
         map.isEmpty().thenAccept(isEmpty -> {
             assertTrue(isEmpty);

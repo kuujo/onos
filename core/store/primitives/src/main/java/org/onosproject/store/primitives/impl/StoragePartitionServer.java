@@ -22,8 +22,6 @@ import io.atomix.catalyst.transport.Transport;
 import io.atomix.copycat.server.CopycatServer;
 import io.atomix.copycat.server.storage.Storage;
 import io.atomix.copycat.server.storage.StorageLevel;
-import io.atomix.manager.internal.ResourceManagerState;
-import io.atomix.manager.util.ResourceManagerTypeResolver;
 
 import java.io.File;
 import java.util.Collection;
@@ -97,20 +95,18 @@ public class StoragePartitionServer implements Managed<StoragePartitionServer> {
     }
 
     private CopycatServer buildServer() {
-        CopycatServer server = CopycatServer.builder(localAddress)
+        CopycatServer.Builder builder = CopycatServer.builder(localAddress)
                 .withName("partition-" + partition.getId())
                 .withSerializer(serializer.clone())
                 .withTransport(transport.get())
-                .withStateMachine(ResourceManagerState::new)
                 .withStorage(Storage.builder()
                         .withStorageLevel(StorageLevel.DISK)
                         .withCompactionThreads(1)
                         .withDirectory(dataFolder)
                         .withMaxEntriesPerSegment(MAX_ENTRIES_PER_LOG_SEGMENT)
-                        .build())
-                .build();
-        server.serializer().resolve(new ResourceManagerTypeResolver());
-        return server;
+                        .build());
+        StoragePartition.STATE_MACHINES.forEach(builder::addStateMachine);
+        return builder.build();
     }
 
     public CompletableFuture<Void> join(Collection<Address> otherMembers) {

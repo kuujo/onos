@@ -15,17 +15,20 @@
  */
 package org.onosproject.store.primitives.impl;
 
+import com.google.common.collect.ImmutableMap;
 import io.atomix.catalyst.serializer.Serializer;
 import io.atomix.catalyst.transport.Address;
-import io.atomix.resource.ResourceType;
+import io.atomix.copycat.server.StateMachine;
 
 import java.io.File;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.onosproject.cluster.ClusterService;
@@ -34,12 +37,18 @@ import org.onosproject.cluster.NodeId;
 import org.onosproject.cluster.Partition;
 import org.onosproject.cluster.PartitionId;
 import org.onosproject.store.cluster.messaging.MessagingService;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentMap;
-import org.onosproject.store.primitives.resources.impl.AtomixLeaderElector;
+import org.onosproject.store.primitives.resources.impl.AtomixAtomicCounterMapState;
+import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapState;
+import org.onosproject.store.primitives.resources.impl.AtomixConsistentSetMultimapState;
+import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapState;
+import org.onosproject.store.primitives.resources.impl.AtomixCounterState;
+import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeState;
+import org.onosproject.store.primitives.resources.impl.AtomixLeaderElectorState;
+import org.onosproject.store.primitives.resources.impl.AtomixWorkQueueState;
+import org.onosproject.store.service.DistributedPrimitive;
 import org.onosproject.store.service.PartitionInfo;
 
 import com.google.common.collect.Collections2;
-import com.google.common.collect.ImmutableSet;
 
 /**
  * Storage partition.
@@ -57,9 +66,17 @@ public class StoragePartition implements Managed<StoragePartition> {
     private StoragePartitionServer server;
     private StoragePartitionClient client;
 
-    public static final Collection<ResourceType> RESOURCE_TYPES = ImmutableSet.of(
-                                                                    new ResourceType(AtomixLeaderElector.class),
-                                                                    new ResourceType(AtomixConsistentMap.class));
+    public static final Map<String, Supplier<StateMachine>> STATE_MACHINES =
+            ImmutableMap.<String, Supplier<StateMachine>>builder()
+                    .put(DistributedPrimitive.Type.CONSISTENT_MAP.name(), AtomixConsistentMapState::new)
+                    .put(DistributedPrimitive.Type.CONSISTENT_TREEMAP.name(), AtomixConsistentTreeMapState::new)
+                    .put(DistributedPrimitive.Type.CONSISTENT_MULTIMAP.name(), AtomixConsistentSetMultimapState::new)
+                    .put(DistributedPrimitive.Type.COUNTER_MAP.name(), AtomixAtomicCounterMapState::new)
+                    .put(DistributedPrimitive.Type.COUNTER.name(), AtomixCounterState::new)
+                    .put(DistributedPrimitive.Type.LEADER_ELECTOR.name(), AtomixLeaderElectorState::new)
+                    .put(DistributedPrimitive.Type.WORK_QUEUE.name(), AtomixWorkQueueState::new)
+                    .put(DistributedPrimitive.Type.DOCUMENT_TREE.name(), AtomixDocumentTreeState::new)
+                    .build();
 
     public StoragePartition(Partition partition,
             MessagingService messagingService,

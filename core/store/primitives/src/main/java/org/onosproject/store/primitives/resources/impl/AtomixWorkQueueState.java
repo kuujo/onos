@@ -18,18 +18,17 @@ package org.onosproject.store.primitives.resources.impl;
 import static org.slf4j.LoggerFactory.getLogger;
 import io.atomix.copycat.server.Commit;
 import io.atomix.copycat.server.Snapshottable;
+import io.atomix.copycat.server.StateMachine;
 import io.atomix.copycat.server.StateMachineExecutor;
 import io.atomix.copycat.server.session.ServerSession;
 import io.atomix.copycat.server.session.SessionListener;
 import io.atomix.copycat.server.storage.snapshot.SnapshotReader;
 import io.atomix.copycat.server.storage.snapshot.SnapshotWriter;
-import io.atomix.resource.ResourceStateMachine;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -59,7 +58,7 @@ import com.google.common.util.concurrent.AtomicLongMap;
 /**
  * State machine for {@link AtomixWorkQueue} resource.
  */
-public class AtomixWorkQueueState  extends ResourceStateMachine implements SessionListener, Snapshottable {
+public class AtomixWorkQueueState extends StateMachine implements SessionListener, Snapshottable {
 
     private final Logger log = getLogger(getClass());
 
@@ -69,10 +68,6 @@ public class AtomixWorkQueueState  extends ResourceStateMachine implements Sessi
     private final Map<String, TaskAssignment> assignments = Maps.newHashMap();
     private final Map<Long, Commit<? extends Register>> registeredWorkers = Maps.newHashMap();
     private final AtomicLongMap<Long> activeTasksPerSession = AtomicLongMap.create();
-
-    protected AtomixWorkQueueState(Properties config) {
-        super(config);
-    }
 
     @Override
     protected void configure(StateMachineExecutor executor) {

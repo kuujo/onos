@@ -47,7 +47,7 @@ public class PartitionsListCommand extends AbstractShellCommand {
     private boolean reportClientInfo = false;
 
     private static final String SERVER_FMT = "%-20s %8s %25s %s";
-    private static final String CLIENT_FMT = "%-20s %8s %10s %25s";
+    private static final String CLIENT_FMT = "%-20s %10s %25s";
 
     /**
      * Displays partition info as text.
@@ -91,7 +91,7 @@ public class PartitionsListCommand extends AbstractShellCommand {
         }
         ClusterService clusterService = get(ClusterService.class);
         print("-------------------------------------------------------------------");
-        print(CLIENT_FMT, "Name", "SessionId", "Status", "Servers");
+        print(CLIENT_FMT, "Name", "Status", "Servers");
         print("-------------------------------------------------------------------");
 
         for (PartitionClientInfo info : partitionClientInfo) {
@@ -100,8 +100,7 @@ public class PartitionsListCommand extends AbstractShellCommand {
                 ControllerNode server = clusterService.getNode(serverId);
                 String serverString = String.format("%s:%d", server.id(), server.tcpPort());
                 if (first) {
-                    print(CLIENT_FMT, info.partitionId(), info.sessionId(),
-                            info.status(), serverString);
+                    print(CLIENT_FMT, info.partitionId(), info.status(), serverString);
                     first = false;
                 } else {
                     print(CLIENT_FMT, "", "", "", serverString);
@@ -165,7 +164,6 @@ public class PartitionsListCommand extends AbstractShellCommand {
 
             // Complete the partition attributes and add it to the array
             partition.put("partitionId", info.partitionId().toString())
-                    .put("sessionId", info.sessionId())
                     .put("status", info.status().toString());
             partitions.add(partition);
 

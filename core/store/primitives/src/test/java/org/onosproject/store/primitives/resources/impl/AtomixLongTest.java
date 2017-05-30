@@ -15,12 +15,11 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import io.atomix.Atomix;
-import io.atomix.resource.ResourceType;
-import io.atomix.variables.DistributedLong;
+import io.atomix.copycat.client.CopycatClient;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.onosproject.store.service.DistributedPrimitive;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -41,20 +40,17 @@ public class AtomixLongTest extends AtomixTestBase {
         clearTests();
     }
 
-    @Override
-    protected ResourceType resourceType() {
-        return new ResourceType(DistributedLong.class);
-    }
-
     @Test
     public void testBasicOperations() throws Throwable {
         basicOperationsTest();
     }
 
     protected void basicOperationsTest() throws Throwable {
-        Atomix atomix = createAtomixClient();
-        AtomixCounter along = new AtomixCounter("test-long-basic-operations",
-                                                atomix.getLong("test-long").join());
+        CopycatClient client = createCopycatClient();
+        AtomixCounter along = new AtomixCounter(client.sessionBuilder()
+                .withType(DistributedPrimitive.Type.COUNTER.name())
+                .withName("test-counter-basic-operations")
+                .build());
         assertEquals(0, along.get().join().longValue());
         assertEquals(1, along.incrementAndGet().join().longValue());
         along.set(100).join();

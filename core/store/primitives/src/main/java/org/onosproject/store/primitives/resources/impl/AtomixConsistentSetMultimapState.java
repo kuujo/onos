@@ -26,17 +26,15 @@ import com.google.common.collect.Multiset;
 import com.google.common.collect.Sets;
 import io.atomix.copycat.server.Commit;
 import io.atomix.copycat.server.Snapshottable;
+import io.atomix.copycat.server.StateMachine;
 import io.atomix.copycat.server.StateMachineExecutor;
 import io.atomix.copycat.server.session.ServerSession;
-import io.atomix.copycat.server.session.SessionListener;
 import io.atomix.copycat.server.storage.snapshot.SnapshotReader;
 import io.atomix.copycat.server.storage.snapshot.SnapshotWriter;
-import io.atomix.resource.ResourceStateMachine;
 import org.onlab.util.CountDownCompleter;
 import org.onlab.util.Match;
 import org.onosproject.store.service.MultimapEvent;
 import org.onosproject.store.service.Versioned;
-import org.slf4j.Logger;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -45,7 +43,6 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -74,22 +71,15 @@ import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMu
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMultimapCommands.Size;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMultimapCommands.Unlisten;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMultimapCommands.Values;
-import static org.slf4j.LoggerFactory.getLogger;
 
 /**
  * State Machine for {@link AtomixConsistentSetMultimap} resource.
  */
-public class AtomixConsistentSetMultimapState extends ResourceStateMachine
-        implements SessionListener, Snapshottable {
+public class AtomixConsistentSetMultimapState extends StateMachine implements Snapshottable {
 
-    private final Logger log = getLogger(getClass());
     private final AtomicLong globalVersion = new AtomicLong(1);
     private final Map<Long, Commit<? extends Listen>> listeners = new HashMap<>();
     private final Map<String, MapEntryValue> backingMap = Maps.newHashMap();
-
-    public AtomixConsistentSetMultimapState(Properties properties) {
-        super(properties);
-    }
 
     @Override
     public void snapshot(SnapshotWriter writer) {

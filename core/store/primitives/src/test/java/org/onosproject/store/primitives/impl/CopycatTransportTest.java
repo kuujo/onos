@@ -17,7 +17,6 @@ package org.onosproject.store.primitives.impl;
 
 import java.time.Duration;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -106,11 +105,11 @@ public class CopycatTransportTest {
         CountDownLatch latch = new CountDownLatch(4);
         CountDownLatch listenLatch = new CountDownLatch(1);
         CountDownLatch handlerLatch = new CountDownLatch(1);
-        serverContext.executor().execute(() -> {
+        serverContext.execute(() -> {
             server.listen(new Address(IP_STRING, endpoint2.port()), connection -> {
                 serverContext.checkThread();
                 latch.countDown();
-                connection.handler(ConnectRequest.class, request -> {
+                connection.registerHandler(ConnectRequest.NAME, request -> {
                     serverContext.checkThread();
                     latch.countDown();
                     return CompletableFuture.completedFuture(ConnectResponse.builder()
@@ -125,7 +124,7 @@ public class CopycatTransportTest {
 
         listenLatch.await(5, TimeUnit.SECONDS);
 
-        clientContext.executor().execute(() -> {
+        clientContext.execute(() -> {
             client.connect(new Address(IP_STRING, endpoint2.port())).thenAccept(connection -> {
                 clientContext.checkThread();
                 latch.countDown();
@@ -134,8 +133,9 @@ public class CopycatTransportTest {
                 } catch (InterruptedException e) {
                     fail();
                 }
-                connection.<ConnectRequest, ConnectResponse>sendAndReceive(ConnectRequest.builder()
-                        .withClientId(UUID.randomUUID().toString())
+                connection.<ConnectRequest, ConnectResponse>sendAndReceive(ConnectRequest.NAME, ConnectRequest.builder()
+                        .withSession(1)
+                        .withConnection(1)
                         .build())
                         .thenAccept(response -> {
                             clientContext.checkThread();
@@ -160,13 +160,14 @@ public class CopycatTransportTest {
 
         CountDownLatch latch = new CountDownLatch(4);
         CountDownLatch listenLatch = new CountDownLatch(1);
-        serverContext.executor().execute(() -> {
+        serverContext.execute(() -> {
             server.listen(new Address(IP_STRING, endpoint2.port()), connection -> {
                 serverContext.checkThread();
                 latch.countDown();
                 serverContext.schedule(Duration.ofMillis(100), () -> {
-                    connection.<ConnectRequest, ConnectResponse>sendAndReceive(ConnectRequest.builder()
-                            .withClientId("foo")
+                    connection.<ConnectRequest, ConnectResponse>sendAndReceive(ConnectRequest.NAME, ConnectRequest.builder()
+                            .withSession(1)
+                            .withConnection(1)
                             .build())
                             .thenAccept(response -> {
                                 serverContext.checkThread();
@@ -179,14 +180,15 @@ public class CopycatTransportTest {
 
         listenLatch.await(5, TimeUnit.SECONDS);
 
-        clientContext.executor().execute(() -> {
+        clientContext.execute(() -> {
             client.connect(new Address(IP_STRING, endpoint2.port())).thenAccept(connection -> {
                 clientContext.checkThread();
                 latch.countDown();
-                connection.handler(ConnectRequest.class, request -> {
+                connection.<ConnectRequest, ConnectResponse>registerHandler(ConnectRequest.NAME, request -> {
                     clientContext.checkThread();
                     latch.countDown();
-                    assertEquals("foo", request.client());
+                    assertEquals(1, request.session());
+                    assertEquals(1, request.connection());
                     return CompletableFuture.completedFuture(ConnectResponse.builder()
                             .withStatus(Response.Status.OK)
                             .withLeader(new Address(IP_STRING, endpoint2.port()))
@@ -210,7 +212,7 @@ public class CopycatTransportTest {
 
         CountDownLatch latch = new CountDownLatch(5);
         CountDownLatch listenLatch = new CountDownLatch(1);
-        serverContext.executor().execute(() -> {
+        serverContext.execute(() -> {
             server.listen(new Address(IP_STRING, endpoint2.port()), connection -> {
                 serverContext.checkThread();
                 latch.countDown();
@@ -223,7 +225,7 @@ public class CopycatTransportTest {
 
         listenLatch.await(5, TimeUnit.SECONDS);
 
-        clientContext.executor().execute(() -> {
+        clientContext.execute(() -> {
             client.connect(new Address(IP_STRING, endpoint2.port())).thenAccept(connection -> {
                 clientContext.checkThread();
                 latch.countDown();
@@ -255,7 +257,7 @@ public class CopycatTransportTest {
         CountDownLatch listenLatch = new CountDownLatch(1);
         CountDownLatch closeLatch = new CountDownLatch(1);
         CountDownLatch latch = new CountDownLatch(1);
-        serverContext.executor().execute(() -> {
+        serverContext.execute(() -> {
             server.listen(new Address(IP_STRING, endpoint2.port()), connection -> {
                 serverContext.checkThread();
             }).thenRun(listenLatch::countDown);
@@ -263,13 +265,14 @@ public class CopycatTransportTest {
 
         listenLatch.await(5, TimeUnit.SECONDS);
 
-        clientContext.executor().execute(() -> {
+        clientContext.execute(() -> {
             client.connect(new Address(IP_STRING, endpoint2.port())).thenAccept(connection -> {
                 clientContext.checkThread();
                 serverService.handlers.clear();
                 connection.onClose(c -> latch.countDown());
-                connection.<ConnectRequest, ConnectResponse>sendAndReceive(ConnectRequest.builder()
-                        .withClientId(UUID.randomUUID().toString())
+                connection.<ConnectRequest, ConnectResponse>sendAndReceive(ConnectRequest.NAME, ConnectRequest.builder()
+                        .withSession(1)
+                        .withConnection(1)
                         .build())
                         .thenAccept(response -> fail());
             });
@@ -289,7 +292,7 @@ public class CopycatTransportTest {
 
         CountDownLatch latch = new CountDownLatch(5);
         CountDownLatch listenLatch = new CountDownLatch(1);
-        serverContext.executor().execute(() -> {
+        serverContext.execute(() -> {
             server.listen(new Address(IP_STRING, endpoint2.port()), connection -> {
                 serverContext.checkThread();
                 latch.countDown();
@@ -307,7 +310,7 @@ public class CopycatTransportTest {
 
         listenLatch.await(5, TimeUnit.SECONDS);
 
-        clientContext.executor().execute(() -> {
+        clientContext.execute(() -> {
             client.connect(new Address(IP_STRING, endpoint2.port())).thenAccept(connection -> {
                 clientContext.checkThread();
                 latch.countDown();
@@ -332,10 +335,10 @@ public class CopycatTransportTest {
         CountDownLatch latch = new CountDownLatch(1);
         CountDownLatch listenLatch = new CountDownLatch(1);
         CountDownLatch connectLatch = new CountDownLatch(1);
-        serverContext.executor().execute(() -> {
+        serverContext.execute(() -> {
             server.listen(new Address(IP_STRING, endpoint2.port()), connection -> {
                 serverContext.checkThread();
-                serverContext.executor().execute(() -> {
+                serverContext.execute(() -> {
                     try {
                         connectLatch.await(5, TimeUnit.SECONDS);
                     } catch (InterruptedException e) {
@@ -343,8 +346,9 @@ public class CopycatTransportTest {
                     }
                     clientService.handlers.clear();
                     connection.onClose(c -> latch.countDown());
-                    connection.<ConnectRequest, ConnectResponse>sendAndReceive(ConnectRequest.builder()
-                            .withClientId("foo")
+                    connection.<ConnectRequest, ConnectResponse>sendAndReceive(ConnectRequest.NAME, ConnectRequest.builder()
+                            .withSession(1)
+                            .withConnection(1)
                             .build())
                             .thenAccept(response -> fail());
                 });
@@ -353,7 +357,7 @@ public class CopycatTransportTest {
 
         listenLatch.await(5, TimeUnit.SECONDS);
 
-        clientContext.executor().execute(() -> {
+        clientContext.execute(() -> {
             client.connect(new Address(IP_STRING, endpoint2.port())).thenAccept(connection -> {
                 clientContext.checkThread();
                 connectLatch.countDown();

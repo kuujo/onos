@@ -20,15 +20,12 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static org.onosproject.store.primitives.resources.impl.DocumentTreeUpdateResult.Status.ILLEGAL_MODIFICATION;
 import static org.onosproject.store.primitives.resources.impl.DocumentTreeUpdateResult.Status.INVALID_PATH;
 import static org.onosproject.store.primitives.resources.impl.DocumentTreeUpdateResult.Status.OK;
-import io.atomix.copycat.client.CopycatClient;
-import io.atomix.resource.AbstractResource;
-import io.atomix.resource.ResourceTypeInfo;
+import io.atomix.copycat.client.session.CopycatSession;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -53,28 +50,19 @@ import com.google.common.util.concurrent.MoreExecutors;
 /**
  * Distributed resource providing the {@link AsyncDocumentTree} primitive.
  */
-@ResourceTypeInfo(id = -156, factory = AtomixDocumentTreeFactory.class)
-public class AtomixDocumentTree extends AbstractResource<AtomixDocumentTree>
-    implements AsyncDocumentTree<byte[]> {
+public class AtomixDocumentTree extends AbstractCopycatPrimitive implements AsyncDocumentTree<byte[]> {
 
     private final Map<DocumentTreeListener<byte[]>, InternalListener> eventListeners = new HashMap<>();
     public static final String CHANGE_SUBJECT = "changeEvents";
 
-    protected AtomixDocumentTree(CopycatClient client, Properties options) {
-        super(client, options);
-    }
-
-    @Override
-    public CompletableFuture<AtomixDocumentTree> open() {
-        return super.open().thenApply(result -> {
-            client.onStateChange(state -> {
-                if (state == CopycatClient.State.CONNECTED && isListening()) {
-                    client.submit(new Listen());
-                }
-            });
-            client.onEvent(CHANGE_SUBJECT, this::processTreeUpdates);
-            return result;
+    public AtomixDocumentTree(CopycatSession session) {
+        super(session);
+        session.onStateChange(state -> {
+            if (state == CopycatSession.State.OPEN && isListening()) {
+                session.submit(new Listen());
+            }
         });
+        session.onEvent(CHANGE_SUBJECT, this::processTreeUpdates);
     }
 
     @Override
@@ -89,7 +77,7 @@ public class AtomixDocumentTree extends AbstractResource<AtomixDocumentTree>
 
     @Override
     public CompletableFuture<Void> destroy() {
-        return client.submit(new Clear());
+        return session.submit(new Clear());
     }
 
     @Override
@@ -99,17 +87,17 @@ public class AtomixDocumentTree extends AbstractResource<AtomixDocumentTree>
 
     @Override
     public CompletableFuture<Map<String, Versioned<byte[]>>> getChildren(DocumentPath path) {
-        return client.submit(new GetChildren(checkNotNull(path)));
+        return session.submit(new GetChildren(checkNotNull(path)));
     }
 
     @Override
     public CompletableFuture<Versioned<byte[]>> get(DocumentPath path) {
-        return client.submit(new Get(checkNotNull(path)));
+        return session.submit(new Get(checkNotNull(path)));
     }
 
     @Override
     public CompletableFuture<Versioned<byte[]>> set(DocumentPath path, byte[] value) {
-        return client.submit(new Update(checkNotNull(path), Optional.ofNullable(value), Match.any(), Match.any()))
+        return session.submit(new Update(checkNotNull(path), Optional.ofNullable(value), Match.any(), Match.any()))
                 .thenCompose(result -> {
                     if (result.status() == INVALID_PATH) {
                         return Tools.exceptionalFuture(new NoSuchDocumentPathException());
@@ -146,7 +134,7 @@ public class AtomixDocumentTree extends AbstractResource<AtomixDocumentTree>
 
     @Override
     public CompletableFuture<Boolean> replace(DocumentPath path, byte[] newValue, long version) {
-        return client.submit(new Update(checkNotNull(path),
+        return session.submit(new Update(checkNotNull(path),
                                         Optional.ofNullable(newValue),
                                         Match.any(),
                                         Match.ifValue(version)))
@@ -155,7 +143,7 @@ public class AtomixDocumentTree extends AbstractResource<AtomixDocumentTree>
 
     @Override
     public CompletableFuture<Boolean> replace(DocumentPath path, byte[] newValue, byte[] currentValue) {
-        return client.submit(new Update(checkNotNull(path),
+        return session.submit(new Update(checkNotNull(path),
                                         Optional.ofNullable(newValue),
                                         Match.ifValue(currentValue),
                                         Match.any()))
@@ -175,7 +163,7 @@ public class AtomixDocumentTree extends AbstractResource<AtomixDocumentTree>
         if (path.equals(DocumentPath.from("root"))) {
             return Tools.exceptionalFuture(new IllegalDocumentModificationException());
         }
-        return client.submit(new Update(checkNotNull(path), null, Match.any(), Match.ifNotNull()))
+        return session.submit(new Update(checkNotNull(path), null, Match.any(), Match.ifNotNull()))
                 .thenCompose(result -> {
                     if (result.status() == INVALID_PATH) {
                         return Tools.exceptionalFuture(new NoSuchDocumentPathException());
@@ -194,7 +182,7 @@ public class AtomixDocumentTree extends AbstractResource<AtomixDocumentTree>
         InternalListener internalListener = new InternalListener(path, listener, MoreExecutors.directExecutor());
         // TODO: Support API that takes an executor
         if (!eventListeners.containsKey(listener)) {
-            return client.submit(new Listen(path))
+            return session.submit(new Listen(path))
                          .thenRun(() -> eventListeners.put(listener, internalListener));
         }
         return CompletableFuture.completedFuture(null);
@@ -205,13 +193,13 @@ public class AtomixDocumentTree extends AbstractResource<AtomixDocumentTree>
         checkNotNull(listener);
         InternalListener internalListener = eventListeners.remove(listener);
         if  (internalListener != null && eventListeners.isEmpty()) {
-            return client.submit(new Unlisten(internalListener.path)).thenApply(v -> null);
+            return session.submit(new Unlisten(internalListener.path)).thenApply(v -> null);
         }
         return CompletableFuture.completedFuture(null);
     }
 
     private CompletableFuture<DocumentTreeUpdateResult.Status> createInternal(DocumentPath path, byte[] value) {
-        return client.submit(new Update(checkNotNull(path), Optional.ofNullable(value), Match.any(), Match.ifNull()))
+        return session.submit(new Update(checkNotNull(path), Optional.ofNullable(value), Match.any(), Match.ifNull()))
                      .thenApply(result -> result.status());
     }
 

@@ -3,7 +3,7 @@ COMPILE_DEPS = [
     '//core/common:onos-core-common',
     '//incubator/api:onos-incubator-api',
     '//core/store/serializers:onos-core-serializers',
-    '//lib:atomix',
+    '//lib:copycat',
 ]
 
 TEST_DEPS = [
@@ -15,7 +15,6 @@ TEST_DEPS = [
     '//lib:netty-buffer',
     '//lib:netty-codec',
     '//lib:netty-resolver',
-
 ]
 
 osgi_jar_with_tests (

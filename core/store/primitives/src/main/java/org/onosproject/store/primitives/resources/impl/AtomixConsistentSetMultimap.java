@@ -18,9 +18,7 @@ package org.onosproject.store.primitives.resources.impl;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Multiset;
-import io.atomix.copycat.client.CopycatClient;
-import io.atomix.resource.AbstractResource;
-import io.atomix.resource.ResourceTypeInfo;
+import io.atomix.copycat.client.session.CopycatSession;
 import org.onosproject.store.service.AsyncConsistentMultimap;
 import org.onosproject.store.service.MultimapEvent;
 import org.onosproject.store.service.MultimapEventListener;
@@ -30,7 +28,6 @@ import java.util.Collection;
 import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -60,30 +57,21 @@ import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMu
  * <p>
  * Note: this implementation does not allow null entries or duplicate entries.
  */
-@ResourceTypeInfo(id = -153, factory = AtomixConsistentSetMultimapFactory.class)
 public class AtomixConsistentSetMultimap
-        extends AbstractResource<AtomixConsistentSetMultimap>
+        extends AbstractCopycatPrimitive
         implements AsyncConsistentMultimap<String, byte[]> {
 
     private final Map<MultimapEventListener<String, byte[]>, Executor> mapEventListeners = new ConcurrentHashMap<>();
 
     public static final String CHANGE_SUBJECT = "multimapChangeEvents";
 
-    public AtomixConsistentSetMultimap(CopycatClient client,
-                                       Properties properties) {
-        super(client, properties);
-    }
-
-    @Override
-    public CompletableFuture<AtomixConsistentSetMultimap> open() {
-        return super.open().thenApply(result -> {
-            client.onStateChange(state -> {
-                if (state == CopycatClient.State.CONNECTED && isListening()) {
-                    client.submit(new Listen());
-                }
-            });
-            client.onEvent(CHANGE_SUBJECT, this::handleEvent);
-            return result;
+    public AtomixConsistentSetMultimap(CopycatSession session) {
+        super(session);
+        session.onEvent(CHANGE_SUBJECT, this::handleEvent);
+        session.onStateChange(state -> {
+            if (state == CopycatSession.State.OPEN && isListening()) {
+                session.submit(new Listen());
+            }
         });
     }
 
@@ -94,97 +82,97 @@ public class AtomixConsistentSetMultimap
 
     @Override
     public CompletableFuture<Integer> size() {
-        return client.submit(new Size());
+        return session.submit(new Size());
     }
 
     @Override
     public CompletableFuture<Boolean> isEmpty() {
-        return client.submit(new IsEmpty());
+        return session.submit(new IsEmpty());
     }
 
     @Override
     public CompletableFuture<Boolean> containsKey(String key) {
-        return client.submit(new ContainsKey(key));
+        return session.submit(new ContainsKey(key));
     }
 
     @Override
     public CompletableFuture<Boolean> containsValue(byte[] value) {
-        return client.submit(new ContainsValue(value));
+        return session.submit(new ContainsValue(value));
     }
 
     @Override
     public CompletableFuture<Boolean> containsEntry(String key, byte[] value) {
-        return client.submit(new ContainsEntry(key, value));
+        return session.submit(new ContainsEntry(key, value));
     }
 
     @Override
     public CompletableFuture<Boolean> put(String key, byte[] value) {
-        return client.submit(new Put(key, Lists.newArrayList(value), null));
+        return session.submit(new Put(key, Lists.newArrayList(value), null));
     }
 
     @Override
     public CompletableFuture<Boolean> remove(String key, byte[] value) {
-        return client.submit(new MultiRemove(key,
+        return session.submit(new MultiRemove(key,
                                              Lists.newArrayList(value),
                                              null));
     }
 
     @Override
     public CompletableFuture<Boolean> removeAll(String key, Collection<? extends byte[]> values) {
-        return client.submit(new MultiRemove(key, (Collection<byte[]>) values, null));
+        return session.submit(new MultiRemove(key, (Collection<byte[]>) values, null));
     }
 
     @Override
     public CompletableFuture<Versioned<Collection<? extends byte[]>>> removeAll(String key) {
-        return client.submit(new RemoveAll(key, null));
+        return session.submit(new RemoveAll(key, null));
     }
 
     @Override
     public CompletableFuture<Boolean> putAll(
             String key, Collection<? extends byte[]> values) {
-        return client.submit(new Put(key, values, null));
+        return session.submit(new Put(key, values, null));
     }
 
     @Override
     public CompletableFuture<Versioned<Collection<? extends byte[]>>> replaceValues(
             String key, Collection<byte[]> values) {
-        return client.submit(new Replace(key, values, null));
+        return session.submit(new Replace(key, values, null));
     }
 
     @Override
     public CompletableFuture<Void> clear() {
-        return client.submit(new Clear());
+        return session.submit(new Clear());
     }
 
     @Override
     public CompletableFuture<Versioned<Collection<? extends byte[]>>> get(String key) {
-        return client.submit(new Get(key));
+        return session.submit(new Get(key));
     }
 
     @Override
     public CompletableFuture<Set<String>> keySet() {
-        return client.submit(new KeySet());
+        return session.submit(new KeySet());
     }
 
     @Override
     public CompletableFuture<Multiset<String>> keys() {
-        return client.submit(new Keys());
+        return session.submit(new Keys());
     }
 
     @Override
     public CompletableFuture<Multiset<byte[]>> values() {
-        return client.submit(new Values());
+        return session.submit(new Values());
     }
 
     @Override
     public CompletableFuture<Collection<Map.Entry<String, byte[]>>> entries() {
-        return client.submit(new Entries());
+        return session.submit(new Entries());
     }
 
     @Override
     public CompletableFuture<Void> addListener(MultimapEventListener<String, byte[]> listener, Executor executor) {
         if (mapEventListeners.isEmpty()) {
-            return client.submit(new Listen()).thenRun(() -> mapEventListeners.put(listener, executor));
+            return session.submit(new Listen()).thenRun(() -> mapEventListeners.put(listener, executor));
         } else {
             mapEventListeners.put(listener, executor);
             return CompletableFuture.completedFuture(null);
@@ -194,7 +182,7 @@ public class AtomixConsistentSetMultimap
     @Override
     public CompletableFuture<Void> removeListener(MultimapEventListener<String, byte[]> listener) {
         if (mapEventListeners.remove(listener) != null && mapEventListeners.isEmpty()) {
-            return client.submit(new Unlisten()).thenApply(v -> null);
+            return session.submit(new Unlisten()).thenApply(v -> null);
         }
         return CompletableFuture.completedFuture(null);
     }

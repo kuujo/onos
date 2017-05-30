@@ -15,6 +15,11 @@
  */
 package org.onosproject.store.primitives.impl;
 
+import java.nio.ByteBuffer;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
+
 import com.google.common.collect.Sets;
 import io.atomix.catalyst.concurrent.ThreadContext;
 import io.atomix.catalyst.transport.Address;
@@ -26,15 +31,8 @@ import org.onosproject.store.cluster.messaging.MessagingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.ByteBuffer;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
-
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkNotNull;
-import static org.onosproject.store.primitives.impl.CopycatTransport.CONNECT;
-import static org.onosproject.store.primitives.impl.CopycatTransport.FAILURE;
 import static org.onosproject.store.primitives.impl.CopycatTransport.SUCCESS;
 
 /**
@@ -58,15 +56,6 @@ public class CopycatTransportServer implements Server {
         ThreadContext context = ThreadContext.currentContextOrThrow();
         messagingService.registerHandler(serverSubject, (sender, payload) -> {
 
-            // Only connect messages can be sent to the server. Once a connect message
-            // is received, the connection will register a separate handler for messaging.
-            ByteBuffer requestBuffer = ByteBuffer.wrap(payload);
-            if (requestBuffer.get() != CONNECT) {
-                ByteBuffer responseBuffer = ByteBuffer.allocate(1);
-                responseBuffer.put(FAILURE);
-                return CompletableFuture.completedFuture(responseBuffer.array());
-            }
-
             // Create the connection and ensure state is cleaned up when the connection is closed.
             long connectionId = RandomUtils.nextLong();
             CopycatTransportConnection connection = new CopycatTransportConnection(
@@ -85,7 +74,7 @@ public class CopycatTransportServer implements Server {
             // and that the future is not completed until the Copycat server has been
             // able to register message handlers, otherwise some messages can be received
             // prior to any handlers being registered.
-            context.executor().execute(() -> {
+            context.execute(() -> {
                 log.debug("Created connection {}-{}", partitionId, connectionId);
                 consumer.accept(connection);
 

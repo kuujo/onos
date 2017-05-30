@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-present Open Networking Laboratory
+ * Copyright 2017-present Open Networking Laboratory
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,75 +15,87 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 import io.atomix.catalyst.concurrent.Listener;
 import io.atomix.catalyst.concurrent.ThreadContext;
-import io.atomix.catalyst.serializer.Serializer;
-import io.atomix.catalyst.transport.Address;
-import io.atomix.copycat.client.CopycatClient;
-import io.atomix.copycat.client.CopycatMetadata;
+import io.atomix.copycat.Command;
+import io.atomix.copycat.Query;
 import io.atomix.copycat.client.session.CopycatSession;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 
 /**
- * {@code CopycatClient} that merely delegates control to
- * another CopycatClient.
+ * Copycat session that delegates to another session.
  */
-public class DelegatingCopycatClient implements CopycatClient {
+public class DelegatingCopycatSession implements CopycatSession {
+    protected final CopycatSession delegate;
 
-    protected final CopycatClient client;
+    public DelegatingCopycatSession(CopycatSession delegate) {
+        this.delegate = delegate;
+    }
 
-    DelegatingCopycatClient(CopycatClient client) {
-        this.client = client;
+    @Override
+    public String name() {
+        return delegate.name();
+    }
+
+    @Override
+    public String type() {
+        return delegate.type();
     }
 
     @Override
     public State state() {
-        return client.state();
+        return delegate.state();
     }
 
     @Override
     public Listener<State> onStateChange(Consumer<State> callback) {
-        return client.onStateChange(callback);
-    }
-
-    @Override
-    public CopycatMetadata metadata() {
-        return client.metadata();
+        return delegate.onStateChange(callback);
     }
 
     @Override
     public ThreadContext context() {
-        return client.context();
+        return delegate.context();
     }
 
     @Override
-    public Serializer serializer() {
-        return client.serializer();
+    public <T> CompletableFuture<T> submit(Command<T> command) {
+        return delegate.submit(command);
     }
 
     @Override
-    public CopycatSession.Builder sessionBuilder() {
-        return client.sessionBuilder();
+    public <T> CompletableFuture<T> submit(Query<T> query) {
+        return delegate.submit(query);
     }
 
     @Override
-    public CompletableFuture<CopycatClient> connect(Collection<Address> members) {
-        return client.connect(members);
+    public Listener<Void> onEvent(String event, Runnable callback) {
+        return delegate.onEvent(event, callback);
+    }
+
+    @Override
+    public <T> Listener<T> onEvent(String event, Consumer<T> callback) {
+        return delegate.onEvent(event, callback);
+    }
+
+    @Override
+    public boolean isOpen() {
+        return delegate.isOpen();
     }
 
     @Override
     public CompletableFuture<Void> close() {
-        return client.close();
+        return delegate.close();
     }
 
     @Override
     public String toString() {
         return toStringHelper(this)
+                .add("type", type())
+                .add("name", name())
                 .add("state", state())
                 .toString();
     }

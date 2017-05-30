@@ -41,10 +41,6 @@ public class CopycatTransport implements Transport {
     private final MessagingService messagingService;
     private static final Map<Address, Endpoint> EP_LOOKUP_CACHE = Maps.newConcurrentMap();
 
-    static final byte MESSAGE = 0x01;
-    static final byte CONNECT = 0x02;
-    static final byte CLOSE = 0x03;
-
     static final byte SUCCESS = 0x01;
     static final byte FAILURE = 0x02;
 

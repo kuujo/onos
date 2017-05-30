@@ -15,6 +15,11 @@
  */
 package org.onosproject.store.primitives.impl;
 
+import java.net.ConnectException;
+import java.nio.ByteBuffer;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+
 import com.google.common.base.Throwables;
 import com.google.common.collect.Sets;
 import io.atomix.catalyst.concurrent.ThreadContext;
@@ -29,14 +34,8 @@ import org.onosproject.store.cluster.messaging.MessagingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.ConnectException;
-import java.nio.ByteBuffer;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkNotNull;
-import static org.onosproject.store.primitives.impl.CopycatTransport.CONNECT;
 import static org.onosproject.store.primitives.impl.CopycatTransport.SUCCESS;
 
 /**
@@ -63,11 +62,8 @@ public class CopycatTransportClient implements Client {
 
         log.debug("Connecting to {}", address);
 
-        ByteBuffer requestBuffer = ByteBuffer.allocate(1);
-        requestBuffer.put(CONNECT);
-
         // Send a connect request to the server to get a unique connection ID.
-        messagingService.sendAndReceive(endpoint, serverSubject, requestBuffer.array(), context.executor())
+        messagingService.sendAndReceive(endpoint, serverSubject, new byte[0], context)
                 .whenComplete((payload, error) -> {
                     Throwable wrappedError = error;
                     if (error != null) {

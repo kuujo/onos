@@ -15,9 +15,7 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import io.atomix.copycat.client.CopycatClient;
-import io.atomix.resource.AbstractResource;
-import io.atomix.resource.ResourceTypeInfo;
+import io.atomix.copycat.client.session.CopycatSession;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Collection;
@@ -25,7 +23,6 @@ import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -70,35 +67,26 @@ import com.google.common.collect.Sets;
 /**
  * Distributed resource providing the {@link AsyncConsistentMap} primitive.
  */
-@ResourceTypeInfo(id = -151, factory = AtomixConsistentMapFactory.class)
-public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
-    implements AsyncConsistentMap<String, byte[]> {
+public class AtomixConsistentMap extends AbstractCopycatPrimitive implements AsyncConsistentMap<String, byte[]> {
 
     private final Set<Consumer<Status>> statusChangeListeners = Sets.newCopyOnWriteArraySet();
     private final Map<MapEventListener<String, byte[]>, Executor> mapEventListeners = new ConcurrentHashMap<>();
 
     public static final String CHANGE_SUBJECT = "changeEvents";
 
-    public AtomixConsistentMap(CopycatClient client, Properties properties) {
-        super(client, properties);
+    public AtomixConsistentMap(CopycatSession session) {
+        super(session);
+        session.onEvent(CHANGE_SUBJECT, this::handleEvent);
+        session.onStateChange(state -> {
+            if (state == CopycatSession.State.OPEN && isListening()) {
+                session.submit(new Listen());
+            }
+        });
     }
 
     @Override
     public String name() {
         return null;
-    }
-
-    @Override
-    public CompletableFuture<AtomixConsistentMap> open() {
-        return super.open().thenApply(result -> {
-            client.onStateChange(state -> {
-                if (state == CopycatClient.State.CONNECTED && isListening()) {
-                    client.submit(new Listen());
-                }
-            });
-            client.onEvent(CHANGE_SUBJECT, this::handleEvent);
-            return result;
-        });
     }
 
     private void handleEvent(List<MapEvent<String, byte[]>> events) {
@@ -108,53 +96,53 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
 
     @Override
     public CompletableFuture<Boolean> isEmpty() {
-        return client.submit(new IsEmpty());
+        return session.submit(new IsEmpty());
     }
 
     @Override
     public CompletableFuture<Integer> size() {
-        return client.submit(new Size());
+        return session.submit(new Size());
     }
 
     @Override
     public CompletableFuture<Boolean> containsKey(String key) {
-        return client.submit(new ContainsKey(key));
+        return session.submit(new ContainsKey(key));
     }
 
     @Override
     public CompletableFuture<Boolean> containsValue(byte[] value) {
-        return client.submit(new ContainsValue(value));
+        return session.submit(new ContainsValue(value));
     }
 
     @Override
     public CompletableFuture<Versioned<byte[]>> get(String key) {
-        return client.submit(new Get(key));
+        return session.submit(new Get(key));
     }
 
     @Override
     public CompletableFuture<Versioned<byte[]>> getOrDefault(String key, byte[] defaultValue) {
-        return client.submit(new GetOrDefault(key, defaultValue));
+        return session.submit(new GetOrDefault(key, defaultValue));
     }
 
     @Override
     public CompletableFuture<Set<String>> keySet() {
-        return client.submit(new KeySet());
+        return session.submit(new KeySet());
     }
 
     @Override
     public CompletableFuture<Collection<Versioned<byte[]>>> values() {
-        return client.submit(new Values());
+        return session.submit(new Values());
     }
 
     @Override
     public CompletableFuture<Set<Entry<String, Versioned<byte[]>>>> entrySet() {
-        return client.submit(new EntrySet());
+        return session.submit(new EntrySet());
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> put(String key, byte[] value) {
-        return client.submit(new UpdateAndGet(key, value, Match.ANY, Match.ANY))
+        return session.submit(new UpdateAndGet(key, value, Match.ANY, Match.ANY))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.oldValue());
     }
@@ -162,7 +150,7 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> putAndGet(String key, byte[] value) {
-        return client.submit(new UpdateAndGet(key, value, Match.ANY, Match.ANY))
+        return session.submit(new UpdateAndGet(key, value, Match.ANY, Match.ANY))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.newValue());
     }
@@ -170,14 +158,14 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> putIfAbsent(String key, byte[] value) {
-        return client.submit(new UpdateAndGet(key, value, Match.NULL, Match.ANY))
+        return session.submit(new UpdateAndGet(key, value, Match.NULL, Match.ANY))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.oldValue());
     }
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> remove(String key) {
-        return client.submit(new UpdateAndGet(key, null, Match.ANY, Match.ANY))
+        return session.submit(new UpdateAndGet(key, null, Match.ANY, Match.ANY))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.oldValue());
     }
@@ -185,7 +173,7 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Boolean> remove(String key, byte[] value) {
-        return client.submit(new UpdateAndGet(key, null, Match.ifValue(value), Match.ANY))
+        return session.submit(new UpdateAndGet(key, null, Match.ifValue(value), Match.ANY))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.updated());
     }
@@ -193,7 +181,7 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Boolean> remove(String key, long version) {
-        return client.submit(new UpdateAndGet(key, null, Match.ANY, Match.ifValue(version)))
+        return session.submit(new UpdateAndGet(key, null, Match.ANY, Match.ifValue(version)))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.updated());
     }
@@ -201,7 +189,7 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> replace(String key, byte[] value) {
-        return client.submit(new UpdateAndGet(key, value, Match.NOT_NULL, Match.ANY))
+        return session.submit(new UpdateAndGet(key, value, Match.NOT_NULL, Match.ANY))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.oldValue());
     }
@@ -209,7 +197,7 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Boolean> replace(String key, byte[] oldValue, byte[] newValue) {
-        return client.submit(new UpdateAndGet(key, newValue, Match.ifValue(oldValue), Match.ANY))
+        return session.submit(new UpdateAndGet(key, newValue, Match.ifValue(oldValue), Match.ANY))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.updated());
     }
@@ -217,14 +205,14 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Boolean> replace(String key, long oldVersion, byte[] newValue) {
-        return client.submit(new UpdateAndGet(key, newValue, Match.ANY, Match.ifValue(oldVersion)))
+        return session.submit(new UpdateAndGet(key, newValue, Match.ANY, Match.ifValue(oldVersion)))
                 .whenComplete((r, e) -> throwIfLocked(r.status()))
                 .thenApply(v -> v.updated());
     }
 
     @Override
     public CompletableFuture<Void> clear() {
-        return client.submit(new Clear())
+        return session.submit(new Clear())
                 .whenComplete((r, e) -> throwIfLocked(r))
                 .thenApply(v -> null);
     }
@@ -255,7 +243,7 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
             }
             Match<byte[]> valueMatch = r1 == null ? Match.NULL : Match.ANY;
             Match<Long> versionMatch = r1 == null ? Match.ANY : Match.ifValue(r1.version());
-            return client.submit(new UpdateAndGet(key,
+            return session.submit(new UpdateAndGet(key,
                                                   computedValue.get(),
                                                   valueMatch,
                                                   versionMatch))
@@ -275,7 +263,7 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
     public synchronized CompletableFuture<Void> addListener(MapEventListener<String, byte[]> listener,
                                                             Executor executor) {
         if (mapEventListeners.isEmpty()) {
-            return client.submit(new Listen()).thenRun(() -> mapEventListeners.put(listener, executor));
+            return session.submit(new Listen()).thenRun(() -> mapEventListeners.put(listener, executor));
         } else {
             mapEventListeners.put(listener, executor);
             return CompletableFuture.completedFuture(null);
@@ -285,7 +273,7 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
     @Override
     public synchronized CompletableFuture<Void> removeListener(MapEventListener<String, byte[]> listener) {
         if (mapEventListeners.remove(listener) != null && mapEventListeners.isEmpty()) {
-            return client.submit(new Unlisten()).thenApply(v -> null);
+            return session.submit(new Unlisten()).thenApply(v -> null);
         }
         return CompletableFuture.completedFuture(null);
     }
@@ -298,31 +286,31 @@ public class AtomixConsistentMap extends AbstractResource<AtomixConsistentMap>
 
     @Override
     public CompletableFuture<Version> begin(TransactionId transactionId) {
-        return client.submit(new TransactionBegin(transactionId)).thenApply(Version::new);
+        return session.submit(new TransactionBegin(transactionId)).thenApply(Version::new);
     }
 
     @Override
     public CompletableFuture<Boolean> prepare(
             TransactionLog<MapUpdate<String, byte[]>> transactionLog) {
-        return client.submit(new TransactionPrepare(transactionLog))
+        return session.submit(new TransactionPrepare(transactionLog))
                 .thenApply(v -> v == PrepareResult.OK);
     }
 
     @Override
     public CompletableFuture<Boolean> prepareAndCommit(
             TransactionLog<MapUpdate<String, byte[]>> transactionLog) {
-        return client.submit(new TransactionPrepareAndCommit(transactionLog))
+        return session.submit(new TransactionPrepareAndCommit(transactionLog))
                 .thenApply(v -> v == PrepareResult.OK);
     }
 
     @Override
     public CompletableFuture<Void> commit(TransactionId transactionId) {
-        return client.submit(new TransactionCommit(transactionId)).thenApply(v -> null);
+        return session.submit(new TransactionCommit(transactionId)).thenApply(v -> null);
     }
 
     @Override
     public CompletableFuture<Void> rollback(TransactionId transactionId) {
-        return client.submit(new TransactionRollback(transactionId)).thenApply(v -> null);
+        return session.submit(new TransactionRollback(transactionId)).thenApply(v -> null);
     }
 
     @Override

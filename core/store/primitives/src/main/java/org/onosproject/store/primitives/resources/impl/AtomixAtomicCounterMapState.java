@@ -17,10 +17,10 @@ package org.onosproject.store.primitives.resources.impl;
 
 import io.atomix.copycat.server.Commit;
 import io.atomix.copycat.server.Snapshottable;
+import io.atomix.copycat.server.StateMachine;
 import io.atomix.copycat.server.StateMachineExecutor;
 import io.atomix.copycat.server.storage.snapshot.SnapshotReader;
 import io.atomix.copycat.server.storage.snapshot.SnapshotWriter;
-import io.atomix.resource.ResourceStateMachine;
 import org.onosproject.store.primitives.resources.impl.AtomixAtomicCounterMapCommands.AddAndGet;
 import org.onosproject.store.primitives.resources.impl.AtomixAtomicCounterMapCommands.Clear;
 import org.onosproject.store.primitives.resources.impl.AtomixAtomicCounterMapCommands.DecrementAndGet;
@@ -49,12 +49,8 @@ import java.util.Properties;
  * of all its increments. Note that this snapshotting large state machines may risk blocking of the
  * Raft cluster with the current implementation of snapshotting in Copycat.
  */
-public class AtomixAtomicCounterMapState extends ResourceStateMachine implements Snapshottable {
+public class AtomixAtomicCounterMapState extends StateMachine implements Snapshottable {
     private Map<String, Long> map = new HashMap<>();
-
-    public AtomixAtomicCounterMapState(Properties config) {
-        super(config);
-    }
 
     @Override
     protected void configure(StateMachineExecutor executor) {

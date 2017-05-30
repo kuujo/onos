@@ -20,8 +20,11 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
 import io.atomix.catalyst.serializer.Serializer;
 import io.atomix.catalyst.serializer.TypeSerializerFactory;
-import io.atomix.manager.util.ResourceManagerTypeResolver;
-import io.atomix.variables.internal.LongCommands;
+import io.atomix.copycat.protocol.ClientRequestTypeResolver;
+import io.atomix.copycat.protocol.ClientResponseTypeResolver;
+import io.atomix.copycat.server.storage.util.StorageSerialization;
+import io.atomix.copycat.server.util.ServerSerialization;
+import io.atomix.copycat.util.ProtocolSerialization;
 import org.onlab.util.Match;
 import org.onosproject.cluster.Leader;
 import org.onosproject.cluster.Leadership;
@@ -30,17 +33,12 @@ import org.onosproject.event.Change;
 import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapFactory;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMultimapCommands;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentSetMultimapFactory;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapCommands;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapFactory;
+import org.onosproject.store.primitives.resources.impl.AtomixCounterCommands;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeCommands;
-import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeFactory;
 import org.onosproject.store.primitives.resources.impl.AtomixLeaderElectorCommands;
-import org.onosproject.store.primitives.resources.impl.AtomixLeaderElectorFactory;
 import org.onosproject.store.primitives.resources.impl.AtomixWorkQueueCommands;
-import org.onosproject.store.primitives.resources.impl.AtomixWorkQueueFactory;
 import org.onosproject.store.primitives.resources.impl.CommitResult;
 import org.onosproject.store.primitives.resources.impl.DocumentTreeUpdateResult;
 import org.onosproject.store.primitives.resources.impl.MapEntryUpdateResult;
@@ -116,21 +114,18 @@ public final class CatalystSerializers {
         serializer.register(HashMultiset.class, factory);
         serializer.register(Optional.class, factory);
 
-        serializer.resolve(new LongCommands.TypeResolver());
+        serializer.resolve(new ClientRequestTypeResolver());
+        serializer.resolve(new ClientResponseTypeResolver());
+        serializer.resolve(new ProtocolSerialization());
+        serializer.resolve(new ServerSerialization());
+        serializer.resolve(new StorageSerialization());
         serializer.resolve(new AtomixConsistentMapCommands.TypeResolver());
         serializer.resolve(new AtomixLeaderElectorCommands.TypeResolver());
         serializer.resolve(new AtomixWorkQueueCommands.TypeResolver());
         serializer.resolve(new AtomixDocumentTreeCommands.TypeResolver());
-        serializer.resolve(new ResourceManagerTypeResolver());
         serializer.resolve(new AtomixConsistentTreeMapCommands.TypeResolver());
         serializer.resolve(new AtomixConsistentMultimapCommands.TypeResolver());
-
-        serializer.registerClassLoader(AtomixConsistentMapFactory.class)
-                .registerClassLoader(AtomixLeaderElectorFactory.class)
-                .registerClassLoader(AtomixWorkQueueFactory.class)
-                .registerClassLoader(AtomixDocumentTreeFactory.class)
-                .registerClassLoader(AtomixConsistentTreeMapFactory.class)
-                .registerClassLoader(AtomixConsistentSetMultimapFactory.class);
+        serializer.resolve(new AtomixCounterCommands.TypeResolver());
 
         return serializer;
     }

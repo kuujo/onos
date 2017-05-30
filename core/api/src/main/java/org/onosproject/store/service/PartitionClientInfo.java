@@ -32,12 +32,10 @@ public class PartitionClientInfo {
     private final PartitionId partitionId;
     private final Status status;
     private final Collection<NodeId> servers;
-    private final long sessionId;
 
-    public PartitionClientInfo(PartitionId partitionId, Collection<NodeId> servers, long sessionId, Status status) {
+    public PartitionClientInfo(PartitionId partitionId, Collection<NodeId> servers, Status status) {
         this.partitionId = checkNotNull(partitionId);
         this.servers = ImmutableList.copyOf(checkNotNull(servers));
-        this.sessionId = sessionId;
         this.status = checkNotNull(status);
     }
 
@@ -57,14 +55,6 @@ public class PartitionClientInfo {
      */
     public Collection<NodeId> servers() {
         return servers;
-    }
-
-    /**
-     * Return the sessionId for the partition client.
-     * @return session id
-     */
-    public long sessionId() {
-        return sessionId;
     }
 
     /**
