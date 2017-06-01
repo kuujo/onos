@@ -22,7 +22,6 @@ import io.atomix.catalyst.serializer.Serializer;
 import io.atomix.catalyst.serializer.TypeSerializerFactory;
 import io.atomix.copycat.protocol.ClientRequestTypeResolver;
 import io.atomix.copycat.protocol.ClientResponseTypeResolver;
-import io.atomix.copycat.server.storage.util.StorageSerialization;
 import io.atomix.copycat.server.util.ServerSerialization;
 import io.atomix.copycat.util.ProtocolSerialization;
 import org.onlab.util.Match;
@@ -118,7 +117,6 @@ public final class CatalystSerializers {
         serializer.resolve(new ClientResponseTypeResolver());
         serializer.resolve(new ProtocolSerialization());
         serializer.resolve(new ServerSerialization());
-        serializer.resolve(new StorageSerialization());
         serializer.resolve(new AtomixConsistentMapCommands.TypeResolver());
         serializer.resolve(new AtomixLeaderElectorCommands.TypeResolver());
         serializer.resolve(new AtomixWorkQueueCommands.TypeResolver());

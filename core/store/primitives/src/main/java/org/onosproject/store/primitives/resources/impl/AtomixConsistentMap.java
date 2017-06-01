@@ -15,9 +15,6 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import io.atomix.copycat.client.session.CopycatSession;
-
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.Collection;
 import java.util.ConcurrentModificationException;
 import java.util.List;
@@ -25,12 +22,14 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
-import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
+import io.atomix.copycat.client.session.CopycatSession;
 import org.onlab.util.Match;
 import org.onlab.util.Tools;
 import org.onosproject.store.primitives.MapUpdate;
@@ -61,15 +60,23 @@ import org.onosproject.store.service.TransactionLog;
 import org.onosproject.store.service.Version;
 import org.onosproject.store.service.Versioned;
 
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Sets;
-
 /**
  * Distributed resource providing the {@link AsyncConsistentMap} primitive.
  */
 public class AtomixConsistentMap extends AbstractCopycatPrimitive implements AsyncConsistentMap<String, byte[]> {
+    private final Function<CopycatSession.State, Status> mapper = state -> {
+        switch (state) {
+            case CONNECTED:
+                return Status.ACTIVE;
+            case SUSPENDED:
+                return Status.SUSPENDED;
+            case CLOSED:
+                return Status.INACTIVE;
+            default:
+                throw new IllegalStateException("Unknown state " + state);
+        }
+    };
 
-    private final Set<Consumer<Status>> statusChangeListeners = Sets.newCopyOnWriteArraySet();
     private final Map<MapEventListener<String, byte[]>, Executor> mapEventListeners = new ConcurrentHashMap<>();
 
     public static final String CHANGE_SUBJECT = "changeEvents";
@@ -78,15 +85,10 @@ public class AtomixConsistentMap extends AbstractCopycatPrimitive implements Asy
         super(session);
         session.onEvent(CHANGE_SUBJECT, this::handleEvent);
         session.onStateChange(state -> {
-            if (state == CopycatSession.State.OPEN && isListening()) {
+            if (state == CopycatSession.State.CONNECTED && isListening()) {
                 session.submit(new Listen());
             }
         });
-    }
-
-    @Override
-    public String name() {
-        return null;
     }
 
     private void handleEvent(List<MapEvent<String, byte[]>> events) {
@@ -311,21 +313,6 @@ public class AtomixConsistentMap extends AbstractCopycatPrimitive implements Asy
     @Override
     public CompletableFuture<Void> rollback(TransactionId transactionId) {
         return session.submit(new TransactionRollback(transactionId)).thenApply(v -> null);
-    }
-
-    @Override
-    public void addStatusChangeListener(Consumer<Status> listener) {
-        statusChangeListeners.add(listener);
-    }
-
-    @Override
-    public void removeStatusChangeListener(Consumer<Status> listener) {
-        statusChangeListeners.remove(listener);
-    }
-
-    @Override
-    public Collection<Consumer<Status>> statusChangeListeners() {
-        return ImmutableSet.copyOf(statusChangeListeners);
     }
 
     private boolean isListening() {

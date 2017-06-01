@@ -45,11 +45,6 @@ public class AtomixAtomicCounterMap extends AbstractCopycatPrimitive implements 
     }
 
     @Override
-    public String name() {
-        return null;
-    }
-
-    @Override
     public CompletableFuture<Long> incrementAndGet(String key) {
         return session.submit(new IncrementAndGet(key));
     }

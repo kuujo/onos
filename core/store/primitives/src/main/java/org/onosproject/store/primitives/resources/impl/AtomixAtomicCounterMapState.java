@@ -99,11 +99,7 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @return put result
      */
     protected long put(Commit<Put> commit) {
-        try {
-            return primitive(map.put(commit.operation().key(), commit.operation().value()));
-        } finally {
-            commit.close();
-        }
+        return primitive(map.put(commit.operation().key(), commit.operation().value()));
     }
 
     /**
@@ -113,11 +109,7 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @return putIfAbsent result
      */
     protected long putIfAbsent(Commit<PutIfAbsent> commit) {
-        try {
-            return primitive(map.putIfAbsent(commit.operation().key(), commit.operation().value()));
-        } finally {
-            commit.close();
-        }
+        return primitive(map.putIfAbsent(commit.operation().key(), commit.operation().value()));
     }
 
     /**
@@ -127,11 +119,7 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @return get result
      */
     protected long get(Commit<Get> commit) {
-        try {
-            return primitive(map.get(commit.operation().key()));
-        } finally {
-            commit.close();
-        }
+        return primitive(map.get(commit.operation().key()));
     }
 
     /**
@@ -141,23 +129,19 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @return replace result
      */
     protected boolean replace(Commit<Replace> commit) {
-        try {
-            Long value = map.get(commit.operation().key());
-            if (value == null) {
-                if (commit.operation().replace() == 0) {
-                    map.put(commit.operation().key(), commit.operation().value());
-                    return true;
-                } else {
-                    return false;
-                }
-            } else if (value == commit.operation().replace()) {
+        Long value = map.get(commit.operation().key());
+        if (value == null) {
+            if (commit.operation().replace() == 0) {
                 map.put(commit.operation().key(), commit.operation().value());
                 return true;
+            } else {
+                return false;
             }
-            return false;
-        } finally {
-            commit.close();
+        } else if (value == commit.operation().replace()) {
+            map.put(commit.operation().key(), commit.operation().value());
+            return true;
         }
+        return false;
     }
 
     /**
@@ -167,11 +151,7 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @return remove result
      */
     protected long remove(Commit<Remove> commit) {
-        try {
-            return primitive(map.remove(commit.operation().key()));
-        } finally {
-            commit.close();
-        }
+        return primitive(map.remove(commit.operation().key()));
     }
 
     /**
@@ -181,22 +161,18 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @return removeValue result
      */
     protected boolean removeValue(Commit<RemoveValue> commit) {
-        try {
-            Long value = map.get(commit.operation().key());
-            if (value == null) {
-                if (commit.operation().value() == 0) {
-                    map.remove(commit.operation().key());
-                    return true;
-                }
-                return false;
-            } else if (value == commit.operation().value()) {
+        Long value = map.get(commit.operation().key());
+        if (value == null) {
+            if (commit.operation().value() == 0) {
                 map.remove(commit.operation().key());
                 return true;
             }
             return false;
-        } finally {
-            commit.close();
+        } else if (value == commit.operation().value()) {
+            map.remove(commit.operation().key());
+            return true;
         }
+        return false;
     }
 
     /**
@@ -207,13 +183,9 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @return getAndIncrement result
      */
     protected long getAndIncrement(Commit<GetAndIncrement> commit) {
-        try {
-            long value = primitive(map.get(commit.operation().key()));
-            map.put(commit.operation().key(), value + 1);
-            return value;
-        } finally {
-            commit.close();
-        }
+        long value = primitive(map.get(commit.operation().key()));
+        map.put(commit.operation().key(), value + 1);
+        return value;
     }
 
     /**
@@ -224,13 +196,9 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @return getAndDecrement result
      */
     protected long getAndDecrement(Commit<GetAndDecrement> commit) {
-        try {
-            long value = primitive(map.get(commit.operation().key()));
-            map.put(commit.operation().key(), value - 1);
-            return value;
-        } finally {
-            commit.close();
-        }
+        long value = primitive(map.get(commit.operation().key()));
+        map.put(commit.operation().key(), value - 1);
+        return value;
     }
 
     /**
@@ -241,13 +209,9 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @return incrementAndGet result
      */
     protected long incrementAndGet(Commit<IncrementAndGet> commit) {
-        try {
-            long value = primitive(map.get(commit.operation().key()));
-            map.put(commit.operation().key(), ++value);
-            return value;
-        } finally {
-            commit.close();
-        }
+        long value = primitive(map.get(commit.operation().key()));
+        map.put(commit.operation().key(), ++value);
+        return value;
     }
 
     /**
@@ -258,13 +222,9 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @return decrementAndGet result
      */
     protected long decrementAndGet(Commit<DecrementAndGet> commit) {
-        try {
-            long value = primitive(map.get(commit.operation().key()));
-            map.put(commit.operation().key(), --value);
-            return value;
-        } finally {
-            commit.close();
-        }
+        long value = primitive(map.get(commit.operation().key()));
+        map.put(commit.operation().key(), --value);
+        return value;
     }
 
     /**
@@ -274,14 +234,10 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @return addAndGet result
      */
     protected long addAndGet(Commit<AddAndGet> commit) {
-        try {
-            long value = primitive(map.get(commit.operation().key()));
-            value += commit.operation().delta();
-            map.put(commit.operation().key(), value);
-            return value;
-        } finally {
-            commit.close();
-        }
+        long value = primitive(map.get(commit.operation().key()));
+        value += commit.operation().delta();
+        map.put(commit.operation().key(), value);
+        return value;
     }
 
     /**
@@ -291,13 +247,9 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @return getAndAdd result
      */
     protected long getAndAdd(Commit<GetAndAdd> commit) {
-        try {
-            long value = primitive(map.get(commit.operation().key()));
-            map.put(commit.operation().key(), value + commit.operation().delta());
-            return value;
-        } finally {
-            commit.close();
-        }
+        long value = primitive(map.get(commit.operation().key()));
+        map.put(commit.operation().key(), value + commit.operation().delta());
+        return value;
     }
 
     /**
@@ -307,11 +259,7 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @return size result
      */
     protected int size(Commit<Size> commit) {
-        try {
-            return map.size();
-        } finally {
-            commit.close();
-        }
+        return map.size();
     }
 
     /**
@@ -321,11 +269,7 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @return isEmpty result
      */
     protected boolean isEmpty(Commit<IsEmpty> commit) {
-        try {
-            return map.isEmpty();
-        } finally {
-            commit.close();
-        }
+        return map.isEmpty();
     }
 
     /**
@@ -334,10 +278,6 @@ public class AtomixAtomicCounterMapState extends StateMachine implements Snapsho
      * @param commit clear commit
      */
     protected void clear(Commit<Clear> commit) {
-        try {
-            map.clear();
-        } finally {
-            commit.close();
-        }
+        map.clear();
     }
 }

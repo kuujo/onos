@@ -30,13 +30,11 @@ import static com.google.common.base.Preconditions.checkNotNull;
  */
 public class PartitionClientInfo {
     private final PartitionId partitionId;
-    private final Status status;
     private final Collection<NodeId> servers;
 
-    public PartitionClientInfo(PartitionId partitionId, Collection<NodeId> servers, Status status) {
+    public PartitionClientInfo(PartitionId partitionId, Collection<NodeId> servers) {
         this.partitionId = checkNotNull(partitionId);
         this.servers = ImmutableList.copyOf(checkNotNull(servers));
-        this.status = checkNotNull(status);
     }
 
     /**
@@ -55,13 +53,5 @@ public class PartitionClientInfo {
      */
     public Collection<NodeId> servers() {
         return servers;
-    }
-
-    /**
-     * Returns the current status for the client session.
-     * @return status
-     */
-    public Status status() {
-        return status;
     }
 }

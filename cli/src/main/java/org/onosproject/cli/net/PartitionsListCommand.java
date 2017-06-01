@@ -91,7 +91,7 @@ public class PartitionsListCommand extends AbstractShellCommand {
         }
         ClusterService clusterService = get(ClusterService.class);
         print("-------------------------------------------------------------------");
-        print(CLIENT_FMT, "Name", "Status", "Servers");
+        print(CLIENT_FMT, "Name", "Servers");
         print("-------------------------------------------------------------------");
 
         for (PartitionClientInfo info : partitionClientInfo) {
@@ -100,10 +100,10 @@ public class PartitionsListCommand extends AbstractShellCommand {
                 ControllerNode server = clusterService.getNode(serverId);
                 String serverString = String.format("%s:%d", server.id(), server.tcpPort());
                 if (first) {
-                    print(CLIENT_FMT, info.partitionId(), info.status(), serverString);
+                    print(CLIENT_FMT, info.partitionId(), serverString);
                     first = false;
                 } else {
-                    print(CLIENT_FMT, "", "", "", serverString);
+                    print(CLIENT_FMT, "", serverString);
                 }
             }
             if (!first) {
@@ -163,8 +163,7 @@ public class PartitionsListCommand extends AbstractShellCommand {
                     .forEach(servers::add);
 
             // Complete the partition attributes and add it to the array
-            partition.put("partitionId", info.partitionId().toString())
-                    .put("status", info.status().toString());
+            partition.put("partitionId", info.partitionId().toString());
             partitions.add(partition);
 
         });

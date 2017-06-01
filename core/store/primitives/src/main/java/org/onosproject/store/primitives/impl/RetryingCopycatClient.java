@@ -15,7 +15,6 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import io.atomix.copycat.client.CommunicationStrategy;
 import io.atomix.copycat.client.CopycatClient;
 import io.atomix.copycat.client.session.CopycatSession;
 
@@ -41,29 +40,16 @@ public class RetryingCopycatClient extends DelegatingCopycatClient {
 
     @Override
     public CopycatSession.Builder sessionBuilder() {
-        CopycatSession.Builder builder = client.sessionBuilder();
         return new CopycatSession.Builder() {
             @Override
-            public CopycatSession.Builder withName(String name) {
-                builder.withName(name);
-                return this;
-            }
-
-            @Override
-            public CopycatSession.Builder withType(String type) {
-                builder.withType(type);
-                return this;
-            }
-
-            @Override
-            public CopycatSession.Builder withCommunicationStrategy(CommunicationStrategy communicationStrategy) {
-                builder.withCommunicationStrategy(communicationStrategy);
-                return this;
-            }
-
-            @Override
             public CopycatSession build() {
-                return new RetryingCopycatSession(builder.build(), maxRetries, delayBetweenRetriesMillis);
+                CopycatSession session = client.sessionBuilder()
+                        .withName(name)
+                        .withType(type)
+                        .withCommunicationStrategy(communicationStrategy)
+                        .withTimeout(timeout)
+                        .build();
+                return new RetryingCopycatSession(session, maxRetries, delayBetweenRetriesMillis);
             }
         };
     }

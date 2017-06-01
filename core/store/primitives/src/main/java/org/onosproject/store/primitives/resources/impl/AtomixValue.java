@@ -104,6 +104,6 @@ public class AtomixValue implements AsyncAtomicValue<String> {
 
     @Override
     public String name() {
-        return null;
+        return name;
     }
 }

@@ -16,8 +16,27 @@
 
 package org.onosproject.store.primitives.resources.impl;
 
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
+import java.util.function.BinaryOperator;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
+
+import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.io.Input;
+import com.esotericsoftware.kryo.io.Output;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.HashMultimap;
 import com.google.common.collect.HashMultiset;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
@@ -29,29 +48,15 @@ import io.atomix.copycat.server.Snapshottable;
 import io.atomix.copycat.server.StateMachine;
 import io.atomix.copycat.server.StateMachineExecutor;
 import io.atomix.copycat.server.session.ServerSession;
+import io.atomix.copycat.server.session.SessionListener;
 import io.atomix.copycat.server.storage.snapshot.SnapshotReader;
 import io.atomix.copycat.server.storage.snapshot.SnapshotWriter;
-import org.onlab.util.CountDownCompleter;
+import org.onlab.util.KryoNamespace;
 import org.onlab.util.Match;
+import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.MultimapEvent;
+import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.Versioned;
-
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.BiConsumer;
-import java.util.function.BinaryOperator;
-import java.util.function.Function;
-import java.util.function.Supplier;
-import java.util.stream.Collector;
-import java.util.stream.Collectors;
 
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMultimapCommands.Clear;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMultimapCommands.ContainsEntry;
@@ -75,18 +80,57 @@ import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMu
 /**
  * State Machine for {@link AtomixConsistentSetMultimap} resource.
  */
-public class AtomixConsistentSetMultimapState extends StateMachine implements Snapshottable {
+public class AtomixConsistentSetMultimapState extends StateMachine implements SessionListener, Snapshottable {
+
+    private final Serializer serializer = Serializer.using(KryoNamespace.newBuilder()
+            .register(KryoNamespaces.BASIC)
+            .register(new com.esotericsoftware.kryo.Serializer<NonTransactionalCommit>() {
+                @Override
+                public void write(Kryo kryo, Output output, NonTransactionalCommit object) {
+                    kryo.writeClassAndObject(output, object.valueSet);
+                }
+
+                @Override
+                public NonTransactionalCommit read(Kryo kryo, Input input, Class<NonTransactionalCommit> type) {
+                    NonTransactionalCommit commit = new NonTransactionalCommit();
+                    commit.valueSet.addAll((Collection<byte[]>) kryo.readClassAndObject(input));
+                    return commit;
+                }
+            }, NonTransactionalCommit.class)
+            .build());
 
     private final AtomicLong globalVersion = new AtomicLong(1);
-    private final Map<Long, Commit<? extends Listen>> listeners = new HashMap<>();
+    private final Map<Long, ServerSession> listeners = new HashMap<>();
     private final Map<String, MapEntryValue> backingMap = Maps.newHashMap();
 
     @Override
     public void snapshot(SnapshotWriter writer) {
+        writer.writeLong(globalVersion.get());
+
+        byte[] listenersBytes = serializer.encode(listeners.keySet());
+        writer.writeInt(listenersBytes.length);
+        writer.write(listenersBytes);
+
+        byte[] backingMapBytes = serializer.encode(backingMap);
+        writer.writeInt(backingMapBytes.length);
+        writer.write(backingMapBytes);
     }
 
     @Override
     public void install(SnapshotReader reader) {
+        globalVersion.set(reader.readLong());
+
+        listeners.clear();
+        int listenersLength = reader.readInt();
+        byte[] listenersBytes = reader.readBytes(listenersLength);
+        for (long sessionId : serializer.<Set<Long>>decode(listenersBytes)) {
+            listeners.put(sessionId, sessions.session(sessionId));
+        }
+
+        backingMap.clear();
+        int backingMapLength = reader.readInt();
+        byte[] backingMapBytes = reader.readBytes(backingMapLength);
+        backingMap.putAll(serializer.decode(backingMapBytes));
     }
 
     @Override
@@ -110,6 +154,26 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
         executor.register(Unlisten.class, this::unlisten);
     }
 
+    @Override
+    public void register(ServerSession session) {
+
+    }
+
+    @Override
+    public void unregister(ServerSession session) {
+
+    }
+
+    @Override
+    public void expire(ServerSession session) {
+
+    }
+
+    @Override
+    public void close(ServerSession session) {
+        listeners.remove(session.id());
+    }
+
     /**
      * Handles a Size commit.
      *
@@ -117,14 +181,10 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * @return number of unique key value pairs in the multimap
      */
     protected int size(Commit<? extends Size> commit) {
-        try {
-            return backingMap.values()
-                    .stream()
-                    .map(valueCollection -> valueCollection.values().size())
-                    .collect(Collectors.summingInt(size -> size));
-        } finally {
-            commit.close();
-        }
+        return backingMap.values()
+                .stream()
+                .map(valueCollection -> valueCollection.values().size())
+                .collect(Collectors.summingInt(size -> size));
     }
 
     /**
@@ -134,11 +194,7 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * @return true if the multimap contains no key-value pairs, else false
      */
     protected boolean isEmpty(Commit<? extends IsEmpty> commit) {
-        try {
-            return backingMap.isEmpty();
-        } finally {
-            commit.close();
-        }
+        return backingMap.isEmpty();
     }
 
     /**
@@ -148,11 +204,7 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * @return returns true if the key is in the multimap, else false
      */
     protected boolean containsKey(Commit<? extends ContainsKey> commit) {
-        try {
-            return backingMap.containsKey(commit.operation().key());
-        } finally {
-            commit.close();
-        }
+        return backingMap.containsKey(commit.operation().key());
     }
 
     /**
@@ -162,23 +214,19 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * @return true if the value is in the multimap, else false
      */
     protected boolean containsValue(Commit<? extends ContainsValue> commit) {
-        try {
-            if (backingMap.values().isEmpty()) {
-                return false;
-            }
-            Match<byte[]> match = Match.ifValue(commit.operation().value());
-            return backingMap
-                    .values()
-                    .stream()
-                    .anyMatch(valueList ->
-                                      valueList
-                                              .values()
-                                              .stream()
-                                              .anyMatch(byteValue ->
-                                                    match.matches(byteValue)));
-        } finally {
-            commit.close();
+        if (backingMap.values().isEmpty()) {
+            return false;
         }
+        Match<byte[]> match = Match.ifValue(commit.operation().value());
+        return backingMap
+                .values()
+                .stream()
+                .anyMatch(valueList ->
+                        valueList
+                                .values()
+                                .stream()
+                                .anyMatch(byteValue ->
+                                        match.matches(byteValue)));
     }
 
     /**
@@ -188,20 +236,16 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * @return true if the key-value pair exists, else false
      */
     protected boolean containsEntry(Commit<? extends ContainsEntry> commit) {
-        try {
-            MapEntryValue entryValue =
-                    backingMap.get(commit.operation().key());
-            if (entryValue == null) {
-                return false;
-            } else {
-                Match valueMatch = Match.ifValue(commit.operation().value());
-                return entryValue
-                        .values()
-                        .stream()
-                        .anyMatch(byteValue -> valueMatch.matches(byteValue));
-            }
-        } finally {
-            commit.close();
+        MapEntryValue entryValue =
+                backingMap.get(commit.operation().key());
+        if (entryValue == null) {
+            return false;
+        } else {
+            Match valueMatch = Match.ifValue(commit.operation().value());
+            return entryValue
+                    .values()
+                    .stream()
+                    .anyMatch(byteValue -> valueMatch.matches(byteValue));
         }
     }
 
@@ -211,11 +255,7 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * @param commit Clear commit
      */
     protected void clear(Commit<? extends Clear> commit) {
-        try {
-            backingMap.clear();
-        } finally {
-            commit.close();
-        }
+        backingMap.clear();
     }
 
     /**
@@ -225,11 +265,7 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * @return a set of all keys in the multimap
      */
     protected Set<String> keySet(Commit<? extends KeySet> commit) {
-        try {
-            return ImmutableSet.copyOf(backingMap.keySet());
-        } finally {
-            commit.close();
-        }
+        return ImmutableSet.copyOf(backingMap.keySet());
     }
 
     /**
@@ -240,15 +276,11 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * times to the total key-value pairs in which that key participates
      */
     protected Multiset<String> keys(Commit<? extends Keys> commit) {
-        try {
-            Multiset keys = HashMultiset.create();
-            backingMap.forEach((key, mapEntryValue) -> {
-                keys.add(key, mapEntryValue.values().size());
-            });
-            return keys;
-        } finally {
-            commit.close();
-        }
+        Multiset keys = HashMultiset.create();
+        backingMap.forEach((key, mapEntryValue) -> {
+            keys.add(key, mapEntryValue.values().size());
+        });
+        return keys;
     }
 
     /**
@@ -258,14 +290,10 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * @return the set of values in the multimap with duplicates included
      */
     protected Multiset<byte[]> values(Commit<? extends Values> commit) {
-        try {
-            return backingMap
-                    .values()
-                    .stream()
-                    .collect(new HashMultisetValueCollector());
-        } finally {
-            commit.close();
-        }
+        return backingMap
+                .values()
+                .stream()
+                .collect(new HashMultisetValueCollector());
     }
 
     /**
@@ -274,16 +302,11 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * @param commit Entries commit
      * @return a set of all key-value pairs in the multimap
      */
-    protected Collection<Map.Entry<String, byte[]>> entries(
-            Commit<? extends Entries> commit) {
-        try {
-            return backingMap
-                    .entrySet()
-                    .stream()
-                    .collect(new EntrySetCollector());
-        } finally {
-            commit.close();
-        }
+    protected Collection<Map.Entry<String, byte[]>> entries(Commit<? extends Entries> commit) {
+        return backingMap
+                .entrySet()
+                .stream()
+                .collect(new EntrySetCollector());
     }
 
     /**
@@ -293,14 +316,8 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * @return the collection of values associated with the key or an empty
      * list if none exist
      */
-    protected Versioned<Collection<? extends byte[]>> get(
-            Commit<? extends Get> commit) {
-        try {
-            MapEntryValue mapEntryValue = backingMap.get(commit.operation().key());
-            return toVersioned(backingMap.get(commit.operation().key()));
-        } finally {
-            commit.close();
-        }
+    protected Versioned<Collection<? extends byte[]>> get(Commit<? extends Get> commit) {
+        return toVersioned(backingMap.get(commit.operation().key()));
     }
 
     /**
@@ -309,12 +326,10 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * @param commit removeAll commit
      * @return collection of removed values
      */
-    protected Versioned<Collection<? extends byte[]>> removeAll(
-            Commit<? extends RemoveAll> commit) {
+    protected Versioned<Collection<? extends byte[]>> removeAll(Commit<? extends RemoveAll> commit) {
         String key = commit.operation().key();
 
         if (!backingMap.containsKey(key)) {
-            commit.close();
             return new Versioned<>(Sets.newHashSet(), -1);
         }
 
@@ -337,7 +352,6 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
         String key = commit.operation().key();
 
         if (!backingMap.containsKey(key)) {
-            commit.close();
             return false;
         }
 
@@ -368,7 +382,7 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
             return false;
         }
         if (!backingMap.containsKey(key)) {
-            backingMap.put(key, new NonTransactionalCommit(1));
+            backingMap.put(key, new NonTransactionalCommit());
         }
 
         Versioned<Collection<? extends byte[]>> addedValues = backingMap
@@ -390,7 +404,7 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
             Commit<? extends Replace> commit) {
         if (!backingMap.containsKey(commit.operation().key())) {
             backingMap.put(commit.operation().key(),
-                           new NonTransactionalCommit(1));
+                           new NonTransactionalCommit());
         }
         return backingMap.get(commit.operation().key()).addCommit(commit);
     }
@@ -401,22 +415,7 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * @param commit listen commit
      */
     protected void listen(Commit<? extends Listen> commit) {
-        Long sessionId = commit.session().id();
-        if (listeners.putIfAbsent(sessionId, commit) != null) {
-            commit.close();
-            return;
-        }
-        commit.session()
-                .onStateChange(
-                        state -> {
-                            if (state == ServerSession.State.CLOSED
-                                    || state == ServerSession.State.EXPIRED) {
-                                Commit<? extends Listen> listener = listeners.remove(sessionId);
-                                if (listener != null) {
-                                    listener.close();
-                                }
-                            }
-                        });
+        listeners.put(commit.session().id(), commit.session());
     }
 
     /**
@@ -425,14 +424,7 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * @param commit unlisten commit
      */
     protected void unlisten(Commit<? extends Unlisten> commit) {
-        try {
-            Commit<? extends Listen> listener = listeners.remove(commit.session().id());
-            if (listener != null) {
-                listener.close();
-            }
-        } finally {
-            commit.close();
-        }
+        listeners.remove(commit.session().id());
     }
 
     /**
@@ -441,8 +433,7 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
      * @param events list of map event to publish
      */
     private void publish(List<MultimapEvent<String, byte[]>> events) {
-        listeners.values().forEach(commit ->
-                commit.session().publish(AtomixConsistentSetMultimap.CHANGE_SUBJECT, events));
+        listeners.values().forEach(session -> session.publish(AtomixConsistentSetMultimap.CHANGE_SUBJECT, events));
     }
 
     private interface MapEntryValue {
@@ -462,11 +453,6 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
         long version();
 
         /**
-         * Discards the value by invoke appropriate clean up actions.
-         */
-        void discard();
-
-        /**
          * Add a new commit and modifies the set of values accordingly.
          * In the case of a replace or removeAll it returns the set of removed
          * values. In the case of put or multiRemove it returns null for no
@@ -481,19 +467,9 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
 
     private class NonTransactionalCommit implements MapEntryValue {
         private long version;
-        private final TreeMap<byte[], CountDownCompleter<Commit>>
-                valueCountdownMap = Maps.newTreeMap(new ByteArrayComparator());
-        /*This is a mapping of commits that added values to the commits
-        * removing those values, they will not be circular because keys will
-        * be exclusively Put and Replace commits and values will be exclusively
-        * Multiremove commits, each time a Put or replace is removed it should
-        * as part of closing go through and countdown each of the remove
-        * commits depending on it.*/
-        private final HashMultimap<Commit, CountDownCompleter<Commit>>
-                additiveToRemovalCommits = HashMultimap.create();
+        private final TreeSet<byte[]> valueSet = Sets.newTreeSet(new ByteArrayComparator());
 
-        public NonTransactionalCommit(
-                long version) {
+        public NonTransactionalCommit() {
             //Set the version to current it will only be updated once this is
             // populated
             this.version = globalVersion.get();
@@ -501,18 +477,12 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
 
         @Override
         public Collection<? extends byte[]> values() {
-            return ImmutableSet.copyOf(valueCountdownMap.keySet());
+            return ImmutableSet.copyOf(valueSet);
         }
 
         @Override
         public long version() {
             return version;
-        }
-
-        @Override
-        public void discard() {
-            valueCountdownMap.values().forEach(completer ->
-                                                   completer.object().close());
         }
 
         @Override
@@ -527,45 +497,25 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
                 Set<byte[]> valuesToAdd =
                         Sets.newTreeSet(new ByteArrayComparator());
                 ((Put) commit.operation()).values().forEach(value -> {
-                    if (!valueCountdownMap.containsKey(value)) {
+                    if (!valueSet.contains(value)) {
                         valuesToAdd.add(value);
                     }
                 });
                 if (valuesToAdd.isEmpty()) {
                     //Do not increment or add the commit if no change resulted
-                    commit.close();
                     return null;
                 }
-                //When all values from a commit have been removed decrement all
-                //removal commits relying on it and remove itself from the
-                //mapping of additive commits to the commits removing the
-                //values it added. (Only multiremoves will be dependent)
-                CountDownCompleter<Commit> completer =
-                        new CountDownCompleter<>(commit, valuesToAdd.size(),
-                        c -> {
-                            if (additiveToRemovalCommits.containsKey(c)) {
-                                additiveToRemovalCommits.
-                                        get(c).
-                                        forEach(countdown ->
-                                                        countdown.countDown());
-                                additiveToRemovalCommits.removeAll(c);
-                            }
-                            c.close();
-                        });
                 retVersion = new Versioned<>(valuesToAdd, version);
-                valuesToAdd.forEach(value -> valueCountdownMap.put(value,
-                                                                   completer));
+                valuesToAdd.forEach(value -> valueSet.add(value));
                 version++;
                 return retVersion;
 
             } else if (commit.operation() instanceof Replace) {
                 //Will this work??  Need to check before check-in!
                 Set<byte[]> removedValues = Sets.newHashSet();
-                removedValues.addAll(valueCountdownMap.keySet());
+                removedValues.addAll(valueSet);
                 retVersion = new Versioned<>(removedValues, version);
-                valueCountdownMap.values().forEach(countdown ->
-                                                   countdown.countDown());
-                valueCountdownMap.clear();
+                valueSet.clear();
                 Set<byte[]> valuesToAdd =
                         Sets.newTreeSet(new ByteArrayComparator());
                 ((Replace) commit.operation()).values().forEach(value -> {
@@ -574,27 +524,9 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
                 if (valuesToAdd.isEmpty()) {
                     version = globalVersion.incrementAndGet();
                     backingMap.remove(((Replace) commit.operation()).key());
-                    //Order is important here, the commit must be closed last
-                    //(or minimally after all uses)
-                    commit.close();
                     return retVersion;
                 }
-                CountDownCompleter<Commit> completer =
-                        new CountDownCompleter<>(commit, valuesToAdd.size(),
-                                     c -> {
-                                         if (additiveToRemovalCommits
-                                             .containsKey(c)) {
-                                            additiveToRemovalCommits.
-                                                 get(c).
-                                                 forEach(countdown ->
-                                                     countdown.countDown());
-                                             additiveToRemovalCommits.
-                                                     removeAll(c);
-                                         }
-                                         c.close();
-                                     });
-                valuesToAdd.forEach(value ->
-                                    valueCountdownMap.put(value, completer));
+                valuesToAdd.forEach(value -> valueSet.add(value));
                 version = globalVersion.incrementAndGet();
                 return retVersion;
 
@@ -602,18 +534,15 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
                 Set<byte[]> removed = Sets.newHashSet();
                 //We can assume here that values only appear once and so we
                 //do not need to sanitize the return for duplicates.
-                removed.addAll(valueCountdownMap.keySet());
+                removed.addAll(valueSet);
                 retVersion = new Versioned<>(removed, version);
-                valueCountdownMap.values().forEach(countdown ->
-                                                   countdown.countDown());
-                valueCountdownMap.clear();
+                valueSet.clear();
                 //In the case of a removeAll all commits will be removed and
                 //unlike the multiRemove case we do not need to consider
                 //dependencies among additive and removal commits.
 
                 //Save the key for use after the commit is closed
                 String key = ((RemoveAll) commit.operation()).key();
-                commit.close();
                 version = globalVersion.incrementAndGet();
                 backingMap.remove(key);
                 return retVersion;
@@ -623,42 +552,27 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Sn
                 //At this time we also sanitize the removal set by adding to a
                 //set with proper handling of byte[] equality.
                 Set<byte[]> removed = Sets.newHashSet();
-                Set<Commit> commitsRemovedFrom = Sets.newHashSet();
                 ((MultiRemove) commit.operation()).values().forEach(value -> {
-                    if (valueCountdownMap.containsKey(value)) {
+                    if (valueSet.contains(value)) {
                         removed.add(value);
-                        commitsRemovedFrom
-                                .add(valueCountdownMap.get(value).object());
                     }
                 });
                 //If there is nothing to be removed no action should be taken.
                 if (removed.isEmpty()) {
-                    //Do not increment or add the commit if no change resulted
-                    commit.close();
                     return null;
                 }
-                //When all additive commits this depends on are closed this can
-                //be closed as well.
-                CountDownCompleter<Commit> completer =
-                        new CountDownCompleter<>(commit,
-                                                 commitsRemovedFrom.size(),
-                                                 c -> c.close());
-                commitsRemovedFrom.forEach(commitRemovedFrom -> {
-                    additiveToRemovalCommits.put(commitRemovedFrom, completer);
-                });
                 //Save key in case countdown results in closing the commit.
                 String removedKey = ((MultiRemove) commit.operation()).key();
                 removed.forEach(removedValue -> {
-                    valueCountdownMap.remove(removedValue).countDown();
+                    valueSet.remove(removedValue);
                 });
                 //The version is updated locally as well as globally even if
                 //this object will be removed from the map in case any other
                 //party still holds a reference to this object.
                 retVersion = new Versioned<>(removed, version);
                 version = globalVersion.incrementAndGet();
-                if (valueCountdownMap.isEmpty()) {
-                    backingMap
-                            .remove(removedKey);
+                if (valueSet.isEmpty()) {
+                    backingMap.remove(removedKey);
                 }
                 return retVersion;
 

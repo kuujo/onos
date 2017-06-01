@@ -17,9 +17,7 @@ package org.onosproject.store.primitives.impl;
 
 import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
 
-import io.atomix.catalyst.concurrent.Listener;
 import io.atomix.catalyst.concurrent.ThreadContext;
 import io.atomix.catalyst.serializer.Serializer;
 import io.atomix.catalyst.transport.Address;
@@ -42,13 +40,8 @@ public class DelegatingCopycatClient implements CopycatClient {
     }
 
     @Override
-    public State state() {
-        return client.state();
-    }
-
-    @Override
-    public Listener<State> onStateChange(Consumer<State> callback) {
-        return client.onStateChange(callback);
+    public String id() {
+        return client.id();
     }
 
     @Override
@@ -84,7 +77,7 @@ public class DelegatingCopycatClient implements CopycatClient {
     @Override
     public String toString() {
         return toStringHelper(this)
-                .add("state", state())
+                .add("id", id())
                 .toString();
     }
 }

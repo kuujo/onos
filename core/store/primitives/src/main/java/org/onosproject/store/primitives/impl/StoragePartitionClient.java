@@ -18,17 +18,13 @@ package org.onosproject.store.primitives.impl;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import com.google.common.base.Suppliers;
 import io.atomix.catalyst.transport.Transport;
 import io.atomix.copycat.client.CommunicationStrategies;
-import io.atomix.copycat.client.ConnectionStrategies;
 import io.atomix.copycat.client.CopycatClient;
-import io.atomix.copycat.client.CopycatClient.State;
 import io.atomix.copycat.metadata.CopycatSessionMetadata;
 import org.onlab.util.HexString;
 import org.onlab.util.OrderedExecutor;
@@ -54,7 +50,6 @@ import org.onosproject.store.service.AsyncDistributedSet;
 import org.onosproject.store.service.AsyncDocumentTree;
 import org.onosproject.store.service.AsyncLeaderElector;
 import org.onosproject.store.service.DistributedPrimitive;
-import org.onosproject.store.service.DistributedPrimitive.Status;
 import org.onosproject.store.service.PartitionClientInfo;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.WorkQueue;
@@ -78,18 +73,6 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
     private final com.google.common.base.Supplier<AsyncConsistentMap<String, byte[]>> onosAtomicValuesMap =
             Suppliers.memoize(() -> newAsyncConsistentMap(ATOMIC_VALUES_CONSISTENT_MAP_NAME,
                                                           Serializer.using(KryoNamespaces.BASIC)));
-    Function<State, Status> mapper = state -> {
-        switch (state) {
-            case CONNECTED:
-                return Status.ACTIVE;
-            case SUSPENDED:
-                return Status.SUSPENDED;
-            case CLOSED:
-                return Status.INACTIVE;
-            default:
-                throw new IllegalStateException("Unknown state " + state);
-        }
-    };
 
     public StoragePartitionClient(StoragePartition partition,
             io.atomix.catalyst.serializer.Serializer serializer,
@@ -105,8 +88,6 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
     public CompletableFuture<Void> open() {
         synchronized (StoragePartitionClient.this) {
             client = newCopycatClient(transport, serializer.clone());
-            client.onStateChange(state -> log.debug("Partition {} client state"
-                    + " changed to {}", partition.getId(), state));
         }
         return client.connect(partition.getMemberAddresses()).whenComplete((r, e) -> {
             if (e == null) {
@@ -140,11 +121,6 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                 .withType(DistributedPrimitive.Type.CONSISTENT_MAP.name())
                 .withCommunicationStrategy(CommunicationStrategies.ANY)
                 .build());
-        Consumer<State> statusListener = state -> {
-            atomixConsistentMap.statusChangeListeners()
-                               .forEach(listener -> listener.accept(mapper.apply(state)));
-        };
-        client.onStateChange(statusListener);
 
         AsyncConsistentMap<String, byte[]> rawMap =
                 new DelegatingAsyncConsistentMap<String, byte[]>(atomixConsistentMap) {
@@ -172,11 +148,6 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                 .withType(DistributedPrimitive.Type.CONSISTENT_TREEMAP.name())
                 .withCommunicationStrategy(CommunicationStrategies.ANY)
                 .build());
-        Consumer<State> statusListener = state -> {
-            atomixConsistentTreeMap.statusChangeListeners()
-                    .forEach(listener -> listener.accept(mapper.apply(state)));
-        };
-        client.onStateChange(statusListener);
 
         AsyncConsistentTreeMap<byte[]> rawMap =
                 new DelegatingAsyncConsistentTreeMap<byte[]>(atomixConsistentTreeMap) {
@@ -203,11 +174,6 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                 .withType(DistributedPrimitive.Type.CONSISTENT_MULTIMAP.name())
                 .withCommunicationStrategy(CommunicationStrategies.ANY)
                 .build());
-        Consumer<State> statusListener = state -> {
-            atomixConsistentSetMultimap.statusChangeListeners()
-                    .forEach(listener -> listener.accept(mapper.apply(state)));
-        };
-        client.onStateChange(statusListener);
 
         AsyncConsistentMultimap<String, byte[]> rawMap =
                 new DelegatingAsyncConsistentMultimap<String, byte[]>(
@@ -245,7 +211,7 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                 .build());
 
         AsyncAtomicCounterMap<K> transcodedMap =
-                DistributedPrimitives.<K, String>newTranscodingAtomicCounterMap(
+                DistributedPrimitives.newTranscodingAtomicCounterMap(
                        atomixAtomicCounterMap,
                         key -> HexString.toHexString(serializer.encode(key)),
                         string -> serializer.decode(HexString.fromHexString(string)));
@@ -270,7 +236,7 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                 .withType(DistributedPrimitive.Type.COUNTER.name())
                 .withCommunicationStrategy(CommunicationStrategies.LEADER)
                 .build());
-        AsyncAtomicIdGenerator asyncIdGenerator = new AtomixIdGenerator(name, asyncCounter);
+        AsyncAtomicIdGenerator asyncIdGenerator = new AtomixIdGenerator(asyncCounter);
         return new ExecutingAsyncAtomicIdGenerator(asyncIdGenerator, defaultExecutor(executorSupplier), sharedExecutor);
     }
 
@@ -313,9 +279,6 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                 .withCommunicationStrategy(CommunicationStrategies.LEADER)
                 .build());
         leaderElector.setupCache().join();
-        Consumer<State> statusListener = state -> leaderElector.statusChangeListeners()
-                .forEach(listener -> listener.accept(mapper.apply(state)));
-        client.onStateChange(statusListener);
         return new ExecutingAsyncLeaderElector(leaderElector, defaultExecutor(executorSupplier), sharedExecutor);
     }
 
@@ -345,7 +308,7 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
 
     @Override
     public boolean isOpen() {
-        return client.state() != State.CLOSED;
+        return client != null;
     }
 
     /**
@@ -353,16 +316,14 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
      * @return partition client information
      */
     public PartitionClientInfo clientInfo() {
-        return new PartitionClientInfo(partition.getId(),
-                partition.getMembers(),
-                mapper.apply(client.state()));
+        return new PartitionClientInfo(partition.getId(), partition.getMembers());
     }
 
     private CopycatClient newCopycatClient(Transport transport, io.atomix.catalyst.serializer.Serializer serializer) {
-        CopycatClient.Builder clientBuilder = CopycatClient.builder()
-                .withConnectionStrategy(ConnectionStrategies.FIBONACCI_BACKOFF)
+        CopycatClient client = CopycatClient.builder()
                 .withTransport(transport)
-                .withSerializer(serializer);
-        return new RetryingCopycatClient(new RecoveringCopycatClient(clientBuilder), 5, 100);
+                .withSerializer(serializer)
+                .build();
+        return new RetryingCopycatClient(new RecoveringCopycatClient(client), 5, 100);
     }
 }

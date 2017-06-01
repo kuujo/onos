@@ -69,7 +69,7 @@ public class AtomixConsistentSetMultimap
         super(session);
         session.onEvent(CHANGE_SUBJECT, this::handleEvent);
         session.onStateChange(state -> {
-            if (state == CopycatSession.State.OPEN && isListening()) {
+            if (state == CopycatSession.State.CONNECTED && isListening()) {
                 session.submit(new Listen());
             }
         });
@@ -190,11 +190,6 @@ public class AtomixConsistentSetMultimap
     @Override
     public CompletableFuture<Map<String, Collection<byte[]>>> asMap() {
         throw new UnsupportedOperationException("Expensive operation.");
-    }
-
-    @Override
-    public String name() {
-        return null;
     }
 
     /**

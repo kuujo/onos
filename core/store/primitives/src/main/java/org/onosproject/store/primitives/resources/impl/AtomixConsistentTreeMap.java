@@ -39,7 +39,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -83,11 +82,6 @@ public class AtomixConsistentTreeMap extends AbstractCopycatPrimitive implements
     public AtomixConsistentTreeMap(CopycatSession session) {
         super(session);
         session.onEvent(CHANGE_SUBJECT, this::handleEvent);
-    }
-
-    @Override
-    public String name() {
-        return null;
     }
 
     private void handleEvent(List<MapEvent<String, byte[]>> events) {

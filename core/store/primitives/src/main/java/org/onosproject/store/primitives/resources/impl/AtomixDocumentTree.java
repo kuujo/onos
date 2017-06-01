@@ -58,16 +58,11 @@ public class AtomixDocumentTree extends AbstractCopycatPrimitive implements Asyn
     public AtomixDocumentTree(CopycatSession session) {
         super(session);
         session.onStateChange(state -> {
-            if (state == CopycatSession.State.OPEN && isListening()) {
+            if (state == CopycatSession.State.CONNECTED && isListening()) {
                 session.submit(new Listen());
             }
         });
         session.onEvent(CHANGE_SUBJECT, this::processTreeUpdates);
-    }
-
-    @Override
-    public String name() {
-        return null;
     }
 
     @Override

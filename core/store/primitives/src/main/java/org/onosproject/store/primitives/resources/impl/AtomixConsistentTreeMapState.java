@@ -24,8 +24,13 @@ import io.atomix.copycat.server.StateMachine;
 import io.atomix.copycat.server.StateMachineExecutor;
 import io.atomix.copycat.server.session.ServerSession;
 import io.atomix.copycat.server.session.SessionListener;
+import io.atomix.copycat.server.storage.snapshot.SnapshotReader;
+import io.atomix.copycat.server.storage.snapshot.SnapshotWriter;
+import org.onlab.util.KryoNamespace;
 import org.onlab.util.Match;
+import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.MapEvent;
+import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.Versioned;
 
 import java.util.AbstractMap.SimpleImmutableEntry;
@@ -75,10 +80,14 @@ import static org.onosproject.store.primitives.resources.impl.MapEntryUpdateResu
  */
 public class AtomixConsistentTreeMapState extends StateMachine implements SessionListener {
 
-    private final Map<Long, Commit<? extends Listen>> listeners =
-            Maps.newHashMap();
+    private final Map<Long, ServerSession> listeners = Maps.newHashMap();
     private TreeMap<String, TreeMapEntryValue> tree = Maps.newTreeMap();
     private final Set<String> preparedKeys = Sets.newHashSet();
+
+    private final Serializer serializer = Serializer.using(KryoNamespace.newBuilder()
+            .register(KryoNamespaces.BASIC)
+            .register(TreeMapEntryValue.class)
+            .build());
 
     private Function<Commit<SubMap>, NavigableMap<String, TreeMapEntryValue>> subMapFunction = this::subMap;
     private Function<Commit<FirstKey>, String> firstKeyFunction = this::firstKey;
@@ -103,6 +112,41 @@ public class AtomixConsistentTreeMapState extends StateMachine implements Sessio
     private Function<Commit<FloorKey>, String> floorKeyFunction = this::floorKey;
     private Function<Commit<CeilingKey>, String> ceilingKeyFunction = this::ceilingKey;
     private Function<Commit<HigherKey>, String> higherKeyFunction = this::higherKey;
+
+    @Override
+    public void snapshot(SnapshotWriter writer) {
+        byte[] listenersBytes = serializer.encode(listeners.keySet());
+        writer.writeInt(listenersBytes.length);
+        writer.write(listenersBytes);
+
+        byte[] preparedKeysBytes = serializer.encode(preparedKeys);
+        writer.writeInt(preparedKeysBytes.length);
+        writer.write(preparedKeysBytes);
+
+        byte[] treeBytes = serializer.encode(tree);
+        writer.writeInt(treeBytes.length);
+        writer.write(treeBytes);
+    }
+
+    @Override
+    public void install(SnapshotReader reader) {
+        listeners.clear();
+        int listenersLength = reader.readInt();
+        byte[] listenersBytes = reader.readBytes(listenersLength);
+        for (long sessionId : serializer.<Set<Long>>decode(listenersBytes)) {
+            listeners.put(sessionId, sessions.session(sessionId));
+        }
+
+        preparedKeys.clear();
+        int preparedKeysLength = reader.readInt();
+        byte[] preparedKeysBytes = reader.readBytes(preparedKeysLength);
+        preparedKeys.addAll(serializer.decode(preparedKeysBytes));
+
+        tree.clear();
+        int treeLength = reader.readInt();
+        byte[] treeBytes = reader.readBytes(treeLength);
+        tree.putAll(serializer.decode(treeBytes));
+    }
 
     @Override
     public void configure(StateMachineExecutor executor) {
@@ -140,107 +184,59 @@ public class AtomixConsistentTreeMapState extends StateMachine implements Sessio
         executor.register(Clear.class, this::clear);
     }
 
-    @Override
-    public void close() {
-        listeners.values().forEach(Commit::close);
-        listeners.clear();
-        tree.values().forEach(TreeMapEntryValue::discard);
-        tree.clear();
-    }
-
     protected boolean containsKey(Commit<? extends ContainsKey> commit) {
-        try {
             return toVersioned(tree.get((commit.operation().key()))) != null;
-        } finally {
-            commit.close();
-        }
     }
 
     protected boolean containsValue(Commit<? extends ContainsValue> commit) {
-        try {
             Match<byte[]> valueMatch = Match
                     .ifValue(commit.operation().value());
             return tree.values().stream().anyMatch(
                     value -> valueMatch.matches(value.value()));
-        } finally {
-            commit.close();
-        }
     }
 
     protected Versioned<byte[]> get(Commit<? extends Get> commit) {
-        try {
             return toVersioned(tree.get(commit.operation().key()));
-        } finally {
-            commit.close();
-        }
     }
 
     protected Versioned<byte[]> getOrDefault(Commit<? extends GetOrDefault> commit) {
-        try {
             Versioned<byte[]> value = toVersioned(tree.get(commit.operation().key()));
             return value != null ? value : new Versioned<>(commit.operation().defaultValue(), 0);
-        } finally {
-            commit.close();
-        }
     }
 
     protected int size(Commit<? extends Size> commit) {
-        try {
             return tree.size();
-        } finally {
-            commit.close();
-        }
     }
 
     protected boolean isEmpty(Commit<? extends IsEmpty> commit) {
-        try {
             return tree.isEmpty();
-        } finally {
-            commit.close();
-        }
     }
 
     protected Set<String> keySet(Commit<? extends KeySet> commit) {
-        try {
             return tree.keySet().stream().collect(Collectors.toSet());
-        } finally {
-            commit.close();
-        }
     }
 
-    protected Collection<Versioned<byte[]>> values(
-            Commit<? extends Values> commit) {
-        try {
+    protected Collection<Versioned<byte[]>> values(Commit<? extends Values> commit) {
             return tree.values().stream().map(this::toVersioned)
                     .collect(Collectors.toList());
-        } finally {
-            commit.close();
-        }
     }
 
-    protected Set<Map.Entry<String, Versioned<byte[]>>> entrySet(
-            Commit<? extends EntrySet> commit) {
-        try {
+    protected Set<Map.Entry<String, Versioned<byte[]>>> entrySet(Commit<? extends EntrySet> commit) {
             return tree
                     .entrySet()
                     .stream()
                     .map(e -> Maps.immutableEntry(e.getKey(),
                                                   toVersioned(e.getValue())))
                     .collect(Collectors.toSet());
-        } finally {
-            commit.close();
-        }
     }
 
-    protected MapEntryUpdateResult<String, byte[]> updateAndGet(
-            Commit<? extends UpdateAndGet> commit) {
+    protected MapEntryUpdateResult<String, byte[]> updateAndGet(Commit<? extends UpdateAndGet> commit) {
         Status updateStatus = validate(commit.operation());
         String key = commit.operation().key();
         TreeMapEntryValue oldCommitValue = tree.get(commit.operation().key());
         Versioned<byte[]> oldTreeValue = toVersioned(oldCommitValue);
 
         if (updateStatus != Status.OK) {
-            commit.close();
             return new MapEntryUpdateResult<>(updateStatus, "", key,
                                                   oldTreeValue, oldTreeValue);
         }
@@ -256,13 +252,10 @@ public class AtomixConsistentTreeMapState extends StateMachine implements Sessio
         if (updateType == MapEvent.Type.REMOVE ||
                 updateType == MapEvent.Type.UPDATE) {
             tree.remove(key);
-            oldCommitValue.discard();
         }
         if (updateType == MapEvent.Type.INSERT ||
                 updateType == MapEvent.Type.UPDATE) {
-            tree.put(key, new NonTransactionalCommit(newVersion, commit));
-        } else {
-            commit.close();
+            tree.put(key, new TreeMapEntryValue(newVersion, commit.operation().value()));
         }
         publish(Lists.newArrayList(new MapEvent<>("", key, newTreeValue,
                                                   oldTreeValue)));
@@ -270,9 +263,7 @@ public class AtomixConsistentTreeMapState extends StateMachine implements Sessio
                                           newTreeValue);
     }
 
-    protected Status clear(
-            Commit<? extends Clear> commit) {
-        try {
+    protected Status clear(Commit<? extends Clear> commit) {
             Iterator<Map.Entry<String, TreeMapEntryValue>> iterator = tree
                     .entrySet()
                     .iterator();
@@ -285,44 +276,17 @@ public class AtomixConsistentTreeMapState extends StateMachine implements Sessio
                                               value.version());
                 publish(Lists.newArrayList(new MapEvent<>("", key, null,
                                                           removedValue)));
-                value.discard();
                 iterator.remove();
             }
             return Status.OK;
-        } finally {
-            commit.close();
-        }
     }
 
-    protected void listen(
-            Commit<? extends Listen> commit) {
-        Long sessionId = commit.session().id();
-        listeners.put(sessionId, commit);
-        commit.session()
-                .onStateChange(
-                        state -> {
-                            if (state == ServerSession.State.CLOSED
-                                    || state == ServerSession.State.EXPIRED) {
-                                Commit<? extends Listen> listener =
-                                        listeners.remove(sessionId);
-                                if (listener != null) {
-                                    listener.close();
-                                }
-                            }
-                        });
+    protected void listen(Commit<? extends Listen> commit) {
+        listeners.put(commit.session().id(), commit.session());
     }
 
-    protected void unlisten(
-            Commit<? extends Unlisten> commit) {
-        try {
-            Commit<? extends AtomixConsistentTreeMapCommands.Listen> listener =
-                    listeners.remove(commit.session().id());
-            if (listener != null) {
-                listener.close();
-            }
-        } finally {
-            commit.close();
-        }
+    protected void unlisten(Commit<? extends Unlisten> commit) {
+        closeListener(commit.session().id());
     }
 
     private Status validate(UpdateAndGet update) {
@@ -345,149 +309,81 @@ public class AtomixConsistentTreeMapState extends StateMachine implements Sessio
 
     protected NavigableMap<String, TreeMapEntryValue> subMap(
             Commit<? extends SubMap> commit) {
-        //Do not support this until lazy communication is possible.  At present
+        // Do not support this until lazy communication is possible.  At present
         // it transmits up to the entire map.
-        try {
-            SubMap<String, TreeMapEntryValue> subMap = commit.operation();
-            return tree.subMap(subMap.fromKey(), subMap.isInclusiveFrom(),
-                               subMap.toKey(), subMap.isInclusiveTo());
-        } finally {
-            commit.close();
-        }
+        SubMap<String, TreeMapEntryValue> subMap = commit.operation();
+        return tree.subMap(subMap.fromKey(), subMap.isInclusiveFrom(),
+                subMap.toKey(), subMap.isInclusiveTo());
     }
 
     protected String firstKey(Commit<? extends FirstKey> commit) {
-        try {
-            if (tree.isEmpty()) {
-                return null;
-            }
-            return tree.firstKey();
-        } finally {
-            commit.close();
+        if (tree.isEmpty()) {
+            return null;
         }
+        return tree.firstKey();
     }
 
     protected String lastKey(Commit<? extends LastKey> commit) {
-        try {
-            return tree.isEmpty() ? null : tree.lastKey();
-        } finally {
-            commit.close();
-        }
+        return tree.isEmpty() ? null : tree.lastKey();
     }
 
-    protected Map.Entry<String, Versioned<byte[]>> higherEntry(
-            Commit<? extends HigherEntry> commit) {
-        try {
-            if (tree.isEmpty()) {
-                return null;
-            }
-            return toVersionedEntry(
-                    tree.higherEntry(commit.operation().key()));
-        } finally {
-            commit.close();
+    protected Map.Entry<String, Versioned<byte[]>> higherEntry(Commit<? extends HigherEntry> commit) {
+        if (tree.isEmpty()) {
+            return null;
         }
+        return toVersionedEntry(
+                tree.higherEntry(commit.operation().key()));
     }
 
-    protected Map.Entry<String, Versioned<byte[]>> firstEntry(
-            Commit<? extends FirstEntry> commit) {
-        try {
-            if (tree.isEmpty()) {
-                return null;
-            }
-            return toVersionedEntry(tree.firstEntry());
-        } finally {
-            commit.close();
+    protected Map.Entry<String, Versioned<byte[]>> firstEntry(Commit<? extends FirstEntry> commit) {
+        if (tree.isEmpty()) {
+            return null;
         }
+        return toVersionedEntry(tree.firstEntry());
     }
 
-    protected Map.Entry<String, Versioned<byte[]>> lastEntry(
-            Commit<? extends LastEntry> commit) {
-        try {
-            if (tree.isEmpty()) {
-                return null;
-            }
-            return toVersionedEntry(tree.lastEntry());
-        } finally {
-            commit.close();
+    protected Map.Entry<String, Versioned<byte[]>> lastEntry(Commit<? extends LastEntry> commit) {
+        if (tree.isEmpty()) {
+            return null;
         }
+        return toVersionedEntry(tree.lastEntry());
     }
 
-    protected Map.Entry<String, Versioned<byte[]>> pollFirstEntry(
-            Commit<? extends PollFirstEntry> commit) {
-        try {
-            return toVersionedEntry(tree.pollFirstEntry());
-        } finally {
-            commit.close();
-        }
+    protected Map.Entry<String, Versioned<byte[]>> pollFirstEntry(Commit<? extends PollFirstEntry> commit) {
+        return toVersionedEntry(tree.pollFirstEntry());
     }
 
-    protected Map.Entry<String, Versioned<byte[]>> pollLastEntry(
-            Commit<? extends PollLastEntry> commit) {
-        try {
-            return toVersionedEntry(tree.pollLastEntry());
-        } finally {
-            commit.close();
-        }
+    protected Map.Entry<String, Versioned<byte[]>> pollLastEntry(Commit<? extends PollLastEntry> commit) {
+        return toVersionedEntry(tree.pollLastEntry());
     }
 
-    protected Map.Entry<String, Versioned<byte[]>> lowerEntry(
-            Commit<? extends LowerEntry> commit) {
-        try {
-            return toVersionedEntry(tree.lowerEntry(commit.operation().key()));
-        } finally {
-            commit.close();
-        }
+    protected Map.Entry<String, Versioned<byte[]>> lowerEntry(Commit<? extends LowerEntry> commit) {
+        return toVersionedEntry(tree.lowerEntry(commit.operation().key()));
     }
 
     protected String lowerKey(Commit<? extends LowerKey> commit) {
-        try {
-            return tree.lowerKey(commit.operation().key());
-        } finally {
-            commit.close();
-        }
+        return tree.lowerKey(commit.operation().key());
     }
 
-    protected Map.Entry<String, Versioned<byte[]>> floorEntry(
-            Commit<? extends FloorEntry> commit) {
-        try {
-            return toVersionedEntry(tree.floorEntry(commit.operation().key()));
-        } finally {
-            commit.close();
-        }
+    protected Map.Entry<String, Versioned<byte[]>> floorEntry(Commit<? extends FloorEntry> commit) {
+        return toVersionedEntry(tree.floorEntry(commit.operation().key()));
     }
 
     protected String floorKey(Commit<? extends FloorKey> commit) {
-        try {
-            return tree.floorKey(commit.operation().key());
-        } finally {
-            commit.close();
-        }
+        return tree.floorKey(commit.operation().key());
     }
 
-    protected Map.Entry<String, Versioned<byte[]>> ceilingEntry(
-            Commit<CeilingEntry> commit) {
-        try {
-            return toVersionedEntry(
-                    tree.ceilingEntry(commit.operation().key()));
-        } finally {
-            commit.close();
-        }
+    protected Map.Entry<String, Versioned<byte[]>> ceilingEntry(Commit<CeilingEntry> commit) {
+        return toVersionedEntry(
+                tree.ceilingEntry(commit.operation().key()));
     }
 
     protected String ceilingKey(Commit<CeilingKey> commit) {
-        try {
-            return tree.ceilingKey(commit.operation().key());
-        } finally {
-            commit.close();
-        }
+        return tree.ceilingKey(commit.operation().key());
     }
 
     protected String higherKey(Commit<HigherKey> commit) {
-        try {
-            return tree.higherKey(commit.operation().key());
-        } finally {
-            commit.close();
-        }
+        return tree.higherKey(commit.operation().key());
     }
 
     private Versioned<byte[]> toVersioned(TreeMapEntryValue value) {
@@ -503,8 +399,7 @@ public class AtomixConsistentTreeMapState extends StateMachine implements Sessio
     }
 
     private void publish(List<MapEvent<String, byte[]>> events) {
-        listeners.values().forEach(commit -> commit.session()
-                .publish(AtomixConsistentTreeMap.CHANGE_SUBJECT, events));
+        listeners.values().forEach(session -> session.publish(AtomixConsistentTreeMap.CHANGE_SUBJECT, events));
     }
 
     @Override
@@ -527,44 +422,24 @@ public class AtomixConsistentTreeMapState extends StateMachine implements Sessio
     }
 
     private void closeListener(Long sessionId) {
-        Commit<? extends Listen> commit = listeners.remove(sessionId);
-        if (commit != null) {
-            commit.close();
-        }
+        listeners.remove(sessionId);
     }
 
-    private interface TreeMapEntryValue {
-
-        byte[] value();
-
-        long version();
-
-        void discard();
-    }
-
-    private class NonTransactionalCommit implements TreeMapEntryValue {
+    private static class TreeMapEntryValue {
         private final long version;
-        private final Commit<? extends UpdateAndGet> commit;
+        private final byte[] value;
 
-        public NonTransactionalCommit(long version,
-                                      Commit<? extends UpdateAndGet> commit) {
+        public TreeMapEntryValue(long version, byte[] value) {
             this.version = version;
-            this.commit = commit;
+            this.value = value;
         }
 
-        @Override
         public byte[] value() {
-            return commit.operation().value();
+            return value;
         }
 
-        @Override
         public long version() {
             return version;
-        }
-
-        @Override
-        public void discard() {
-            commit.close();
         }
     }
 }

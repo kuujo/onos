@@ -72,10 +72,49 @@ public class AtomixLeaderElectorState extends StateMachine
     private final Logger log = getLogger(getClass());
     private Map<String, AtomicLong> termCounters = new HashMap<>();
     private Map<String, ElectionState> elections = new HashMap<>();
-    private final Map<Long, Commit<? extends Listen>> listeners = new LinkedHashMap<>();
+    private final Map<Long, ServerSession> listeners = new LinkedHashMap<>();
     private final Serializer serializer = Serializer.using(Arrays.asList(KryoNamespaces.API),
                                                            ElectionState.class,
                                                            Registration.class);
+
+    @Override
+    public void snapshot(SnapshotWriter writer) {
+        byte[] encodedListeners = serializer.encode(listeners.keySet());
+        writer.writeInt(encodedListeners.length);
+        writer.write(encodedListeners);
+
+        byte[] encodedTermCounters = serializer.encode(termCounters);
+        writer.writeInt(encodedTermCounters.length);
+        writer.write(encodedTermCounters);
+
+        byte[] encodedElections  = serializer.encode(elections);
+        writer.writeInt(encodedElections.length);
+        writer.write(encodedElections);
+
+        log.debug("Took state machine snapshot");
+    }
+
+    @Override
+    public void install(SnapshotReader reader) {
+        listeners.clear();
+        int listenersLength = reader.readInt();
+        byte[] listenersBytes = reader.readBytes(listenersLength);
+        for (long sessionId : serializer.<Set<Long>>decode(listenersBytes)) {
+            listeners.put(sessionId, sessions.session(sessionId));
+        }
+
+        int encodedTermCountersSize = reader.readInt();
+        byte[] encodedTermCounters = new byte[encodedTermCountersSize];
+        reader.read(encodedTermCounters);
+        termCounters = serializer.decode(encodedTermCounters);
+
+        int encodedElectionsSize = reader.readInt();
+        byte[] encodedElections = new byte[encodedElectionsSize];
+        reader.read(encodedElections);
+        elections = serializer.decode(encodedElections);
+
+        log.debug("Reinstated state machine from snapshot");
+    }
 
     @Override
     protected void configure(StateMachineExecutor executor) {
@@ -102,16 +141,7 @@ public class AtomixLeaderElectorState extends StateMachine
         if (changes.isEmpty()) {
             return;
         }
-        listeners.values()
-                 .forEach(listener -> listener.session()
-                                              .publish(AtomixLeaderElector.CHANGE_SUBJECT, changes));
-    }
-
-    @Override
-    public void close() {
-      // Close and clear Listeners
-      listeners.values().forEach(Commit::close);
-      listeners.clear();
+        listeners.values().forEach(session -> session.publish(AtomixLeaderElector.CHANGE_SUBJECT, changes));
     }
 
     /**
@@ -120,21 +150,7 @@ public class AtomixLeaderElectorState extends StateMachine
      * @param commit listen commit
      */
     public void listen(Commit<? extends Listen> commit) {
-        Long sessionId = commit.session().id();
-        if (listeners.putIfAbsent(commit.session().id(), commit) != null) {
-            commit.close();
-        }
-        commit.session()
-                .onStateChange(
-                        state -> {
-                            if (state == ServerSession.State.CLOSED
-                                    || state == ServerSession.State.EXPIRED) {
-                                Commit<? extends Listen> listener = listeners.remove(sessionId);
-                                if (listener != null) {
-                                    listener.close();
-                                }
-                            }
-                        });
+        listeners.put(commit.session().id(), commit.session());
     }
 
     /**
@@ -143,14 +159,7 @@ public class AtomixLeaderElectorState extends StateMachine
      * @param commit unlisten commit
      */
     public void unlisten(Commit<? extends Unlisten> commit) {
-        try {
-            Commit<? extends Listen> listener = listeners.remove(commit.session().id());
-            if (listener != null) {
-                listener.close();
-            }
-        } finally {
-            commit.close();
-        }
+        listeners.remove(commit.session().id());
     }
 
     /**
@@ -183,8 +192,6 @@ public class AtomixLeaderElectorState extends StateMachine
         } catch (Exception e) {
             log.error("State machine operation failed", e);
             throw Throwables.propagate(e);
-        } finally {
-            commit.close();
         }
     }
 
@@ -205,8 +212,6 @@ public class AtomixLeaderElectorState extends StateMachine
         } catch (Exception e) {
             log.error("State machine operation failed", e);
             throw Throwables.propagate(e);
-        } finally {
-            commit.close();
         }
     }
 
@@ -232,8 +237,6 @@ public class AtomixLeaderElectorState extends StateMachine
         } catch (Exception e) {
             log.error("State machine operation failed", e);
             throw Throwables.propagate(e);
-        } finally {
-            commit.close();
         }
     }
 
@@ -259,8 +262,6 @@ public class AtomixLeaderElectorState extends StateMachine
         } catch (Exception e) {
             log.error("State machine operation failed", e);
             throw Throwables.propagate(e);
-        } finally {
-            commit.close();
         }
     }
 
@@ -285,8 +286,6 @@ public class AtomixLeaderElectorState extends StateMachine
         } catch (Exception e) {
             log.error("State machine operation failed", e);
             throw Throwables.propagate(e);
-        } finally {
-            commit.close();
         }
     }
 
@@ -302,8 +301,6 @@ public class AtomixLeaderElectorState extends StateMachine
         } catch (Exception e) {
             log.error("State machine operation failed", e);
             throw Throwables.propagate(e);
-        } finally {
-            commit.close();
         }
     }
 
@@ -322,8 +319,6 @@ public class AtomixLeaderElectorState extends StateMachine
         } catch (Exception e) {
             log.error("State machine operation failed", e);
             throw Throwables.propagate(e);
-        } finally {
-            commit.close();
         }
     }
 
@@ -340,8 +335,6 @@ public class AtomixLeaderElectorState extends StateMachine
         } catch (Exception e) {
             log.error("State machine operation failed", e);
             throw Throwables.propagate(e);
-        } finally {
-            commit.close();
         }
     }
 
@@ -362,10 +355,7 @@ public class AtomixLeaderElectorState extends StateMachine
     }
 
     private void onSessionEnd(ServerSession session) {
-        Commit<? extends AtomixLeaderElectorCommands.Listen> listener = listeners.remove(session.id());
-        if (listener != null) {
-            listener.close();
-        }
+        listeners.remove(session.id());
         Set<String> topics = elections.keySet();
         List<Change<Leadership>> changes = Lists.newArrayList();
         topics.forEach(topic -> {
@@ -554,41 +544,15 @@ public class AtomixLeaderElectorState extends StateMachine
 
     @Override
     public void unregister(ServerSession session) {
-        onSessionEnd(session);
     }
 
     @Override
     public void expire(ServerSession session) {
-        onSessionEnd(session);
     }
 
     @Override
     public void close(ServerSession session) {
         onSessionEnd(session);
-    }
-
-    @Override
-    public void snapshot(SnapshotWriter writer) {
-        byte[] encodedTermCounters = serializer.encode(termCounters);
-        writer.writeInt(encodedTermCounters.length);
-        writer.write(encodedTermCounters);
-        byte[] encodedElections  = serializer.encode(elections);
-        writer.writeInt(encodedElections.length);
-        writer.write(encodedElections);
-        log.debug("Took state machine snapshot");
-    }
-
-    @Override
-    public void install(SnapshotReader reader) {
-        int encodedTermCountersSize = reader.readInt();
-        byte[] encodedTermCounters = new byte[encodedTermCountersSize];
-        reader.read(encodedTermCounters);
-        termCounters = serializer.decode(encodedTermCounters);
-        int encodedElectionsSize = reader.readInt();
-        byte[] encodedElections = new byte[encodedElectionsSize];
-        reader.read(encodedElections);
-        elections = serializer.decode(encodedElections);
-        log.debug("Reinstated state machine from snapshot");
     }
 
     private AtomicLong termCounter(String topic) {

@@ -62,16 +62,11 @@ public class AtomixWorkQueue extends AbstractCopycatPrimitive implements WorkQue
     public AtomixWorkQueue(CopycatSession session) {
         super(session);
         session.onStateChange(state -> {
-            if (state == CopycatSession.State.OPEN && isRegistered.get()) {
+            if (state == CopycatSession.State.CONNECTED && isRegistered.get()) {
                 session.submit(new Register());
             }
         });
         session.onEvent(TASK_AVAILABLE, this::resumeWork);
-    }
-
-    @Override
-    public String name() {
-        return null;
     }
 
     @Override

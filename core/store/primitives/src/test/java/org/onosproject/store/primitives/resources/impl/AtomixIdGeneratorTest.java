@@ -44,12 +44,12 @@ public class AtomixIdGeneratorTest extends AtomixTestBase {
      */
     @Test
     public void testNextId() throws Throwable {
-        AtomixIdGenerator idGenerator1 = new AtomixIdGenerator("testNextId",
+        AtomixIdGenerator idGenerator1 = new AtomixIdGenerator(
                 new AtomixCounter(createCopycatClient().sessionBuilder()
                         .withType(DistributedPrimitive.Type.COUNTER.name())
                         .withName("testNextId")
                         .build()));
-        AtomixIdGenerator idGenerator2 = new AtomixIdGenerator("testNextId",
+        AtomixIdGenerator idGenerator2 = new AtomixIdGenerator(
                 new AtomixCounter(createCopycatClient().sessionBuilder()
                         .withType(DistributedPrimitive.Type.COUNTER.name())
                         .withName("testNextId")
@@ -82,12 +82,12 @@ public class AtomixIdGeneratorTest extends AtomixTestBase {
      */
     @Test
     public void testNextIdBatchRollover() throws Throwable {
-        AtomixIdGenerator idGenerator1 = new AtomixIdGenerator("testNextIdBatchRollover",
+        AtomixIdGenerator idGenerator1 = new AtomixIdGenerator(
                 new AtomixCounter(createCopycatClient().sessionBuilder()
                         .withType(DistributedPrimitive.Type.COUNTER.name())
                         .withName("testNextIdBatchRollover")
                         .build()));
-        AtomixIdGenerator idGenerator2 = new AtomixIdGenerator("testNextIdBatchRollover",
+        AtomixIdGenerator idGenerator2 = new AtomixIdGenerator(
                 new AtomixCounter(createCopycatClient().sessionBuilder()
                         .withType(DistributedPrimitive.Type.COUNTER.name())
                         .withName("testNextIdBatchRollover")

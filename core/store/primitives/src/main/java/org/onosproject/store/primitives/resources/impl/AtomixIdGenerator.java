@@ -28,26 +28,24 @@ import org.onosproject.store.service.AsyncAtomicIdGenerator;
 public class AtomixIdGenerator implements AsyncAtomicIdGenerator {
 
     private static final long DEFAULT_BATCH_SIZE = 1000;
-    private final String name;
     private final AsyncAtomicCounter counter;
     private final long batchSize;
     private CompletableFuture<Long> reserveFuture;
     private long base;
     private final AtomicLong delta = new AtomicLong();
 
-    public AtomixIdGenerator(String name, AsyncAtomicCounter counter) {
-        this(name, counter, DEFAULT_BATCH_SIZE);
+    public AtomixIdGenerator(AsyncAtomicCounter counter) {
+        this(counter, DEFAULT_BATCH_SIZE);
     }
 
-    AtomixIdGenerator(String name, AsyncAtomicCounter counter, long batchSize) {
-        this.name = name;
+    AtomixIdGenerator(AsyncAtomicCounter counter, long batchSize) {
         this.counter = counter;
         this.batchSize = batchSize;
     }
 
     @Override
     public String name() {
-        return name;
+        return counter.name();
     }
 
     @Override

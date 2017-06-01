@@ -15,15 +15,12 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.Objects;
 
-import io.atomix.catalyst.concurrent.Scheduled;
 import io.atomix.copycat.server.Commit;
 import io.atomix.copycat.server.Snapshottable;
 import io.atomix.copycat.server.StateMachine;
 import io.atomix.copycat.server.StateMachineExecutor;
-import io.atomix.copycat.server.session.ServerSession;
 import io.atomix.copycat.server.storage.snapshot.SnapshotReader;
 import io.atomix.copycat.server.storage.snapshot.SnapshotWriter;
 
@@ -31,9 +28,6 @@ import io.atomix.copycat.server.storage.snapshot.SnapshotWriter;
  * Atomix long state.
  */
 public class AtomixCounterState extends StateMachine implements Snapshottable {
-    protected final Set<ServerSession> listeners = new HashSet<>();
-    protected Commit<? extends AtomixCounterCommands.ValueCommand<?>> current;
-    protected Scheduled timer;
     private Long value = 0L;
 
     @Override
@@ -61,102 +55,60 @@ public class AtomixCounterState extends StateMachine implements Snapshottable {
      * Handles a set commit.
      */
     public void set(Commit<AtomixCounterCommands.Set> commit) {
-        try {
-            value = commit.operation().value();
-        } finally {
-            commit.close();
-        }
+        value = commit.operation().value();
     }
 
     /**
      * Handles a get commit.
      */
     public Long get(Commit<AtomixCounterCommands.Get> commit) {
-        try {
-            return value;
-        } finally {
-            commit.close();
-        }
+        return value;
     }
 
     /**
      * Handles a compare and set commit.
      */
     public boolean compareAndSet(Commit<AtomixCounterCommands.CompareAndSet> commit) {
-        try {
-            Long expect = commit.operation().expect();
-            if ((value == null && expect == null) || (value != null && value.equals(expect))) {
-                value = commit.operation().update();
-                return true;
-            }
-            return false;
-        } finally {
-            commit.close();
+        if (Objects.equals(value, commit.operation().expect())) {
+            value = commit.operation().update();
+            return true;
         }
+        return false;
     }
 
     /**
      * Handles an increment and get commit.
      */
     public long incrementAndGet(Commit<AtomixCounterCommands.IncrementAndGet> commit) {
-        try {
-            Long oldValue = value;
-            value = oldValue + 1;
-            return value;
-        } finally {
-            commit.close();
-        }
+        Long oldValue = value;
+        value = oldValue + 1;
+        return value;
     }
 
     /**
      * Handles a get and increment commit.
      */
     public long getAndIncrement(Commit<AtomixCounterCommands.GetAndIncrement> commit) {
-        try {
-            Long oldValue = value;
-            value = oldValue + 1;
-            return oldValue;
-        } finally {
-            commit.close();
-        }
+        Long oldValue = value;
+        value = oldValue + 1;
+        return oldValue;
     }
 
     /**
      * Handles an add and get commit.
      */
     public long addAndGet(Commit<AtomixCounterCommands.AddAndGet> commit) {
-        try {
-            Long oldValue = value;
-            value = oldValue + commit.operation().delta();
-            return value;
-        } finally {
-            commit.close();
-        }
+        Long oldValue = value;
+        value = oldValue + commit.operation().delta();
+        return value;
     }
 
     /**
      * Handles a get and add commit.
      */
     public long getAndAdd(Commit<AtomixCounterCommands.GetAndAdd> commit) {
-        try {
-            Long oldValue = value;
-            value = oldValue + commit.operation().delta();
-            return oldValue;
-        } finally {
-            commit.close();
-        }
-    }
-
-    @Override
-    public void close() {
-        if (current != null) {
-            current.close();
-            current = null;
-            value = null;
-        }
-        if (timer != null) {
-            timer.cancel();
-            timer = null;
-        }
+        Long oldValue = value;
+        value = oldValue + commit.operation().delta();
+        return oldValue;
     }
 }

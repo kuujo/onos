@@ -26,45 +26,37 @@ import io.atomix.catalyst.concurrent.Listener;
 import io.atomix.catalyst.concurrent.ThreadContext;
 import io.atomix.copycat.Command;
 import io.atomix.copycat.Query;
-import io.atomix.copycat.client.CommunicationStrategy;
-import io.atomix.copycat.client.CopycatClient;
 import io.atomix.copycat.client.session.CopycatSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * Copycat session that supports recovery.
  */
 public class RecoveringCopycatSession implements CopycatSession {
     private final Logger log = LoggerFactory.getLogger(RecoveringCopycatSession.class);
-    private final String name;
-    private final String type;
-    private final CommunicationStrategy communicationStrategy;
-    private final RecoveringCopycatClient client;
+    private final CopycatSession.Builder sessionBuilder;
     private CopycatSession session;
     private volatile CopycatSession.State state = State.CLOSED;
     private final Set<Consumer<State>> stateChangeListeners = Sets.newCopyOnWriteArraySet();
     private final Map<String, Consumer> eventListeners = new ConcurrentHashMap<>();
 
-    public RecoveringCopycatSession(String name, String type, CommunicationStrategy communicationStrategy, RecoveringCopycatClient client) {
-        this.name = name;
-        this.type = type;
-        this.communicationStrategy = communicationStrategy;
-        this.client = client;
-        client.onStateChange(this::onClientStateChange);
+    public RecoveringCopycatSession(CopycatSession.Builder sessionBuilder) {
+        this.sessionBuilder = checkNotNull(sessionBuilder);
         openSession();
     }
 
     @Override
     public String name() {
-        return name;
+        return session.name();
     }
 
     @Override
     public String type() {
-        return type;
+        return session.type();
     }
 
     @Override
@@ -77,11 +69,16 @@ public class RecoveringCopycatSession implements CopycatSession {
      *
      * @param state the session state
      */
-    private void setState(State state) {
+    private void onStateChange(State state) {
         if (this.state != state) {
             log.debug("State changed: {}", state);
             this.state = state;
             stateChangeListeners.forEach(l -> context().execute(() -> l.accept(state)));
+
+            // If the session was closed then reopen it.
+            if (state == State.CLOSED) {
+                openSession();
+            }
         }
     }
 
@@ -107,37 +104,13 @@ public class RecoveringCopycatSession implements CopycatSession {
     }
 
     /**
-     * Handles a client state change.
-     *
-     * @param state the changed client state
-     */
-    private void onClientStateChange(CopycatClient.State state) {
-        // If the client state was changed to CONNECTED then reopen the session.
-        switch (state) {
-            case CONNECTED:
-                openSession();
-                setState(State.OPEN);
-                break;
-            case CLOSED:
-                setState(State.CLOSED);
-                break;
-            default:
-                break;
-        }
-    }
-
-    /**
      * Opens the session.
      */
     private void openSession() {
         log.debug("Opening session");
-        session = client.client.sessionBuilder()
-                .withName(name)
-                .withType(type)
-                .withCommunicationStrategy(communicationStrategy)
-                .build();
+        session = sessionBuilder.build();
+        session.onStateChange(this::onStateChange);
         eventListeners.forEach(session::onEvent);
-        setState(State.OPEN);
     }
 
     @Override
@@ -164,7 +137,7 @@ public class RecoveringCopycatSession implements CopycatSession {
 
     @Override
     public boolean isOpen() {
-        return state == CopycatSession.State.OPEN;
+        return state == State.CONNECTED;
     }
 
     @Override
@@ -175,8 +148,8 @@ public class RecoveringCopycatSession implements CopycatSession {
     @Override
     public String toString() {
         return toStringHelper(this)
-                .add("type", type)
-                .add("name", name)
+                .add("type", session.type())
+                .add("name", session.name())
                 .add("state", state)
                 .toString();
     }

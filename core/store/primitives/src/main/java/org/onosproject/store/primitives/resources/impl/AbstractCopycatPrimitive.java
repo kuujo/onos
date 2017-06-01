@@ -15,21 +15,76 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
+import java.util.Collection;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Function;
+
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import io.atomix.copycat.client.session.CopycatSession;
 import org.onosproject.store.service.DistributedPrimitive;
+
+import static com.google.common.base.MoreObjects.toStringHelper;
 
 /**
  * Abstract resource.
  */
 public abstract class AbstractCopycatPrimitive implements DistributedPrimitive {
+    private final Function<CopycatSession.State, Status> mapper = state -> {
+        switch (state) {
+            case CONNECTED:
+                return Status.ACTIVE;
+            case SUSPENDED:
+                return Status.SUSPENDED;
+            case CLOSED:
+                return Status.INACTIVE;
+            default:
+                throw new IllegalStateException("Unknown state " + state);
+        }
+    };
+
     protected final CopycatSession session;
+    private final Set<Consumer<Status>> statusChangeListeners = Sets.newCopyOnWriteArraySet();
 
     public AbstractCopycatPrimitive(CopycatSession session) {
         this.session = session;
+        session.onStateChange(this::onStateChange);
     }
 
     @Override
     public String name() {
         return session.name();
+    }
+
+    /**
+     * Handles a Copycat session state change.
+     *
+     * @param state the updated Copycat session state
+     */
+    private void onStateChange(CopycatSession.State state) {
+        statusChangeListeners.forEach(listener -> listener.accept(mapper.apply(state)));
+    }
+
+    @Override
+    public void addStatusChangeListener(Consumer<Status> listener) {
+        statusChangeListeners.add(listener);
+    }
+
+    @Override
+    public void removeStatusChangeListener(Consumer<Status> listener) {
+        statusChangeListeners.remove(listener);
+    }
+
+    @Override
+    public Collection<Consumer<Status>> statusChangeListeners() {
+        return ImmutableSet.copyOf(statusChangeListeners);
+    }
+
+    @Override
+    public String toString() {
+        return toStringHelper(this)
+                .add("session", session)
+                .toString();
     }
 }

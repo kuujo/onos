@@ -124,7 +124,8 @@ public abstract class AtomixTestBase {
         CountDownLatch latch = new CountDownLatch(1);
         CopycatClient client = new RetryingCopycatClient(new RecoveringCopycatClient(CopycatClient.builder()
                 .withTransport(NettyTransport.builder().withThreads(1).build())
-                .withSerializer(serializer.clone())));
+                .withSerializer(serializer.clone())
+                .build()));
         client.connect(members).thenRun(latch::countDown);
         copycatClients.add(client);
         Uninterruptibles.awaitUninterruptibly(latch);

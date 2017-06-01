@@ -15,17 +15,17 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import io.atomix.copycat.client.CopycatClient;
-import io.atomix.copycat.client.session.CopycatSession;
-
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import com.google.common.collect.Sets;
+import io.atomix.copycat.client.session.CopycatSession;
 import org.onosproject.cluster.Leadership;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.event.Change;
@@ -40,39 +40,16 @@ import org.onosproject.store.primitives.resources.impl.AtomixLeaderElectorComman
 import org.onosproject.store.primitives.resources.impl.AtomixLeaderElectorCommands.Withdraw;
 import org.onosproject.store.service.AsyncLeaderElector;
 
-import com.google.common.collect.ImmutableSet;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
-import com.google.common.collect.Sets;
-
 /**
  * Distributed resource providing the {@link AsyncLeaderElector} primitive.
  */
-public class AtomixLeaderElector extends AbstractCopycatPrimitive
-    implements AsyncLeaderElector {
-    private final Set<Consumer<Status>> statusChangeListeners =
-            Sets.newCopyOnWriteArraySet();
-    private final Set<Consumer<Change<Leadership>>> leadershipChangeListeners =
-            Sets.newCopyOnWriteArraySet();
+public class AtomixLeaderElector extends AbstractCopycatPrimitive implements AsyncLeaderElector {
+    private final Set<Consumer<Change<Leadership>>> leadershipChangeListeners = Sets.newCopyOnWriteArraySet();
     private final Consumer<Change<Leadership>> cacheUpdater;
     private final Consumer<Status> statusListener;
 
     public static final String CHANGE_SUBJECT = "leadershipChangeEvents";
     private final LoadingCache<String, CompletableFuture<Leadership>> cache;
-
-    Function<CopycatClient.State, Status> mapper = state -> {
-        switch (state) {
-            case CONNECTED:
-                return Status.ACTIVE;
-            case SUSPENDED:
-                return Status.SUSPENDED;
-            case CLOSED:
-                return Status.INACTIVE;
-            default:
-                throw new IllegalStateException("Unknown state " + state);
-        }
-    };
 
     public AtomixLeaderElector(CopycatSession session) {
         super(session);
@@ -92,7 +69,7 @@ public class AtomixLeaderElector extends AbstractCopycatPrimitive
         addStatusChangeListener(statusListener);
 
         session.onStateChange(state -> {
-            if (state == CopycatSession.State.OPEN && isListening()) {
+            if (state == CopycatSession.State.CONNECTED && isListening()) {
                 session.submit(new Listen());
             }
         });
@@ -103,11 +80,6 @@ public class AtomixLeaderElector extends AbstractCopycatPrimitive
     public CompletableFuture<Void> destroy() {
         removeStatusChangeListener(statusListener);
         return removeChangeListener(cacheUpdater);
-    }
-
-    @Override
-    public String name() {
-        return null;
     }
 
     public CompletableFuture<AtomixLeaderElector> setupCache() {
@@ -178,21 +150,6 @@ public class AtomixLeaderElector extends AbstractCopycatPrimitive
             return session.submit(new Unlisten()).thenApply(v -> null);
         }
         return CompletableFuture.completedFuture(null);
-    }
-
-    @Override
-    public void addStatusChangeListener(Consumer<Status> listener) {
-        statusChangeListeners.add(listener);
-    }
-
-    @Override
-    public void removeStatusChangeListener(Consumer<Status> listener) {
-        statusChangeListeners.remove(listener);
-    }
-
-    @Override
-    public Collection<Consumer<Status>> statusChangeListeners() {
-        return ImmutableSet.copyOf(statusChangeListeners);
     }
 
     private boolean isListening() {

@@ -16,16 +16,6 @@
 
 package org.onosproject.store.primitives.resources.impl;
 
-import static org.slf4j.LoggerFactory.getLogger;
-import io.atomix.copycat.server.Commit;
-import io.atomix.copycat.server.Snapshottable;
-import io.atomix.copycat.server.StateMachine;
-import io.atomix.copycat.server.StateMachineExecutor;
-import io.atomix.copycat.server.session.ServerSession;
-import io.atomix.copycat.server.session.SessionListener;
-import io.atomix.copycat.server.storage.snapshot.SnapshotReader;
-import io.atomix.copycat.server.storage.snapshot.SnapshotWriter;
-
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -36,6 +26,21 @@ import java.util.Queue;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.io.Input;
+import com.esotericsoftware.kryo.io.Output;
+import com.google.common.base.Throwables;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Queues;
+import io.atomix.copycat.server.Commit;
+import io.atomix.copycat.server.Snapshottable;
+import io.atomix.copycat.server.StateMachine;
+import io.atomix.copycat.server.StateMachineExecutor;
+import io.atomix.copycat.server.session.ServerSession;
+import io.atomix.copycat.server.session.SessionListener;
+import io.atomix.copycat.server.storage.snapshot.SnapshotReader;
+import io.atomix.copycat.server.storage.snapshot.SnapshotWriter;
+import org.onlab.util.KryoNamespace;
 import org.onlab.util.Match;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeCommands.Clear;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeCommands.Get;
@@ -44,19 +49,18 @@ import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeCommand
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeCommands.Unlisten;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeCommands.Update;
 import org.onosproject.store.primitives.resources.impl.DocumentTreeUpdateResult.Status;
+import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.DocumentPath;
 import org.onosproject.store.service.DocumentTree;
 import org.onosproject.store.service.DocumentTreeEvent;
 import org.onosproject.store.service.DocumentTreeEvent.Type;
 import org.onosproject.store.service.IllegalDocumentModificationException;
 import org.onosproject.store.service.NoSuchDocumentPathException;
+import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.Versioned;
 import org.slf4j.Logger;
 
-import com.google.common.base.Throwables;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Queues;
+import static org.slf4j.LoggerFactory.getLogger;
 
 /**
  * State Machine for {@link AtomixDocumentTree} resource.
@@ -64,13 +68,53 @@ import com.google.common.collect.Queues;
 public class AtomixDocumentTreeState extends StateMachine implements SessionListener, Snapshottable {
 
     private final Logger log = getLogger(getClass());
+    private final Serializer serializer = Serializer.using(KryoNamespace.newBuilder()
+            .register(KryoNamespaces.BASIC)
+            .register(new com.esotericsoftware.kryo.Serializer<Listener>() {
+                @Override
+                public void write(Kryo kryo, Output output, Listener listener) {
+                    output.writeLong(listener.session.id());
+                    kryo.writeObject(output, listener.path);
+                }
+
+                @Override
+                public Listener read(Kryo kryo, Input input, Class<Listener> type) {
+                    return new Listener(sessions.session(input.readLong()),
+                            kryo.readObjectOrNull(input, DocumentPath.class));
+                }
+            }, Listener.class)
+            .register(DocumentPath.class)
+            .register(new com.esotericsoftware.kryo.Serializer<DefaultDocumentTree>() {
+                @Override
+                public void write(Kryo kryo, Output output, DefaultDocumentTree object) {
+                    kryo.writeObject(output, object.root);
+                }
+
+                @Override
+                @SuppressWarnings("unchecked")
+                public DefaultDocumentTree read(Kryo kryo, Input input, Class<DefaultDocumentTree> type) {
+                    return new DefaultDocumentTree(versionCounter::incrementAndGet,
+                            kryo.readObject(input, DefaultDocumentTreeNode.class));
+                }
+            }, DefaultDocumentTree.class)
+            .register(DefaultDocumentTreeNode.class)
+            .build());
+
     private final Map<Long, SessionListenCommits> listeners = new HashMap<>();
     private AtomicLong versionCounter = new AtomicLong(0);
-    private final DocumentTree<TreeNodeValue> docTree = new DefaultDocumentTree<>(versionCounter::incrementAndGet);
+    private final DocumentTree<byte[]> docTree = new DefaultDocumentTree<>(versionCounter::incrementAndGet);
 
     @Override
     public void snapshot(SnapshotWriter writer) {
         writer.writeLong(versionCounter.get());
+
+        byte[] encodedListeners = serializer.encode(listeners.keySet());
+        writer.writeInt(encodedListeners.length);
+        writer.write(encodedListeners);
+
+        byte[] encodedDocTree = serializer.encode(docTree);
+        writer.writeInt(encodedDocTree.length);
+        writer.write(encodedDocTree);
     }
 
     @Override
@@ -93,7 +137,8 @@ public class AtomixDocumentTreeState extends StateMachine implements SessionList
 
     protected void listen(Commit<? extends Listen> commit) {
         Long sessionId = commit.session().id();
-        listeners.computeIfAbsent(sessionId, k -> new SessionListenCommits()).add(commit);
+        listeners.computeIfAbsent(sessionId, k -> new SessionListenCommits())
+                .add(new Listener(commit.session(), commit.operation().path()));
         commit.session().onStateChange(
                         state -> {
                             if (state == ServerSession.State.CLOSED
@@ -105,65 +150,47 @@ public class AtomixDocumentTreeState extends StateMachine implements SessionList
 
     protected void unlisten(Commit<? extends Unlisten> commit) {
         Long sessionId = commit.session().id();
-        try {
-            SessionListenCommits listenCommits = listeners.get(sessionId);
-            if (listenCommits != null) {
-                listenCommits.remove(commit);
-            }
-        } finally {
-            commit.close();
+        SessionListenCommits listenCommits = listeners.get(sessionId);
+        if (listenCommits != null) {
+            listenCommits.remove(commit);
         }
     }
 
     protected Versioned<byte[]> get(Commit<? extends Get> commit) {
         try {
-            Versioned<TreeNodeValue> value = docTree.get(commit.operation().path());
-            return value == null ? null : value.map(node -> node == null ? null : node.value());
+            Versioned<byte[]> value = docTree.get(commit.operation().path());
+            return value == null ? null : value.map(node -> node == null ? null : node);
         } catch (IllegalStateException e) {
             return null;
-        } finally {
-            commit.close();
         }
     }
 
     protected Map<String, Versioned<byte[]>> getChildren(Commit<? extends GetChildren> commit) {
-        try {
-            Map<String, Versioned<TreeNodeValue>> children = docTree.getChildren(commit.operation().path());
-            return children == null
-                    ? null : Maps.newHashMap(Maps.transformValues(children,
-                                                                  value -> value.map(TreeNodeValue::value)));
-        } finally {
-            commit.close();
-        }
+        return docTree.getChildren(commit.operation().path());
     }
 
     protected DocumentTreeUpdateResult<byte[]> update(Commit<? extends Update> commit) {
         DocumentTreeUpdateResult<byte[]> result = null;
         DocumentPath path = commit.operation().path();
         boolean updated = false;
-        Versioned<TreeNodeValue> currentValue = docTree.get(path);
+        Versioned<byte[]> currentValue = docTree.get(path);
         try {
             Match<Long> versionMatch = commit.operation().versionMatch();
             Match<byte[]> valueMatch = commit.operation().valueMatch();
 
             if (versionMatch.matches(currentValue == null ? null : currentValue.version())
-                    && valueMatch.matches(currentValue == null ? null : currentValue.value().value())) {
+                    && valueMatch.matches(currentValue == null ? null : currentValue.value())) {
                 if (commit.operation().value() == null) {
                     docTree.removeNode(path);
                 } else {
-                    docTree.set(path, new NonTransactionalCommit(commit));
+                    docTree.set(path, commit.operation().value().orElse(null));
                 }
                 updated = true;
             }
-            Versioned<TreeNodeValue> newValue = updated ? docTree.get(path) : currentValue;
+            Versioned<byte[]> newValue = updated ? docTree.get(path) : currentValue;
             Status updateStatus = updated
                     ? Status.OK : commit.operation().value() == null ? Status.INVALID_PATH : Status.NOOP;
-            result = new DocumentTreeUpdateResult<>(path,
-                    updateStatus,
-                    newValue == null
-                        ? null : newValue.map(TreeNodeValue::value),
-                    currentValue == null
-                        ? null : currentValue.map(TreeNodeValue::value));
+            result = new DocumentTreeUpdateResult<>(path, updateStatus, newValue, currentValue);
         } catch (IllegalDocumentModificationException e) {
             result = DocumentTreeUpdateResult.illegalModification(path);
         } catch (NoSuchDocumentPathException e) {
@@ -171,80 +198,27 @@ public class AtomixDocumentTreeState extends StateMachine implements SessionList
         } catch (Exception e) {
             log.error("Failed to apply {} to state machine", commit.operation(), e);
             throw Throwables.propagate(e);
-        } finally {
-            if (updated) {
-                if (currentValue != null) {
-                    currentValue.value().discard();
-                }
-            } else {
-                commit.close();
-            }
         }
         notifyListeners(path, result);
         return result;
     }
 
     protected void clear(Commit<? extends Clear> commit) {
-        try {
-            Queue<DocumentPath> toClearQueue = Queues.newArrayDeque();
-            Map<String, Versioned<TreeNodeValue>> topLevelChildren = docTree.getChildren(DocumentPath.from("root"));
-            toClearQueue.addAll(topLevelChildren.keySet()
-                                                .stream()
-                                                .map(name -> new DocumentPath(name, DocumentPath.from("root")))
-                                                .collect(Collectors.toList()));
-            while (!toClearQueue.isEmpty()) {
-                DocumentPath path = toClearQueue.remove();
-                Map<String, Versioned<TreeNodeValue>> children = docTree.getChildren(path);
-                if (children.size() == 0) {
-                    docTree.removeNode(path).value().discard();
-                } else {
-                    children.keySet()
-                            .stream()
-                            .forEach(name -> toClearQueue.add(new DocumentPath(name, path)));
-                    toClearQueue.add(path);
-                }
+        Queue<DocumentPath> toClearQueue = Queues.newArrayDeque();
+        Map<String, Versioned<byte[]>> topLevelChildren = docTree.getChildren(DocumentPath.from("root"));
+        toClearQueue.addAll(topLevelChildren.keySet()
+                .stream()
+                .map(name -> new DocumentPath(name, DocumentPath.from("root")))
+                .collect(Collectors.toList()));
+        while (!toClearQueue.isEmpty()) {
+            DocumentPath path = toClearQueue.remove();
+            Map<String, Versioned<byte[]>> children = docTree.getChildren(path);
+            if (children.size() == 0) {
+                docTree.removeNode(path);
+            } else {
+                children.keySet().forEach(name -> toClearQueue.add(new DocumentPath(name, path)));
+                toClearQueue.add(path);
             }
-        } finally {
-            commit.close();
-        }
-    }
-
-    /**
-     * Interface implemented by tree node values.
-     */
-    private interface TreeNodeValue {
-        /**
-         * Returns the raw {@code byte[]}.
-         *
-         * @return raw value
-         */
-        byte[] value();
-
-        /**
-         * Discards the value by invoke appropriate clean up actions.
-         */
-        void discard();
-    }
-
-    /**
-     * A {@code TreeNodeValue} that is derived from a non-transactional update
-     * i.e. via any standard tree update operation.
-     */
-    private class NonTransactionalCommit implements TreeNodeValue {
-        private final Commit<? extends Update> commit;
-
-        public NonTransactionalCommit(Commit<? extends Update> commit) {
-            this.commit = commit;
-        }
-
-        @Override
-        public byte[] value() {
-            return commit.operation().value().orElse(null);
-        }
-
-        @Override
-        public void discard() {
-            commit.close();
         }
     }
 
@@ -270,12 +244,10 @@ public class AtomixDocumentTreeState extends StateMachine implements SessionList
 
     @Override
     public void unregister(ServerSession session) {
-        closeListener(session.id());
     }
 
     @Override
     public void expire(ServerSession session) {
-        closeListener(session.id());
     }
 
     @Override
@@ -284,29 +256,25 @@ public class AtomixDocumentTreeState extends StateMachine implements SessionList
     }
 
     private void closeListener(Long sessionId) {
-        SessionListenCommits listenCommits = listeners.remove(sessionId);
-        if (listenCommits != null) {
-            listenCommits.close();
-        }
+        listeners.remove(sessionId);
     }
 
-    private class SessionListenCommits {
-        private final List<Commit<? extends Listen>> commits = Lists.newArrayList();
+    private static class SessionListenCommits {
+        private final List<Listener> listeners = Lists.newArrayList();
         private DocumentPath leastCommonAncestorPath;
 
-        public void add(Commit<? extends Listen> commit) {
-            commits.add(commit);
+        public void add(Listener listener) {
+            listeners.add(listener);
             recomputeLeastCommonAncestor();
         }
 
         public void remove(Commit<? extends Unlisten> commit) {
             // Remove the first listen commit with path matching path in unlisten commit
-            Iterator<Commit<? extends Listen>> iterator = commits.iterator();
+            Iterator<Listener> iterator = listeners.iterator();
             while (iterator.hasNext()) {
-                Commit<? extends Listen> listenCommit = iterator.next();
-                if (listenCommit.operation().path().equals(commit.operation().path())) {
+                Listener listener = iterator.next();
+                if (listener.path().equals(commit.operation().path())) {
                     iterator.remove();
-                    listenCommit.close();
                 }
             }
             recomputeLeastCommonAncestor();
@@ -317,19 +285,31 @@ public class AtomixDocumentTreeState extends StateMachine implements SessionList
         }
 
         public <M> void publish(String topic, M message) {
-            commits.stream().findAny().ifPresent(commit -> commit.session().publish(topic, message));
-        }
-
-        public void close() {
-            commits.forEach(Commit::close);
-            commits.clear();
-            leastCommonAncestorPath = null;
+            listeners.stream().findAny().ifPresent(listener -> listener.session().publish(topic, message));
         }
 
         private void recomputeLeastCommonAncestor() {
-            this.leastCommonAncestorPath = DocumentPath.leastCommonAncestor(commits.stream()
-                    .map(c -> c.operation().path())
+            this.leastCommonAncestorPath = DocumentPath.leastCommonAncestor(listeners.stream()
+                    .map(Listener::path)
                     .collect(Collectors.toList()));
+        }
+    }
+
+    private static class Listener {
+        private final ServerSession session;
+        private final DocumentPath path;
+
+        public Listener(ServerSession session, DocumentPath path) {
+            this.session = session;
+            this.path = path;
+        }
+
+        public DocumentPath path() {
+            return path;
+        }
+
+        public ServerSession session() {
+            return session;
         }
     }
 }
