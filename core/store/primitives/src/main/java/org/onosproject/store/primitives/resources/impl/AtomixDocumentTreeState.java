@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -83,7 +84,10 @@ public class AtomixDocumentTreeState extends StateMachine implements SessionList
                             kryo.readObjectOrNull(input, DocumentPath.class));
                 }
             }, Listener.class)
+            .register(Versioned.class)
             .register(DocumentPath.class)
+            .register(new HashMap().keySet().getClass())
+            .register(TreeMap.class)
             .register(new com.esotericsoftware.kryo.Serializer<DefaultDocumentTree>() {
                 @Override
                 public void write(Kryo kryo, Output output, DefaultDocumentTree object) {

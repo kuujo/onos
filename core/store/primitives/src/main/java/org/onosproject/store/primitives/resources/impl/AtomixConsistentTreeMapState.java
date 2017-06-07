@@ -35,6 +35,7 @@ import org.onosproject.store.service.Versioned;
 
 import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -87,6 +88,8 @@ public class AtomixConsistentTreeMapState extends StateMachine implements Sessio
     private final Serializer serializer = Serializer.using(KryoNamespace.newBuilder()
             .register(KryoNamespaces.BASIC)
             .register(TreeMapEntryValue.class)
+            .register(new HashMap<>().keySet().getClass())
+            .register(TreeMap.class)
             .build());
 
     private Function<Commit<SubMap>, NavigableMap<String, TreeMapEntryValue>> subMapFunction = this::subMap;

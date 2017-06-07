@@ -84,6 +84,9 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Se
 
     private final Serializer serializer = Serializer.using(KryoNamespace.newBuilder()
             .register(KryoNamespaces.BASIC)
+            .register(ByteArrayComparator.class)
+            .register(new HashMap().keySet().getClass())
+            .register(TreeSet.class)
             .register(new com.esotericsoftware.kryo.Serializer<NonTransactionalCommit>() {
                 @Override
                 public void write(Kryo kryo, Output output, NonTransactionalCommit object) {
@@ -91,6 +94,7 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Se
                 }
 
                 @Override
+                @SuppressWarnings("unchecked")
                 public NonTransactionalCommit read(Kryo kryo, Input input, Class<NonTransactionalCommit> type) {
                     NonTransactionalCommit commit = new NonTransactionalCommit();
                     commit.valueSet.addAll((Collection<byte[]>) kryo.readClassAndObject(input));
@@ -688,7 +692,7 @@ public class AtomixConsistentSetMultimapState extends StateMachine implements Se
                                 value.version());
     }
 
-    private class ByteArrayComparator implements Comparator<byte[]> {
+    private static class ByteArrayComparator implements Comparator<byte[]> {
 
         @Override
         public int compare(byte[] o1, byte[] o2) {

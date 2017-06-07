@@ -25,8 +25,10 @@ import io.atomix.copycat.server.session.SessionListener;
 import io.atomix.copycat.server.storage.snapshot.SnapshotReader;
 import io.atomix.copycat.server.storage.snapshot.SnapshotWriter;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Queue;
@@ -37,7 +39,6 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import org.onlab.util.CountDownCompleter;
 import org.onlab.util.KryoNamespace;
 import org.onosproject.store.primitives.resources.impl.AtomixWorkQueueCommands.Add;
 import org.onosproject.store.primitives.resources.impl.AtomixWorkQueueCommands.Clear;
@@ -57,7 +58,6 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Queues;
-import com.google.common.util.concurrent.AtomicLongMap;
 
 /**
  * State machine for {@link AtomixWorkQueue} resource.
@@ -69,6 +69,8 @@ public class AtomixWorkQueueState extends StateMachine implements SessionListene
             .register(KryoNamespaces.BASIC)
             .register(TaskAssignment.class)
             .register(Task.class)
+            .register(new HashMap().keySet().getClass())
+            .register(ArrayDeque.class)
             .build());
 
     private final AtomicLong totalCompleted = new AtomicLong(0);
@@ -76,7 +78,6 @@ public class AtomixWorkQueueState extends StateMachine implements SessionListene
     private final Queue<Task<byte[]>> unassignedTasks = Queues.newArrayDeque();
     private final Map<String, TaskAssignment> assignments = Maps.newHashMap();
     private final Map<Long, ServerSession> registeredWorkers = Maps.newHashMap();
-    private final AtomicLongMap<Long> activeTasksPerSession = AtomicLongMap.create();
 
     @Override
     public void snapshot(SnapshotWriter writer) {
@@ -91,10 +92,6 @@ public class AtomixWorkQueueState extends StateMachine implements SessionListene
         byte[] unassignedTasksBytes = serializer.encode(unassignedTasks);
         writer.writeInt(unassignedTasksBytes.length);
         writer.write(unassignedTasksBytes);
-
-        byte[] activeTasksPerSessionBytes = serializer.encode(activeTasksPerSession);
-        writer.writeInt(activeTasksPerSessionBytes.length);
-        writer.write(activeTasksPerSessionBytes);
 
         writer.writeLong(totalCompleted.get());
     }
@@ -117,11 +114,6 @@ public class AtomixWorkQueueState extends StateMachine implements SessionListene
         int unassignedTasksLength = reader.readInt();
         byte[] unassignedTasksBytes = reader.readBytes(unassignedTasksLength);
         unassignedTasks.addAll(serializer.decode(unassignedTasksBytes));
-
-        activeTasksPerSession.clear();
-        int activeTasksPerSessionLength = reader.readInt();
-        byte[] activeTasksPerSessionBytes = reader.readBytes(activeTasksPerSessionLength);
-        activeTasksPerSession.putAll(serializer.decode(activeTasksPerSessionBytes));
 
         totalCompleted.set(reader.readLong());
     }
@@ -149,7 +141,6 @@ public class AtomixWorkQueueState extends StateMachine implements SessionListene
         unassignedTasks.clear();
         assignments.clear();
         registeredWorkers.clear();
-        activeTasksPerSession.clear();
         totalCompleted.set(0);
     }
 
@@ -193,7 +184,6 @@ public class AtomixWorkQueueState extends StateMachine implements SessionListene
 
                                 // bookkeeping
                                 assignments.put(taskId, assignment);
-                                activeTasksPerSession.incrementAndGet(sessionId);
 
                                 return task;
                             })
@@ -213,7 +203,6 @@ public class AtomixWorkQueueState extends StateMachine implements SessionListene
                     assignments.remove(taskId);
                     // bookkeeping
                     totalCompleted.incrementAndGet();
-                    activeTasksPerSession.decrementAndGet(sessionId);
                 }
             });
         } catch (Exception e) {
@@ -252,10 +241,6 @@ public class AtomixWorkQueueState extends StateMachine implements SessionListene
                 iter.remove();
             }
         }
-
-        // Bookkeeping
-        activeTasksPerSession.remove(sessionId);
-        activeTasksPerSession.removeAllZeros();
     }
 
     private static class TaskAssignment {

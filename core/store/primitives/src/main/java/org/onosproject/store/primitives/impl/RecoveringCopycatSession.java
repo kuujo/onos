@@ -69,7 +69,7 @@ public class RecoveringCopycatSession implements CopycatSession {
      *
      * @param state the session state
      */
-    private void onStateChange(State state) {
+    private synchronized void onStateChange(State state) {
         if (this.state != state) {
             log.debug("State changed: {}", state);
             this.state = state;
@@ -106,9 +106,10 @@ public class RecoveringCopycatSession implements CopycatSession {
     /**
      * Opens the session.
      */
-    private void openSession() {
+    private synchronized void openSession() {
         log.debug("Opening session");
         session = sessionBuilder.build();
+        onStateChange(State.CONNECTED);
         session.onStateChange(this::onStateChange);
         eventListeners.forEach(session::onEvent);
     }

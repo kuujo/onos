@@ -86,12 +86,12 @@ public class AtomixIdGeneratorTest extends AtomixTestBase {
                 new AtomixCounter(createCopycatClient().sessionBuilder()
                         .withType(DistributedPrimitive.Type.COUNTER.name())
                         .withName("testNextIdBatchRollover")
-                        .build()));
+                        .build()), 2);
         AtomixIdGenerator idGenerator2 = new AtomixIdGenerator(
                 new AtomixCounter(createCopycatClient().sessionBuilder()
                         .withType(DistributedPrimitive.Type.COUNTER.name())
                         .withName("testNextIdBatchRollover")
-                        .build()));
+                        .build()), 2);
 
         CompletableFuture<Long> future11 = idGenerator1.nextId();
         CompletableFuture<Long> future12 = idGenerator1.nextId();

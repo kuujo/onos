@@ -73,9 +73,11 @@ public class AtomixLeaderElectorState extends StateMachine
     private Map<String, AtomicLong> termCounters = new HashMap<>();
     private Map<String, ElectionState> elections = new HashMap<>();
     private final Map<Long, ServerSession> listeners = new LinkedHashMap<>();
-    private final Serializer serializer = Serializer.using(Arrays.asList(KryoNamespaces.API),
-                                                           ElectionState.class,
-                                                           Registration.class);
+    private final Serializer serializer = Serializer.using(
+            Arrays.asList(KryoNamespaces.API),
+            ElectionState.class,
+            Registration.class,
+            new LinkedHashMap<>().keySet().getClass());
 
     @Override
     public void snapshot(SnapshotWriter writer) {

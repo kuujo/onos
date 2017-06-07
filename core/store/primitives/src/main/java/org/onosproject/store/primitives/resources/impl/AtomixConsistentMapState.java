@@ -81,6 +81,8 @@ public class AtomixConsistentMapState extends StateMachine implements SessionLis
             .register(TransactionId.class)
             .register(TransactionScope.class)
             .register(MapEntryValue.class)
+            .register(MapEntryValue.Type.class)
+            .register(new HashMap().keySet().getClass())
             .build());
     private final Map<Long, ServerSession> listeners = new HashMap<>();
     private final Map<String, MapEntryValue> mapEntries = new HashMap<>();
