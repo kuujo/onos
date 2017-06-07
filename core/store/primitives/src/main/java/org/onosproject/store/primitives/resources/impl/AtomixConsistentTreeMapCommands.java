@@ -242,11 +242,6 @@ public final class AtomixConsistentTreeMapCommands {
         }
 
         @Override
-        public CompactionMode compaction() {
-            return value == null ? CompactionMode.TOMBSTONE : CompactionMode.QUORUM;
-        }
-
-        @Override
         public void writeObject(BufferOutput<?> buffer,
                                 Serializer serializer) {
             super.writeObject(buffer, serializer);
@@ -368,12 +363,7 @@ public final class AtomixConsistentTreeMapCommands {
      * Clear command.
      */
     @SuppressWarnings("serial")
-    public static class Clear
-            extends TreeCommand<MapEntryUpdateResult.Status> {
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.TOMBSTONE;
-        }
+    public static class Clear extends TreeCommand<MapEntryUpdateResult.Status> {
     }
 
     /**
@@ -388,11 +378,6 @@ public final class AtomixConsistentTreeMapCommands {
 
         @Override
         public void readObject(BufferInput<?> buffer, Serializer serializer) {
-        }
-
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.QUORUM;
         }
 
         @Override
@@ -415,11 +400,6 @@ public final class AtomixConsistentTreeMapCommands {
 
         @Override
         public void readObject(BufferInput<?> buffer, Serializer serializer) {
-        }
-
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.TOMBSTONE;
         }
 
         @Override

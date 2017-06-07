@@ -110,10 +110,6 @@ public final class AtomixLeaderElectorCommands {
      */
     @SuppressWarnings("serial")
     public static class Listen extends ElectionCommand<Void> {
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.QUORUM;
-        }
     }
 
     /**
@@ -121,10 +117,6 @@ public final class AtomixLeaderElectorCommands {
      */
     @SuppressWarnings("serial")
     public static class Unlisten extends ElectionCommand<Void> {
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.TOMBSTONE;
-        }
     }
 
     /**
@@ -233,11 +225,6 @@ public final class AtomixLeaderElectorCommands {
         }
 
         @Override
-        public CompactionMode compaction() {
-            return CompactionMode.SNAPSHOT;
-        }
-
-        @Override
         public String toString() {
             return MoreObjects.toStringHelper(getClass())
                     .add("topic", topic)
@@ -279,11 +266,6 @@ public final class AtomixLeaderElectorCommands {
          */
         public String topic() {
             return topic;
-        }
-
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.SNAPSHOT;
         }
 
         @Override
@@ -338,11 +320,6 @@ public final class AtomixLeaderElectorCommands {
          */
         public NodeId nodeId() {
             return nodeId;
-        }
-
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.SNAPSHOT;
         }
 
         @Override
@@ -415,11 +392,6 @@ public final class AtomixLeaderElectorCommands {
          */
         public NodeId nodeId() {
             return nodeId;
-        }
-
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.SNAPSHOT;
         }
 
         @Override

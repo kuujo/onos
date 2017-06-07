@@ -290,11 +290,6 @@ public final class AtomixConsistentMultimapCommands {
         }
 
         @Override
-        public CompactionMode compaction() {
-            return CompactionMode.TOMBSTONE;
-        }
-
-        @Override
         public void writeObject(BufferOutput<?> buffer,
                                 Serializer serializer) {
             super.writeObject(buffer, serializer);
@@ -348,11 +343,6 @@ public final class AtomixConsistentMultimapCommands {
 
         public Match<Long> versionMatch() {
             return versionMatch;
-        }
-
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.TOMBSTONE;
         }
 
         @Override
@@ -411,11 +401,6 @@ public final class AtomixConsistentMultimapCommands {
 
         public Match<Long> versionMatch() {
             return versionMatch;
-        }
-
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.QUORUM;
         }
 
         @Override
@@ -478,11 +463,6 @@ public final class AtomixConsistentMultimapCommands {
         }
 
         @Override
-        public CompactionMode compaction() {
-            return CompactionMode.QUORUM;
-        }
-
-        @Override
         public void writeObject(BufferOutput<?> buffer,
                                 Serializer serializer) {
             super.writeObject(buffer, serializer);
@@ -514,10 +494,6 @@ public final class AtomixConsistentMultimapCommands {
      */
     @SuppressWarnings("serial")
     public static class Clear extends MultimapCommand<Void> {
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.TOMBSTONE;
-        }
     }
 
     /**
@@ -574,11 +550,6 @@ public final class AtomixConsistentMultimapCommands {
         @Override
         public void readObject(BufferInput<?> buffer, Serializer serializer) {
         }
-
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.QUORUM;
-        }
     }
 
     /**
@@ -592,11 +563,6 @@ public final class AtomixConsistentMultimapCommands {
 
         @Override
         public void readObject(BufferInput<?> buffer, Serializer serializer) {
-        }
-
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.TOMBSTONE;
         }
     }
 

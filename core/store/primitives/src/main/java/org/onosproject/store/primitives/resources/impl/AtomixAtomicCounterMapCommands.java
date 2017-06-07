@@ -33,11 +33,6 @@ public final class AtomixAtomicCounterMapCommands {
 
     public abstract static class AtomicCounterMapCommand<V> implements Command<V>, CatalystSerializable {
         @Override
-        public CompactionMode compaction() {
-            return CompactionMode.SNAPSHOT;
-        }
-
-        @Override
         public void writeObject(BufferOutput<?> buffer, Serializer serializer) {
         }
 

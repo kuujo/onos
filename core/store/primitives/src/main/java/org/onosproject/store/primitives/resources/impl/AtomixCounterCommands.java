@@ -39,11 +39,6 @@ public final class AtomixCounterCommands {
      */
     public static abstract class ValueCommand<V> implements Command<V>, CatalystSerializable {
         @Override
-        public CompactionMode compaction() {
-            return CompactionMode.SNAPSHOT;
-        }
-
-        @Override
         public void writeObject(BufferOutput<?> buffer, Serializer serializer) {
         }
 
@@ -190,11 +185,6 @@ public final class AtomixCounterCommands {
     public static abstract class LongCommand<V> implements Command<V>, CatalystSerializable {
 
         protected LongCommand() {
-        }
-
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.SNAPSHOT;
         }
 
         @Override

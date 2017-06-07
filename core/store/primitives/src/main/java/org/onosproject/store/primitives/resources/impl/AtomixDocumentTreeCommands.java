@@ -187,11 +187,6 @@ public class AtomixDocumentTreeCommands {
         }
 
         @Override
-        public CompactionMode compaction() {
-            return value == null ? CompactionMode.TOMBSTONE : CompactionMode.QUORUM;
-        }
-
-        @Override
         public String toString() {
             return MoreObjects.toStringHelper(getClass())
                     .add("path", path())
@@ -214,11 +209,6 @@ public class AtomixDocumentTreeCommands {
         @Override
         public void readObject(BufferInput<?> buffer, Serializer serializer) {
         }
-
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.TOMBSTONE;
-        }
     }
 
     /**
@@ -233,11 +223,6 @@ public class AtomixDocumentTreeCommands {
 
         public Listen(DocumentPath path) {
             super(path);
-        }
-
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.QUORUM;
         }
 
         @Override
@@ -260,11 +245,6 @@ public class AtomixDocumentTreeCommands {
 
         public Unlisten(DocumentPath path) {
             super(path);
-        }
-
-        @Override
-        public CompactionMode compaction() {
-            return CompactionMode.TOMBSTONE;
         }
 
         @Override
