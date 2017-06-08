@@ -25,6 +25,7 @@ import org.onlab.packet.IpAddress;
 import org.onlab.packet.IpAddress.Version;
 import org.onosproject.core.HybridLogicalTime;
 import org.onosproject.store.cluster.messaging.Endpoint;
+import org.onosproject.store.cluster.messaging.MessagingException;
 import org.onosproject.store.cluster.messaging.impl.InternalMessage.Status;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +33,7 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 import static com.google.common.base.Preconditions.checkState;
+import static org.onosproject.store.cluster.messaging.impl.NettyMessagingManager.MAX_MESSAGE_SIZE;
 
 /**
  * Decoder for inbound messages.
@@ -104,7 +106,10 @@ public class MessageDecoder extends ReplayingDecoder<DecoderState> {
         case READ_CONTENT:
             byte[] payload;
             if (contentLength > 0) {
-                //TODO Perform a sanity check on the size before allocating
+                if (contentLength > MAX_MESSAGE_SIZE) {
+                    checkpoint(DecoderState.READ_MESSAGE_PREAMBLE);
+                    throw new MessagingException.ProtocolException();
+                }
                 payload = new byte[contentLength];
                 buffer.readBytes(payload);
             } else {

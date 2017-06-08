@@ -83,6 +83,7 @@ import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static org.onlab.util.Tools.groupedThreads;
 import static org.onosproject.security.AppGuard.checkPermission;
 import static org.onosproject.security.AppPermission.Type.CLUSTER_WRITE;
@@ -96,6 +97,9 @@ public class NettyMessagingManager implements MessagingService {
 
     private static final int REPLY_TIME_OUT_MILLIS = 500;
     private static final short MIN_KS_LENGTH = 6;
+
+    static final int MAX_MESSAGE_SIZE = 1024 * 1024;
+    private static final String PAYLOAD_TOO_LARGE_MESSAGE = "Payload must be less than " + MAX_MESSAGE_SIZE + " bytes";
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -233,6 +237,8 @@ public class NettyMessagingManager implements MessagingService {
 
     protected CompletableFuture<Void> sendAsync(Endpoint ep, InternalMessage message) {
         checkPermission(CLUSTER_WRITE);
+        checkArgument(message.payload().length <= MAX_MESSAGE_SIZE, PAYLOAD_TOO_LARGE_MESSAGE);
+
         if (ep.equals(localEp)) {
             try {
                 dispatchLocally(message);
