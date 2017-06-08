@@ -198,6 +198,7 @@ public class KryoPerformanceTest {
         List<Long> runTimes = Lists.newArrayList();
         for (int i = 1; i <= iterations; i++) {
             long startTime = System.nanoTime();
+            setup.run();
             iteration.run();
             long endTime = System.nanoTime();
             long runTime = endTime - startTime;
