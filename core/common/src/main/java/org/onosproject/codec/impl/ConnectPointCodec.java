@@ -26,6 +26,7 @@ import org.onosproject.net.HostId;
 import org.onosproject.net.PortNumber;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.lengthIsIllegal;
 import static org.onosproject.net.PortNumber.portNumber;
 
 /**
@@ -37,6 +38,10 @@ public final class ConnectPointCodec extends JsonCodec<ConnectPoint> {
     private static final String ELEMENT_HOST = "host";
     private static final String ELEMENT_DEVICE = "device";
     private static final String PORT = "port";
+
+    // String field max lengths
+    private static final int ELEMENT_DEVICE_MAX_LENGTH = 1024;
+    private static final int ELEMENT_HOST_MAX_LENGTH = 1024;
 
     @Override
     public ObjectNode encode(ConnectPoint point, CodecContext context) {
@@ -61,9 +66,11 @@ public final class ConnectPointCodec extends JsonCodec<ConnectPoint> {
 
         ElementId elementId;
         if (json.has(ELEMENT_DEVICE)) {
-            elementId = DeviceId.deviceId(json.get(ELEMENT_DEVICE).asText());
+            elementId = DeviceId.deviceId(lengthIsIllegal(json.get(ELEMENT_DEVICE).asText(), ELEMENT_DEVICE_MAX_LENGTH,
+                    ELEMENT_DEVICE + " exceeds maximum length " + ELEMENT_DEVICE_MAX_LENGTH));
         } else if (json.has(ELEMENT_HOST)) {
-            elementId = HostId.hostId(json.get(ELEMENT_HOST).asText());
+            elementId = HostId.hostId(lengthIsIllegal(json.get(ELEMENT_HOST).asText(), ELEMENT_HOST_MAX_LENGTH,
+                    ELEMENT_HOST + " exceeds maximum length " + ELEMENT_HOST_MAX_LENGTH));
         } else {
             // invalid JSON
             return null;

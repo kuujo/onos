@@ -32,6 +32,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.net.UrlEscapers;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.lengthIsIllegal;
 import static org.onlab.util.Tools.nullIsIllegal;
 import static org.onlab.util.Tools.nullIsNotFound;
 
@@ -47,8 +48,14 @@ public final class IntentCodec extends JsonCodec<Intent> {
     protected static final String PRIORITY = "priority";
     protected static final String RESOURCES = "resources";
     protected static final String RESOURCE_GROUP = "resourceGroup";
+
+    // String field max lengths
+    private static final int APP_ID_MAX_LENGTH = 1024;
+
     protected static final String MISSING_MEMBER_MESSAGE =
             " member is required in Intent";
+    private static final String MAX_LENGTH_EXCEEDED_MESSAGE =
+            " exceeds maximum length ";
     private static final String E_APP_ID_NOT_FOUND =
             "Application ID is not found";
 
@@ -109,8 +116,9 @@ public final class IntentCodec extends JsonCodec<Intent> {
      */
     public static void intentAttributes(ObjectNode json, CodecContext context,
                                     Intent.Builder builder) {
-        String appId = nullIsIllegal(json.get(IntentCodec.APP_ID),
-                IntentCodec.APP_ID + IntentCodec.MISSING_MEMBER_MESSAGE).asText();
+        String appId = lengthIsIllegal(nullIsIllegal(json.get(IntentCodec.APP_ID),
+                IntentCodec.APP_ID + IntentCodec.MISSING_MEMBER_MESSAGE).asText(),
+                APP_ID_MAX_LENGTH, APP_ID + MAX_LENGTH_EXCEEDED_MESSAGE + APP_ID_MAX_LENGTH);
         CoreService service = context.getService(CoreService.class);
         builder.appId(nullIsNotFound(service.getAppId(appId), IntentCodec.E_APP_ID_NOT_FOUND));
 

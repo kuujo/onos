@@ -16,6 +16,9 @@
 
 package org.onosproject.codec.impl;
 
+import java.io.IOException;
+
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.onosproject.codec.CodecContext;
 import org.onosproject.net.key.DeviceKey;
@@ -24,6 +27,7 @@ import org.onosproject.net.key.DeviceKeyService;
 import org.slf4j.Logger;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.lengthIsIllegal;
 import static org.slf4j.LoggerFactory.getLogger;
 
 /**
@@ -40,6 +44,14 @@ public class DeviceKeyCodec extends AnnotatedCodec<DeviceKey> {
     private static final String COMMUNITY_NAME = "community_name";
     private static final String USERNAME = "username";
     private static final String PASSWORD = "password";
+
+    // String field max lengths
+    private static final int LABEL_MAX_LENGTH = 1024;
+    private static final int COMMUNITY_NAME_LAX_LENGTH = 1024;
+    private static final int USERNAME_MAX_LENGTH = 1024;
+    private static final int PASSWORD_MAX_LENGTH = 1024;
+
+    private static final String MAX_LENGTH_EXCEEDED_MSG = " exceeds maximum length ";
 
     @Override
     public ObjectNode encode(DeviceKey deviceKey, CodecContext context) {
@@ -69,14 +81,14 @@ public class DeviceKeyCodec extends AnnotatedCodec<DeviceKey> {
         DeviceKeyId id = DeviceKeyId.deviceKeyId(json.get(ID).asText());
 
         DeviceKey.Type type = DeviceKey.Type.valueOf(json.get(TYPE).asText());
-        String label = extract(json, LABEL);
+        String label = extract(json, LABEL, LABEL_MAX_LENGTH);
 
         if (type.equals(DeviceKey.Type.COMMUNITY_NAME)) {
-            String communityName = extract(json, COMMUNITY_NAME);
+            String communityName = extract(json, COMMUNITY_NAME, COMMUNITY_NAME_LAX_LENGTH);
             return DeviceKey.createDeviceKeyUsingCommunityName(id, label, communityName);
         } else if (type.equals(DeviceKey.Type.USERNAME_PASSWORD)) {
-            String username = extract(json, USERNAME);
-            String password = extract(json, PASSWORD);
+            String username = extract(json, USERNAME, USERNAME_MAX_LENGTH);
+            String password = extract(json, PASSWORD, PASSWORD_MAX_LENGTH);
             return DeviceKey.createDeviceKeyUsingUsernamePassword(id, label, username, password);
         } else {
             log.error("Unknown device key type: ", type);
@@ -89,9 +101,14 @@ public class DeviceKeyCodec extends AnnotatedCodec<DeviceKey> {
      *
      * @param json json object
      * @param key key to use extract the value from the json object
+     * @param maxLength the maximum allowed length of the value
      * @return extracted value from the json object
      */
-    private String extract(ObjectNode json, String key) {
-        return json.get(key) == null ? null : json.get(key).asText();
+    private String extract(ObjectNode json, String key, int maxLength) {
+        JsonNode node = json.get(key);
+        if (node != null) {
+            return lengthIsIllegal(node.asText(), maxLength, key + MAX_LENGTH_EXCEEDED_MSG + maxLength);
+        }
+        return null;
     }
 }

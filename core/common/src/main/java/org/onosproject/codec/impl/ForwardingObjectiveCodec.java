@@ -27,6 +27,7 @@ import org.onosproject.net.flowobjective.ForwardingObjective;
 import org.slf4j.Logger;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.lengthIsIllegal;
 import static org.onlab.util.Tools.nullIsIllegal;
 import static org.slf4j.LoggerFactory.getLogger;
 
@@ -45,9 +46,14 @@ public final class ForwardingObjectiveCodec extends JsonCodec<ForwardingObjectiv
     private static final String NEXT_ID = "nextId";
     private static final String TREATMENT = "treatment";
 
+    // String field max lengths
+    private static final int APP_ID_MAX_LENGTH = 1024;
+
     // messages to be printed out
     private static final String MISSING_MEMBER_MESSAGE =
             " member is required in ForwardingObjective";
+    private static final String MAX_LENGTH_EXCEEDED_MESSAGE =
+            " exceeds maximum length ";
     private static final String NOT_NULL_MESSAGE =
             "ForwardingObjective cannot be null";
 
@@ -113,7 +119,10 @@ public final class ForwardingObjectiveCodec extends JsonCodec<ForwardingObjectiv
 
         // application id
         JsonNode appIdJson = json.get(APP_ID);
-        String appId = appIdJson != null ? appIdJson.asText() : REST_APP_ID;
+        String appId = appIdJson != null
+                ? lengthIsIllegal(appIdJson.asText(), APP_ID_MAX_LENGTH,
+                APP_ID + MAX_LENGTH_EXCEEDED_MESSAGE + APP_ID_MAX_LENGTH)
+                : REST_APP_ID;
         builder.fromApp(coreService.registerApplication(appId));
 
         // decode flag

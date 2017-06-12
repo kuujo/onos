@@ -31,6 +31,7 @@ import org.onosproject.net.PortNumber;
 import org.onosproject.net.provider.ProviderId;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.lengthIsIllegal;
 
 /**
  * Device port JSON codec.
@@ -43,6 +44,9 @@ public final class PortCodec extends AnnotatedCodec<Port> {
     private static final String IS_ENABLED = "isEnabled";
     private static final String TYPE = "type";
     private static final String PORT_SPEED = "portSpeed";
+
+    // String field max lengths
+    private static final int DEVICE_ID_MAX_LENGTH = 1024;
 
     // Special port name alias
     private static final String PORT_NAME_LOCAL = "local";
@@ -85,7 +89,8 @@ public final class PortCodec extends AnnotatedCodec<Port> {
             return null;
         }
 
-        DeviceId did = DeviceId.deviceId(json.get(ELEMENT).asText());
+        DeviceId did = DeviceId.deviceId(lengthIsIllegal(json.get(ELEMENT).asText(), DEVICE_ID_MAX_LENGTH,
+                ELEMENT + " exceeds maximum length " + DEVICE_ID_MAX_LENGTH));
         Device device = new DummyDevice(did);
         PortNumber number = portNumber(json.get(PORT_NAME).asText());
         boolean isEnabled = json.get(IS_ENABLED).asBoolean();

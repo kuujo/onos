@@ -22,6 +22,7 @@ import org.onosproject.incubator.net.virtual.TenantId;
 
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.lengthIsIllegal;
 import static org.onlab.util.Tools.nullIsIllegal;
 
 /**
@@ -32,8 +33,12 @@ public class TenantIdCodec extends JsonCodec<TenantId> {
     // JSON field names
     private static final String TENANT_ID = "id";
 
+    // String field max lengths
+    private static final int TENANT_ID_MAX_LENGTH = 1024;
+
     private static final String NULL_TENANT_MSG = "TenantId cannot be null";
     private static final String MISSING_MEMBER_MSG = " member is required in TenantId";
+    private static final String MAX_LENGTH_EXCEEDED_MSD = " exceeds max length ";
 
     @Override
     public ObjectNode encode(TenantId tenantId, CodecContext context) {
@@ -51,12 +56,15 @@ public class TenantIdCodec extends JsonCodec<TenantId> {
             return null;
         }
 
-        TenantId tenantId = TenantId.tenantId(extractMember(TENANT_ID, json));
+        TenantId tenantId = TenantId.tenantId(extractMember(TENANT_ID, json, TENANT_ID_MAX_LENGTH));
 
         return tenantId;
     }
 
-    private String extractMember(String key, ObjectNode json) {
-        return nullIsIllegal(json.get(key), key + MISSING_MEMBER_MSG).asText();
+    private String extractMember(String key, ObjectNode json, int maxLength) {
+        return lengthIsIllegal(
+                nullIsIllegal(json.get(key), key + MISSING_MEMBER_MSG).asText(),
+                maxLength,
+                key + MAX_LENGTH_EXCEEDED_MSD + maxLength);
     }
 }

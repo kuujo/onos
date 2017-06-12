@@ -31,6 +31,7 @@ import org.onosproject.net.packet.PacketRequest;
 import java.util.Optional;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.lengthIsIllegal;
 import static org.onlab.util.Tools.nullIsIllegal;
 
 /**
@@ -48,9 +49,14 @@ public class PacketRequestCodec extends JsonCodec<PacketRequest> {
     static final String NODE_ID = "nodeId";
     static final String DEVICE_ID = "deviceId";
 
+    // String field max lengths
+    private static final int NODE_ID_MAX_LENGTH = 1024;
+    private static final int DEVICE_ID_MAX_LENGTH = 1024;
+
     private static final String NULL_OBJECT_MSG = "PacketRequest cannot be null";
     private static final String MISSING_MEMBER_MSG = " member is required in PacketRequest";
     public static final String REST_APP_ID = "org.onosproject.rest";
+    private static final String MAX_LENGTH_EXCEEDED_MESSAGE = " exceeds maximum length ";
 
     @Override
     public ObjectNode encode(PacketRequest packetRequest, CodecContext context) {
@@ -81,7 +87,8 @@ public class PacketRequestCodec extends JsonCodec<PacketRequest> {
                context.codec(TrafficSelector.class);
         TrafficSelector trafficSelector = trafficSelectorCodec.decode(
                 get(json, TRAFFIC_SELECTOR), context);
-        NodeId nodeId = NodeId.nodeId(extractMember(NODE_ID, json));
+        NodeId nodeId = NodeId.nodeId(lengthIsIllegal(extractMember(NODE_ID, json), NODE_ID_MAX_LENGTH,
+                NODE_ID + MAX_LENGTH_EXCEEDED_MESSAGE + NODE_ID_MAX_LENGTH));
         PacketPriority priority = PacketPriority.valueOf(extractMember(PRIORITY, json));
 
         CoreService coreService = context.getService(CoreService.class);
@@ -91,7 +98,8 @@ public class PacketRequestCodec extends JsonCodec<PacketRequest> {
         DeviceId deviceId = null;
         JsonNode node = json.get(DEVICE_ID);
         if (node != null) {
-             deviceId = DeviceId.deviceId(node.asText());
+             deviceId = DeviceId.deviceId(lengthIsIllegal(node.asText(), DEVICE_ID_MAX_LENGTH,
+                     DEVICE_ID + MAX_LENGTH_EXCEEDED_MESSAGE + DEVICE_ID_MAX_LENGTH));
         }
 
         return new DefaultPacketRequest(trafficSelector, priority, appId, nodeId, Optional.ofNullable(deviceId));

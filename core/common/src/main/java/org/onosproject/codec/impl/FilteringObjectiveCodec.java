@@ -30,6 +30,7 @@ import org.slf4j.Logger;
 import java.util.stream.IntStream;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.lengthIsIllegal;
 import static org.onlab.util.Tools.nullIsIllegal;
 import static org.slf4j.LoggerFactory.getLogger;
 
@@ -48,9 +49,14 @@ public final class FilteringObjectiveCodec extends JsonCodec<FilteringObjective>
     private static final String OPERATION = "operation";
     private static final String CONDITIONS = "conditions";
 
+    // String field max lengths
+    private static final int APP_ID_MAX_LENGTH = 1024;
+
     // messages to be printed out
     private static final String MISSING_MEMBER_MESSAGE =
             " member is required in FilteringObjective";
+    private static final String MAX_LENGTH_EXCEEDED_MESSAGE =
+            " exceeds maximum length ";
     private static final String NOT_NULL_MESSAGE =
             "FilteringObjective cannot be null";
 
@@ -114,11 +120,12 @@ public final class FilteringObjectiveCodec extends JsonCodec<FilteringObjective>
         final DefaultFilteringObjective.Builder builder =
                 (DefaultFilteringObjective.Builder) och.decode(json, baseBuilder, context);
 
-
-
         // application id
         JsonNode appIdJson = json.get(APP_ID);
-        String appId = appIdJson != null ? appIdJson.asText() : REST_APP_ID;
+        String appId = appIdJson != null
+                ? lengthIsIllegal(appIdJson.asText(), APP_ID_MAX_LENGTH,
+                APP_ID + MAX_LENGTH_EXCEEDED_MESSAGE + APP_ID_MAX_LENGTH)
+                : REST_APP_ID;
         builder.fromApp(coreService.registerApplication(appId));
 
         // decode type

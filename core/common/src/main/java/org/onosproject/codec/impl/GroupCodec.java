@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.stream.IntStream;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.lengthIsIllegal;
 import static org.onlab.util.Tools.nullIsIllegal;
 import static org.slf4j.LoggerFactory.getLogger;
 
@@ -63,9 +64,13 @@ public final class GroupCodec extends JsonCodec<Group> {
     private static final String APP_COOKIE = "appCookie";
     private static final String GIVEN_GROUP_ID = "givenGroupId";
     private static final String BUCKETS = "buckets";
-    private static final String MISSING_MEMBER_MESSAGE =
-            " member is required in Group";
     public static final String REST_APP_ID = "org.onosproject.rest";
+
+    // String field max lengths
+    private static final int DEVICE_ID_MAX_LENGTH = 1024;
+
+    private static final String MISSING_MEMBER_MESSAGE = " member is required in Group";
+    private static final String MAX_LENGTH_EXCEEDED_MESSAGE = " exceeds maximum length ";
 
     @Override
     public ObjectNode encode(Group group, CodecContext context) {
@@ -125,8 +130,9 @@ public final class GroupCodec extends JsonCodec<Group> {
                 groupKeyStr.split("0x")[1], ""));
 
         // parse device id
-        DeviceId deviceId = DeviceId.deviceId(nullIsIllegal(json.get(DEVICE_ID),
-                DEVICE_ID + MISSING_MEMBER_MESSAGE).asText());
+        DeviceId deviceId = DeviceId.deviceId(lengthIsIllegal(nullIsIllegal(json.get(DEVICE_ID),
+                DEVICE_ID + MISSING_MEMBER_MESSAGE).asText(), DEVICE_ID_MAX_LENGTH,
+                DEVICE_ID + MAX_LENGTH_EXCEEDED_MESSAGE + DEVICE_ID_MAX_LENGTH));
 
         // application id
         ApplicationId appId = coreService.registerApplication(REST_APP_ID);

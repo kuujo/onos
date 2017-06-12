@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.stream.IntStream;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.lengthIsIllegal;
 import static org.onlab.util.Tools.nullIsIllegal;
 import static org.slf4j.LoggerFactory.getLogger;
 
@@ -47,7 +48,12 @@ public final class MeterRequestCodec extends JsonCodec<MeterRequest> {
     private static final String UNIT = "unit";
     private static final String BANDS = "bands";
     public static final String REST_APP_ID = "org.onosproject.rest";
+
+    // String field max lengths
+    private static final int DEVICE_ID_MAX_LENGTH = 1024;
+
     private static final String MISSING_MEMBER_MESSAGE = " member is required in MeterRequest";
+    private static final String MAX_LENGTH_EXCEEDED_MESSAGE = " exceeds maximum length ";
 
     @Override
     public MeterRequest decode(ObjectNode json, CodecContext context) {
@@ -59,8 +65,9 @@ public final class MeterRequestCodec extends JsonCodec<MeterRequest> {
         CoreService coreService = context.getService(CoreService.class);
 
         // parse device id
-        DeviceId deviceId = DeviceId.deviceId(nullIsIllegal(json.get(DEVICE_ID),
-                DEVICE_ID + MISSING_MEMBER_MESSAGE).asText());
+        DeviceId deviceId = DeviceId.deviceId(lengthIsIllegal(nullIsIllegal(json.get(DEVICE_ID),
+                DEVICE_ID + MISSING_MEMBER_MESSAGE).asText(), DEVICE_ID_MAX_LENGTH,
+                DEVICE_ID + MAX_LENGTH_EXCEEDED_MESSAGE + DEVICE_ID_MAX_LENGTH));
 
         // application id
         ApplicationId appId = coreService.registerApplication(REST_APP_ID);

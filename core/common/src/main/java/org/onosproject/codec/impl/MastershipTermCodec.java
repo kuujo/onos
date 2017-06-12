@@ -22,6 +22,7 @@ import org.onosproject.codec.JsonCodec;
 import org.onosproject.mastership.MastershipTerm;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.lengthIsIllegal;
 import static org.onlab.util.Tools.nullIsIllegal;
 
 /**
@@ -33,7 +34,11 @@ public class MastershipTermCodec extends JsonCodec<MastershipTerm> {
     private static final String MASTER = "master";
     private static final String TERM_NUMBER = "termNumber";
 
+    // String field max lengths
+    private static final int MASTER_MAX_LENGTH = 1024;
+
     private static final String MISSING_MEMBER_MESSAGE = " member is required in MastershipTerm";
+    private static final String MAX_LENGTH_EXCEEDED_MESSAGE = " exceeds maximum length ";
 
     @Override
     public ObjectNode encode(MastershipTerm term, CodecContext context) {
@@ -52,8 +57,9 @@ public class MastershipTermCodec extends JsonCodec<MastershipTerm> {
         }
 
         // node identifier of master
-        NodeId nodeId = NodeId.nodeId(nullIsIllegal(json.get(MASTER),
-                MASTER + MISSING_MEMBER_MESSAGE).asText());
+        NodeId nodeId = NodeId.nodeId(lengthIsIllegal(nullIsIllegal(json.get(MASTER),
+                MASTER + MISSING_MEMBER_MESSAGE).asText(),
+                MASTER_MAX_LENGTH, MASTER + MAX_LENGTH_EXCEEDED_MESSAGE + MASTER_MAX_LENGTH));
 
         // term number
         long termNumber = nullIsIllegal(json.get(TERM_NUMBER),

@@ -34,6 +34,7 @@ import java.util.Set;
 import java.util.stream.IntStream;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.lengthIsIllegal;
 import static org.onlab.util.Tools.nullIsIllegal;
 
 /**
@@ -48,8 +49,15 @@ public class RegionCodec extends AnnotatedCodec<Region> {
     private static final String MASTERS = "masters";
     private static final String NODE_ID = "nodeId";
 
+    // String field max lengths
+    private static final int REGION_ID_MAX_LENGTH = 1024;
+    private static final int NAME_MAX_MAX_LENGTH = 1024;
+    private static final int TYPE_MAX_LENGTH = 1024;
+    private static final int NODE_ID_MAX_LENGTH = 1024;
+
     private static final String NULL_REGION_MSG = "Region cannot be null";
     private static final String MISSING_MEMBER_MSG = " member is required in Region";
+    private static final String MAX_LENGTH_EXCEEDED_MSG = " exceeds maximum length ";
 
     private static final BiMap<String, Region.Type> REGION_TYPE_MAP = HashBiMap.create();
 
@@ -105,16 +113,17 @@ public class RegionCodec extends AnnotatedCodec<Region> {
             masters.add(nodeIds);
         });
 
-        RegionId regionId = RegionId.regionId(extractMember(REGION_ID, json));
-        String name = extractMember(NAME, json);
-        Region.Type type = REGION_TYPE_MAP.get(extractMember(TYPE, json));
+        RegionId regionId = RegionId.regionId(extractMember(REGION_ID, REGION_ID_MAX_LENGTH, json));
+        String name = extractMember(NAME, NAME_MAX_MAX_LENGTH, json);
+        Region.Type type = REGION_TYPE_MAP.get(extractMember(TYPE, TYPE_MAX_LENGTH, json));
         Annotations annots = extractAnnotations(json, context);
 
         return new DefaultRegion(regionId, name, type, annots, masters);
     }
 
-    private String extractMember(String key, ObjectNode json) {
-        return nullIsIllegal(json.get(key), key + MISSING_MEMBER_MSG).asText();
+    private String extractMember(String key, int maxLength, ObjectNode json) {
+        return lengthIsIllegal(nullIsIllegal(json.get(key), key + MISSING_MEMBER_MSG).asText(),
+                maxLength, key + MAX_LENGTH_EXCEEDED_MSG + maxLength);
     }
 
     /**
@@ -124,7 +133,8 @@ public class RegionCodec extends AnnotatedCodec<Region> {
      * @return decoded node id object
      */
     private NodeId decodeNodeId(JsonNode json) {
-        return NodeId.nodeId(nullIsIllegal(json, NODE_ID +
-                MISSING_MEMBER_MSG).asText());
+        return NodeId.nodeId(lengthIsIllegal(nullIsIllegal(json, NODE_ID +
+                MISSING_MEMBER_MSG).asText(), NODE_ID_MAX_LENGTH,
+                NODE_ID + MAX_LENGTH_EXCEEDED_MSG + NODE_ID_MAX_LENGTH));
     }
 }

@@ -213,6 +213,23 @@ public abstract class Tools {
     }
 
     /**
+     * Returns the specified value if that value's length does not exceed the provided {@code maxLength},
+     * otherwise throws bad argument exception.
+     *
+     * @param value value to check
+     * @param maxLength maximum value length
+     * @param message bad argument message
+     * @return value if length does not exceed {@code maxLength}
+     * @throws IllegalArgumentException if {@code value} length exceeds {@code maxLength}
+     */
+    public static String lengthIsIllegal(String value, int maxLength, String message) {
+        if (value.length() > maxLength) {
+            throw new IllegalArgumentException(message);
+        }
+        return value;
+    }
+
+    /**
      * Converts a string from hex to long.
      *
      * @param string hex number in string form; sans 0x

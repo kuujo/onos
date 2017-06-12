@@ -22,6 +22,7 @@ import org.onosproject.core.ApplicationId;
 import org.onosproject.core.DefaultApplicationId;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.lengthIsIllegal;
 import static org.onlab.util.Tools.nullIsIllegal;
 
 /**
@@ -32,7 +33,10 @@ public final class ApplicationIdCodec extends JsonCodec<ApplicationId> {
     private static final String APP_ID = "id";
     private static final String APP_NAME = "name";
 
+    private static final int APP_NAME_MAX_LENGTH = 1024;
+
     private static final String MISSING_MEMBER_MESSAGE = " member is required in ApplicationId";
+    private static final String MAX_LENGTH_EXCEEDED_MESSAGE = " exceeds maximum length ";
 
     @Override
     public ObjectNode encode(ApplicationId appId, CodecContext context) {
@@ -55,7 +59,8 @@ public final class ApplicationIdCodec extends JsonCodec<ApplicationId> {
         int id = nullIsIllegal(json.get(APP_ID), APP_ID + MISSING_MEMBER_MESSAGE).asInt();
 
         // parse application name
-        String name = nullIsIllegal(json.get(APP_NAME), APP_NAME + MISSING_MEMBER_MESSAGE).asText();
+        String name = lengthIsIllegal(nullIsIllegal(json.get(APP_NAME), APP_NAME + MISSING_MEMBER_MESSAGE).asText(),
+                APP_NAME_MAX_LENGTH, APP_NAME + MAX_LENGTH_EXCEEDED_MESSAGE + APP_NAME_MAX_LENGTH);
 
         return new DefaultApplicationId(id, name);
     }

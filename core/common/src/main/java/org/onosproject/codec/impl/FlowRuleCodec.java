@@ -28,6 +28,7 @@ import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flow.TrafficTreatment;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.lengthIsIllegal;
 import static org.onlab.util.Tools.nullIsIllegal;
 
 /**
@@ -43,8 +44,13 @@ public final class FlowRuleCodec extends JsonCodec<FlowRule> {
     private static final String DEVICE_ID = "deviceId";
     private static final String TREATMENT = "treatment";
     private static final String SELECTOR = "selector";
-    private static final String MISSING_MEMBER_MESSAGE =
-                                " member is required in FlowRule";
+
+    // String field max lengths
+    private static final int APP_ID_MAX_LENGTH = 1024;
+    private static final int DEVICE_ID_MAX_LENGTH = 1024;
+
+    private static final String MISSING_MEMBER_MESSAGE = " member is required in FlowRule";
+    private static final String MAX_LENGTH_EXCEEDED_MESSAGE = " exceeds maximum length ";
     public static final String REST_APP_ID = "org.onosproject.rest";
 
     @Override
@@ -89,7 +95,10 @@ public final class FlowRuleCodec extends JsonCodec<FlowRule> {
 
         CoreService coreService = context.getService(CoreService.class);
         JsonNode appIdJson = json.get(APP_ID);
-        String appId = appIdJson != null ? appIdJson.asText() : REST_APP_ID;
+        String appId = appIdJson != null
+                ? lengthIsIllegal(appIdJson.asText(), APP_ID_MAX_LENGTH,
+                APP_ID + MAX_LENGTH_EXCEEDED_MESSAGE + APP_ID_MAX_LENGTH)
+                : REST_APP_ID;
         resultBuilder.fromApp(coreService.registerApplication(appId));
 
         int priority = nullIsIllegal(json.get(PRIORITY),
@@ -112,8 +121,9 @@ public final class FlowRuleCodec extends JsonCodec<FlowRule> {
             resultBuilder.forTable(tableIdJson.asInt());
         }
 
-        DeviceId deviceId = DeviceId.deviceId(nullIsIllegal(json.get(DEVICE_ID),
-                DEVICE_ID + MISSING_MEMBER_MESSAGE).asText());
+        DeviceId deviceId = DeviceId.deviceId(lengthIsIllegal(nullIsIllegal(json.get(DEVICE_ID),
+                DEVICE_ID + MISSING_MEMBER_MESSAGE).asText(), DEVICE_ID_MAX_LENGTH,
+                DEVICE_ID + MAX_LENGTH_EXCEEDED_MESSAGE + DEVICE_ID_MAX_LENGTH));
         resultBuilder.forDevice(deviceId);
 
         ObjectNode treatmentJson = get(json, TREATMENT);
