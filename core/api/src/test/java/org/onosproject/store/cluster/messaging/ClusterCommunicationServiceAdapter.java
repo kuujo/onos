@@ -50,14 +50,32 @@ public class ClusterCommunicationServiceAdapter
     }
 
     @Override
+    public <M> CompletableFuture<Void> unicast(M message, MessageSubject subject, Function<M, byte[]> encoder) {
+        return null;
+    }
+
+    @Override
     public <M> CompletableFuture<Void> unicast(M message, MessageSubject subject,
                                                Function<M, byte[]> encoder, NodeId toNodeId) {
         return null;
     }
 
     @Override
+    public <M> void multicast(M message, MessageSubject subject, Function<M, byte[]> encoder) {
+
+    }
+
+    @Override
     public <M> void multicast(M message, MessageSubject subject,
                               Function<M, byte[]> encoder, Set<NodeId> nodes) {
+    }
+
+    @Override
+    public <M, R> CompletableFuture<R> sendAndReceive(M message,
+                                                      MessageSubject subject,
+                                                      Function<M, byte[]> encoder,
+                                                      Function<byte[], R> decoder) {
+        return null;
     }
 
     @Override

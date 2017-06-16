@@ -70,14 +70,39 @@ public interface ClusterCommunicationService {
      * @param message message to send
      * @param subject message subject
      * @param encoder function for encoding message to byte[]
+     * @param <M> message type
+     * @return future that is completed when the message is sent
+     */
+    <M> CompletableFuture<Void> unicast(M message,
+            MessageSubject subject,
+            Function<M, byte[]> encoder);
+
+    /**
+     * Sends a message to the specified controller node.
+     *
+     * @param message message to send
+     * @param subject message subject
+     * @param encoder function for encoding message to byte[]
      * @param toNodeId destination node identifier
      * @param <M> message type
      * @return future that is completed when the message is sent
      */
     <M> CompletableFuture<Void> unicast(M message,
-                        MessageSubject subject,
-                        Function<M, byte[]> encoder,
-                        NodeId toNodeId);
+            MessageSubject subject,
+            Function<M, byte[]> encoder,
+            NodeId toNodeId);
+
+    /**
+     * Multicasts a message to a set of controller nodes.
+     *
+     * @param message message to send
+     * @param subject message subject
+     * @param encoder function for encoding message to byte[]
+     * @param <M> message type
+     */
+    <M> void multicast(M message,
+            MessageSubject subject,
+            Function<M, byte[]> encoder);
 
     /**
      * Multicasts a message to a set of controller nodes.
@@ -89,9 +114,25 @@ public interface ClusterCommunicationService {
      * @param <M> message type
      */
     <M> void multicast(M message,
-                       MessageSubject subject,
-                       Function<M, byte[]> encoder,
-                       Set<NodeId> nodeIds);
+            MessageSubject subject,
+            Function<M, byte[]> encoder,
+            Set<NodeId> nodeIds);
+
+    /**
+     * Sends a message and expects a reply.
+     *
+     * @param message message to send
+     * @param subject message subject
+     * @param encoder function for encoding request to byte[]
+     * @param decoder function for decoding response from byte[]
+     * @param <M> request type
+     * @param <R> reply type
+     * @return reply future
+     */
+    <M, R> CompletableFuture<R> sendAndReceive(M message,
+            MessageSubject subject,
+            Function<M, byte[]> encoder,
+            Function<byte[], R> decoder);
 
     /**
      * Sends a message and expects a reply.
