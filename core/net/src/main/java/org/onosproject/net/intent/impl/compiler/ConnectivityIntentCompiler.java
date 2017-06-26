@@ -17,7 +17,6 @@ package org.onosproject.net.intent.impl.compiler;
 
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
@@ -225,70 +224,8 @@ public abstract class ConnectivityIntentCompiler<T extends ConnectivityIntent>
         ResourceConsumer newResourceConsumer =
                 intent.resourceGroup() != null ? intent.resourceGroup() : intent.key();
 
-        // Get the list of current resource allocations
-        Collection<ResourceAllocation> resourceAllocations =
-                resourceService.getResourceAllocations(newResourceConsumer);
-
-        // Get the list of resources already allocated from resource allocations
-        List<Resource> resourcesAllocated =
-                resourcesFromAllocations(resourceAllocations);
-
-        // Get the list of resource ids for resources already allocated
-        List<ResourceId> idsResourcesAllocated = resourceIds(resourcesAllocated);
-
-        // Create the list of incoming resources requested. Exclude resources
-        // already allocated.
-        List<Resource> incomingResources =
-                resources(connectPoints, bw).stream()
-                                            .filter(r -> !resourcesAllocated.contains(r))
-                                            .collect(Collectors.toList());
-
-        if (incomingResources.isEmpty()) {
-            return;
-        }
-
-        // Create the list of resources to be added, meaning their key is not
-        // present in the resources already allocated
-        List<Resource> resourcesToAdd =
-                incomingResources.stream()
-                                 .filter(r -> !idsResourcesAllocated.contains(r.id()))
-                                 .collect(Collectors.toList());
-
-        // Resources to updated are all the new valid resources except the
-        // resources to be added
-        List<Resource> resourcesToUpdate = Lists.newArrayList(incomingResources);
-        resourcesToUpdate.removeAll(resourcesToAdd);
-
-        // If there are no resources to update skip update procedures
-        if (!resourcesToUpdate.isEmpty()) {
-            // Remove old resources that need to be updated
-            // TODO: use transaction updates when available in the resource service
-            List<ResourceAllocation> resourceAllocationsToUpdate =
-                    resourceAllocations.stream()
-                            .filter(rA -> resourceIds(resourcesToUpdate).contains(rA.resource().id()))
-                            .collect(Collectors.toList());
-            log.debug("Releasing bandwidth for intent {}: {} bps", newResourceConsumer, resourcesToUpdate);
-            resourceService.release(resourceAllocationsToUpdate);
-
-            // Update resourcesToAdd with the list of both the new resources and
-            // the resources to update
-            resourcesToAdd.addAll(resourcesToUpdate);
-        }
-
-        // Look also for resources allocated using the intent key and -if any-
-        // remove them
-        if (intent.resourceGroup() != null) {
-            // Get the list of current resource allocations made by intent key
-            Collection<ResourceAllocation> resourceAllocationsByKey =
-                    resourceService.getResourceAllocations(intent.key());
-
-            resourceService.release(Lists.newArrayList(resourceAllocationsByKey));
-        }
-
         // Allocate resources
-        log.debug("Allocating bandwidth for intent {}: {} bps", newResourceConsumer, resourcesToAdd);
-        List<ResourceAllocation> allocations =
-                resourceService.allocate(newResourceConsumer, resourcesToAdd);
+        List<ResourceAllocation> allocations = resourceService.update(newResourceConsumer, resources(connectPoints, bw));
 
         if (allocations.isEmpty()) {
             log.debug("No resources allocated for intent {}", newResourceConsumer);
