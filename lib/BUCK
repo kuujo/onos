@@ -176,12 +176,10 @@ remote_jar (
   visibility = [ 'PUBLIC' ],
 )
 
-remote_jar (
+prebuilt_jar (
   name = 'atomix',
-  out = 'atomix-all-1.0.8.jar',
-  url = 'mvn:io.atomix:atomix-all:jar:1.0.8',
-  sha1 = 'e8cbf8d93ceb151c89a62ed9eca8024bf6030c31',
-  maven_coords = 'io.atomix:atomix-all:1.0.8',
+  binary_jar = 'atomix-2.0.0-SNAPSHOT.jar',
+  maven_coords = 'io.atomix:atomix:2.0.0-SNAPSHOT',
   visibility = [ 'PUBLIC' ],
 )
 
@@ -875,33 +873,6 @@ remote_jar (
   url = 'mvn:io.netty:netty-codec-http:jar:4.1.8.Final',
   sha1 = '1e88617c4a6c88da7e86fdbbd9494d22a250c879',
   maven_coords = 'io.netty:netty-codec-http:4.1.8.Final',
-  visibility = [ 'PUBLIC' ],
-)
-
-remote_jar (
-  name = 'catalyst-concurrent',
-  out = 'catalyst-concurrent-1.2.1.jar',
-  url = 'mvn:io.atomix.catalyst:catalyst-concurrent:jar:1.2.1',
-  sha1 = '8f62c04cfef9ea69f40d75eaa4728e60add4b79a',
-  maven_coords = 'io.atomix.catalyst:catalyst-concurrent:1.2.1',
-  visibility = [ 'PUBLIC' ],
-)
-
-remote_jar (
-  name = 'catalyst-netty',
-  out = 'catalyst-netty-1.2.1.jar',
-  url = 'mvn:io.atomix.catalyst:catalyst-netty:jar:1.2.1',
-  sha1 = 'db6a1bf1704c009098bb78e17e8ded88c725fe79',
-  maven_coords = 'io.atomix.catalyst:catalyst-netty:1.2.1',
-  visibility = [ 'PUBLIC' ],
-)
-
-remote_jar (
-  name = 'catalyst-transport',
-  out = 'catalyst-transport-1.2.1.jar',
-  url = 'mvn:io.atomix.catalyst:catalyst-transport:jar:1.2.1',
-  sha1 = 'a50e7ee0f8b76b9d081ab7531ea86f5bdb63bc09',
-  maven_coords = 'io.atomix.catalyst:catalyst-transport:1.2.1',
   visibility = [ 'PUBLIC' ],
 )
 
