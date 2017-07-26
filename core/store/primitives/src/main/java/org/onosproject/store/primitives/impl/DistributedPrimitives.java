@@ -117,7 +117,30 @@ public final class DistributedPrimitives {
                 keyEncoder,
                 keyDecoder,
                 valueEncoder,
-                valueDecoder);
+                valueDecoder,
+                false);
+    }
+
+    /**
+     * Creates an instance of {@code AsyncConsistentMap} that transforms operations inputs and applies them
+     * to corresponding operation in a different typed map and returns the output after reverse transforming it.
+     *
+     * @param map backing map
+     * @param <K1> returned map key type
+     * @param <K2> input map key type
+     * @param <V1> returned map value type
+     * @param <V2> input map key type
+     * @return new map
+     */
+    @SuppressWarnings("unchecked")
+    public static <K1, V1, K2, V2> AsyncConsistentMap<K1, V1> newNullableMap(AsyncConsistentMap<K2, V2> map) {
+        final byte[] empty = new byte[0];
+        return new TranscodingAsyncConsistentMap(map,
+                k -> k,
+                k -> k,
+                v -> v == null ? empty : v,
+                v -> v instanceof byte[] && ((byte[]) v).length == 0 ? null : v,
+                true);
     }
 
     /**
