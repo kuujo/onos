@@ -27,6 +27,7 @@ public abstract class ConsistentMapBuilder<K, V>
     extends DistributedPrimitiveBuilder<ConsistentMapBuilder<K, V>, ConsistentMap<K, V>> {
 
     private boolean purgeOnUninstall = false;
+    private boolean nullValues = false;
 
     public ConsistentMapBuilder() {
         super(DistributedPrimitive.Type.CONSISTENT_MAP);
@@ -48,6 +49,25 @@ public abstract class ConsistentMapBuilder<K, V>
      */
     public boolean purgeOnUninstall() {
         return purgeOnUninstall;
+    }
+
+    /**
+     * Enables null values in the map.
+     *
+     * @return  this builder
+     */
+    public ConsistentMapBuilder<K, V> withNullValues() {
+        nullValues = true;
+        return this;
+    }
+
+    /**
+     * Returns if the map supports null values.
+     *
+     * @return {@code true} if the map supports null values, {@code false} otherwise
+     */
+    public boolean nullValues() {
+        return nullValues;
     }
 
     /**
