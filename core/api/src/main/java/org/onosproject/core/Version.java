@@ -17,18 +17,23 @@ package org.onosproject.core;
 
 import java.util.Objects;
 
+import com.google.common.collect.ComparisonChain;
+
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static java.lang.Integer.parseInt;
 
 /**
  * Representation of the product version.
  */
-public final class Version {
+public final class Version implements Comparable<Version> {
 
     public static final String FORMAT_MINIMAL = "%d.%d";
     public static final String FORMAT_SHORT = "%d.%d.%s";
     public static final String FORMAT_LONG = "%d.%d.%s.%s";
+
+    public static final Version UNKNOWN = new Version(0, 0, null, null);
 
     private static final String NEGATIVE = "Version segment cannot be negative";
     public static final String TOO_SHORT = "Version must have at least major and minor numbers";
@@ -118,6 +123,57 @@ public final class Version {
      */
     public String build() {
         return build;
+    }
+
+    private static int parseElement(String element) {
+        if (element != null) {
+            try {
+                return Integer.parseInt(element);
+            } catch (NumberFormatException e) {
+                return 0;
+            }
+        }
+        return 0;
+    }
+
+    @Override
+    public int compareTo(Version other) {
+        return ComparisonChain.start()
+                .compare(major, other.major)
+                .compare(minor, other.minor)
+                .compare(parseElement(patch), parseElement(other.patch))
+                .compare(parseElement(build), parseElement(other.build))
+                .result();
+    }
+
+    /**
+     * Tests if this version is newer than the specified version.
+     *
+     * @param other version to compare against
+     * @return true if this instance is newer
+     */
+    public boolean isGreaterThan(Version other) {
+        return compareTo(checkNotNull(other)) > 0;
+    }
+
+    /**
+     * Tests if this version is older than the specified version.
+     *
+     * @param other version to compare against
+     * @return true if this instance is older
+     */
+    public boolean isLessThan(Version other) {
+        return compareTo(checkNotNull(other)) < 0;
+    }
+
+    /**
+     * Tests if this version is equal to the specified version.
+     *
+     * @param other version to compare against
+     * @return true if the instances are equivalent
+     */
+    public boolean isEqualTo(Version other) {
+        return compareTo(checkNotNull(other)) == 0;
     }
 
     @Override
