@@ -63,12 +63,13 @@ public class TranscodingAsyncConsistentMap<K1, V1, K2, V2> implements AsyncConsi
                                    Function<K1, K2> keyEncoder,
                                    Function<K2, K1> keyDecoder,
                                    Function<V1, V2> valueEncoder,
-                                   Function<V2, V1> valueDecoder) {
+                                   Function<V2, V1> valueDecoder,
+                                   boolean nullable) {
         this.backingMap = backingMap;
-        this.keyEncoder = k -> k == null ? null : keyEncoder.apply(k);
-        this.keyDecoder = k -> k == null ? null : keyDecoder.apply(k);
-        this.valueEncoder = v -> v == null ? null : valueEncoder.apply(v);
-        this.valueDecoder = v -> v == null ? null : valueDecoder.apply(v);
+        this.keyEncoder = k -> !nullable && k == null ? null : keyEncoder.apply(k);
+        this.keyDecoder = k -> !nullable && k == null ? null : keyDecoder.apply(k);
+        this.valueEncoder = v -> !nullable && v == null ? null : valueEncoder.apply(v);
+        this.valueDecoder = v -> !nullable && v == null ? null : valueDecoder.apply(v);
         this.versionedValueTransform = v -> v == null ? null : v.map(valueDecoder);
     }
 

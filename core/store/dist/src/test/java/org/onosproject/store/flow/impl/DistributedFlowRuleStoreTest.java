@@ -133,9 +133,7 @@ public class DistributedFlowRuleStoreTest {
     public void setUp() throws Exception {
         flowStoreImpl = new DistributedFlowRuleStore();
         flowStoreImpl.storageService = new TestStorageService();
-        flowStoreImpl.replicaInfoManager = new ReplicaInfoManager();
         mockClusterService = createMock(ClusterService.class);
-        flowStoreImpl.clusterService = mockClusterService;
         nodeId = new NodeId("1");
         mockControllerNode = new MockControllerNode(nodeId);
 
@@ -143,12 +141,9 @@ public class DistributedFlowRuleStoreTest {
                 .andReturn(mockControllerNode).anyTimes();
         replay(mockClusterService);
 
-        flowStoreImpl.clusterCommunicator = new ClusterCommunicationServiceAdapter();
-        flowStoreImpl.mastershipService = new MasterOfAll();
         flowStoreImpl.deviceService = new DeviceServiceAdapter();
         flowStoreImpl.coreService = new CoreServiceAdapter();
         flowStoreImpl.configService = new ComponentConfigAdapter();
-        flowStoreImpl.persistenceService = new PersistenceServiceAdapter();
         flowStoreImpl.activate(context);
     }
 

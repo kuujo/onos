@@ -146,6 +146,12 @@ public class CachingAsyncConsistentMap<K, V> extends DelegatingAsyncConsistentMa
     }
 
     @Override
+    public CompletableFuture<Versioned<V>> putIfAbsent(K key, V value) {
+        return super.putIfAbsent(key, value)
+                .whenComplete((r, e) -> cache.invalidate(key));
+    }
+
+    @Override
     public CompletableFuture<Versioned<V>> putAndGet(K key, V value) {
         return super.putAndGet(key, value)
                 .whenComplete((r, e) -> cache.invalidate(key));

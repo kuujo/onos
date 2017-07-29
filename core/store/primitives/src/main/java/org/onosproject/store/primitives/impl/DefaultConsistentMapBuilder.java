@@ -40,10 +40,12 @@ public class DefaultConsistentMapBuilder<K, V> extends ConsistentMapBuilder<K, V
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public AsyncConsistentMap<K, V> buildAsyncMap() {
-        AsyncConsistentMap<K, V> map = primitiveCreator.newAsyncConsistentMap(name(), serializer());
+        AsyncConsistentMap<K, Object> map = primitiveCreator.newAsyncConsistentMap(name(), serializer());
+        map = nullValues() ? DistributedPrimitives.newNullableMap(map) : map;
         map = relaxedReadConsistency() ? DistributedPrimitives.newCachingMap(map) : map;
         map = readOnly() ? DistributedPrimitives.newUnmodifiableMap(map) : map;
-        return meteringEnabled() ? DistributedPrimitives.newMeteredMap(map) : map;
+        return (AsyncConsistentMap<K, V>) (meteringEnabled() ? DistributedPrimitives.newMeteredMap(map) : map);
     }
 }
