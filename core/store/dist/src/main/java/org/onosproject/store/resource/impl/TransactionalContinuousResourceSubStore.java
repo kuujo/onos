@@ -15,8 +15,17 @@
  */
 package org.onosproject.store.resource.impl;
 
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import org.onlab.util.GuavaCollectors;
 import org.onosproject.net.resource.ContinuousResource;
 import org.onosproject.net.resource.ContinuousResourceId;
 import org.onosproject.net.resource.DiscreteResourceId;
@@ -27,11 +36,6 @@ import org.onosproject.store.service.TransactionalMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.LinkedHashSet;
-import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
-
 import static com.google.common.base.Preconditions.checkArgument;
 import static org.onosproject.store.resource.impl.ConsistentResourceStore.SERIALIZER;
 
@@ -39,14 +43,14 @@ import static org.onosproject.store.resource.impl.ConsistentResourceStore.SERIAL
  * Transactional substore for continuous resources.
  */
 class TransactionalContinuousResourceSubStore
-        implements TransactionalResourceSubStore<ContinuousResourceId, ContinuousResource> {
+        implements ContinuousResourceSubStore, TransactionalResourceSubStore<ContinuousResourceId, ContinuousResource> {
     private final Logger log = LoggerFactory.getLogger(getClass());
     private final TransactionalMap<DiscreteResourceId, Set<ContinuousResource>> childMap;
     private final TransactionalMap<ContinuousResourceId, ContinuousResourceAllocation> consumers;
 
-    TransactionalContinuousResourceSubStore(TransactionContext tx) {
-        this.childMap = tx.getTransactionalMap(MapNames.CONTINUOUS_CHILD_MAP, SERIALIZER);
-        this.consumers = tx.getTransactionalMap(MapNames.CONTINUOUS_CONSUMER_MAP, SERIALIZER);
+    TransactionalContinuousResourceSubStore(TransactionContext transactionContext) {
+        this.childMap = transactionContext.getTransactionalMap(MapNames.CONTINUOUS_CHILD_MAP, SERIALIZER);
+        this.consumers = transactionContext.getTransactionalMap(MapNames.CONTINUOUS_CONSUMER_MAP, SERIALIZER);
     }
 
     // iterate over the values in the set: O(n) operation
@@ -174,5 +178,86 @@ class TransactionalContinuousResourceSubStore
         ContinuousResourceAllocation newAllocation = oldAllocation.release(resource, consumerId);
 
         return consumers.replace(resource.id(), oldAllocation, newAllocation);
+    }
+
+    @Override
+    public List<ResourceAllocation> getResourceAllocations(ContinuousResourceId resourceId) {
+        ContinuousResourceAllocation allocations = consumers.get(resourceId);
+        if (allocations == null) {
+            return ImmutableList.of();
+        }
+
+        return allocations.allocations().stream()
+                .filter(x -> x.resource().id().equals(resourceId))
+                .collect(GuavaCollectors.toImmutableList());
+    }
+
+    @Override
+    public Set<ContinuousResource> getChildResources(DiscreteResourceId resourceId) {
+        Set<ContinuousResource> children = childMap.get(resourceId);
+
+        if (children == null) {
+            return ImmutableSet.of();
+        }
+
+        return children;
+    }
+
+    @Override
+    public Set<ContinuousResource> getChildResources(DiscreteResourceId resourceId, Class<?> type) {
+        return getChildResources(resourceId).stream()
+                .filter(x -> x.isTypeOf(type))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    @Override
+    public boolean isAvailable(ContinuousResource resource) {
+        Set<ContinuousResource> children = childMap.get(resource.parent().get().id());
+        if (children == null) {
+            return false;
+        }
+
+        boolean notEnoughRegistered = children.stream()
+                .filter(c -> c.id().equals(resource.id()))
+                .findFirst()
+                .map(registered -> registered.value() < resource.value())
+                .orElse(true);
+        if (notEnoughRegistered) {
+            // Capacity < requested, can never satisfy
+            return false;
+        }
+
+        // check if there's enough left
+        ContinuousResourceAllocation allocation = consumers.get(resource.id());
+        if (allocation == null) {
+            // no allocation (=no consumer) full registered resources available
+            return true;
+        }
+
+        return allocation.hasEnoughResource(resource);
+    }
+
+    @Override
+    public Stream<ContinuousResource> getAllocatedResources(DiscreteResourceId parent, Class<?> type) {
+        Set<ContinuousResource> children = getChildResources(parent);
+        if (children.isEmpty()) {
+            return Stream.of();
+        }
+
+        return children.stream()
+                .filter(x -> x.id().equals(parent.child(type)))
+                // we don't use cascading simple predicates like follows to reduce accesses to consistent map
+                // .filter(x -> continuousConsumers.containsKey(x.id()))
+                // .filter(x -> continuousConsumers.get(x.id()) != null)
+                // .filter(x -> !continuousConsumers.get(x.id()).value().allocations().isEmpty());
+                .filter(resource -> {
+                    ContinuousResourceAllocation allocation = consumers.get(resource.id());
+                    return allocation != null && !allocation.allocations().isEmpty();
+                });
+    }
+
+    @Override
+    public Stream<ContinuousResource> getResources(ResourceConsumerId consumerId) {
+        throw new UnsupportedOperationException();
     }
 }

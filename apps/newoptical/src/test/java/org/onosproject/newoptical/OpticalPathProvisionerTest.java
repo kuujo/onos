@@ -76,6 +76,7 @@ import org.onosproject.net.resource.ResourceConsumer;
 import org.onosproject.net.resource.ResourceId;
 import org.onosproject.net.resource.ResourceListener;
 import org.onosproject.net.resource.ResourceService;
+import org.onosproject.net.resource.ResourceTransaction;
 import org.onosproject.net.topology.LinkWeigher;
 import org.onosproject.net.topology.Topology;
 import org.onosproject.net.topology.TopologyServiceAdapter;
@@ -805,6 +806,10 @@ public class OpticalPathProvisionerTest {
     }
 
     private static class TestResourceService implements ResourceService {
+        @Override
+        public ResourceTransaction newTransaction() {
+            return null;
+        }
 
         @Override
         public List<ResourceAllocation> allocate(ResourceConsumer consumer, List<? extends Resource> resources) {
@@ -822,7 +827,6 @@ public class OpticalPathProvisionerTest {
 
         @Override
         public boolean release(ResourceConsumer consumer) {
-
             return true;
         }
 

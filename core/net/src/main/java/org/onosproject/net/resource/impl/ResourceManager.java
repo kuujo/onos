@@ -15,8 +15,15 @@
  */
 package org.onosproject.net.resource.impl;
 
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import com.google.common.annotations.Beta;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Streams;
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Deactivate;
@@ -26,27 +33,25 @@ import org.apache.felix.scr.annotations.Service;
 import org.onlab.util.Tools;
 import org.onosproject.event.AbstractListenerManager;
 import org.onosproject.net.resource.DiscreteResourceId;
+import org.onosproject.net.resource.Resource;
 import org.onosproject.net.resource.ResourceAdminService;
 import org.onosproject.net.resource.ResourceAllocation;
+import org.onosproject.net.resource.ResourceCommitStatus;
 import org.onosproject.net.resource.ResourceConsumer;
 import org.onosproject.net.resource.ResourceEvent;
 import org.onosproject.net.resource.ResourceId;
 import org.onosproject.net.resource.ResourceListener;
 import org.onosproject.net.resource.ResourceService;
-import org.onosproject.net.resource.Resource;
 import org.onosproject.net.resource.ResourceStore;
 import org.onosproject.net.resource.ResourceStoreDelegate;
+import org.onosproject.net.resource.ResourceTransaction;
+import org.onosproject.net.resource.ResourceTransactionContext;
 import org.slf4j.Logger;
-
-import java.util.Collection;
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.onosproject.security.AppGuard.checkPermission;
-import static org.onosproject.security.AppPermission.Type.RESOURCE_WRITE;
 import static org.onosproject.security.AppPermission.Type.RESOURCE_READ;
+import static org.onosproject.security.AppPermission.Type.RESOURCE_WRITE;
 import static org.slf4j.LoggerFactory.getLogger;
 
 /**
@@ -82,20 +87,118 @@ public final class ResourceManager extends AbstractListenerManager<ResourceEvent
     }
 
     @Override
+    public ResourceTransaction newTransaction() {
+        return new ResourceManagerTransaction(store.newTransaction());
+    }
+
+    @Override
     public List<ResourceAllocation> allocate(ResourceConsumer consumer,
                                              List<? extends Resource> resources) {
         checkPermission(RESOURCE_WRITE);
         checkNotNull(consumer);
         checkNotNull(resources);
 
-        boolean success = store.allocate(resources, consumer);
-        if (!success) {
-            return ImmutableList.of();
+        for (;;) {
+            try (ResourceTransactionContext tx = store.newTransaction()) {
+                tx.allocate(resources, consumer);
+                ResourceCommitStatus status = tx.commit();
+                if (status == ResourceCommitStatus.SUCCEEDED) {
+                    return resources.stream()
+                            .map(x -> new ResourceAllocation(x, consumer))
+                            .collect(Collectors.toList());
+                } else if (status != ResourceCommitStatus.FAILED_CONCURRENT_TRANSACTION) {
+                    return ImmutableList.of();
+                }
+            }
         }
+    }
 
-        return resources.stream()
-                .map(x -> new ResourceAllocation(x, consumer))
-                .collect(Collectors.toList());
+    @Override
+    public List<ResourceAllocation> update(ResourceConsumer consumer,
+            List<? extends Resource> resources) {
+        for (;;) {
+            try (ResourceTransaction transaction = newTransaction()) {
+                // Get the list of current resource allocations
+                Collection<ResourceAllocation> resourceAllocations =
+                        transaction.getResourceAllocations(consumer);
+
+                // Get the list of resources already allocated from resource allocations
+                List<Resource> resourcesAllocated =
+                        resourceAllocations.stream()
+                                .map(ResourceAllocation::resource)
+                                .collect(Collectors.toList());
+
+                // Get the list of resource ids for resources already allocated
+                List<ResourceId> idsResourcesAllocated =
+                        resourcesAllocated.stream()
+                                .map(Resource::id)
+                                .collect(Collectors.toList());
+
+                // Get the list of resource ids for resources being updated
+                List<ResourceId> idsResources =
+                        resources.stream()
+                                .map(Resource::id)
+                                .collect(Collectors.toList());
+
+                // Create the list of resources to be added, meaning their key is not
+                // present in the resources already allocated
+                List<Resource> resourcesToAdd =
+                        resources.stream()
+                                .filter(r -> !idsResourcesAllocated.contains(r.id()))
+                                .collect(Collectors.toList());
+
+                // Create the list of resources to be removed, meaning their key
+                // is not present in the resource updates
+                List<ResourceAllocation> allocationsToRelease =
+                        resourceAllocations.stream()
+                                .filter(r -> !idsResources.contains(r.resource().id()))
+                                .collect(Collectors.toList());
+
+                // Resources to updated are all the new valid resources except the
+                // resources to be added
+                List<Resource> resourcesToUpdate = Lists.newArrayList(resources);
+                resourcesToUpdate.removeAll(resourcesToAdd);
+
+                // If there are no resources to update skip update procedures
+                if (!resourcesToUpdate.isEmpty()) {
+                    // Remove old resources that need to be updated
+                    List<ResourceAllocation> resourceAllocationsToUpdate =
+                            resourceAllocations.stream()
+                                    .filter(rA -> resourcesToUpdate.stream()
+                                            .map(Resource::id)
+                                            .collect(Collectors.toList())
+                                            .contains(rA.resource().id()))
+                                    .collect(Collectors.toList());
+                    transaction.release(resourceAllocationsToUpdate);
+
+                    // Update resourcesToAdd with the list of both the new resources and
+                    // the resources to update
+                    resourcesToAdd.addAll(resourcesToUpdate);
+                }
+
+                // Allocate resources
+                if (!resourcesToAdd.isEmpty()) {
+                    transaction.allocate(consumer, resourcesToAdd);
+                }
+
+                // Release resources
+                if (!allocationsToRelease.isEmpty()) {
+                    transaction.release(allocationsToRelease);
+                }
+
+                // Commit the transaction
+                ResourceCommitStatus status = transaction.commit();
+                if (status == ResourceCommitStatus.SUCCEEDED) {
+                    return Streams.concat(resourcesToAdd.stream()
+                                    .map(x -> new ResourceAllocation(x, consumer)),
+                            resourcesToUpdate.stream()
+                                    .map(x -> new ResourceAllocation(x, consumer)))
+                            .collect(Collectors.toList());
+                } else if (status != ResourceCommitStatus.FAILED_CONCURRENT_TRANSACTION) {
+                    return ImmutableList.of();
+                }
+            }
+        }
     }
 
     @Override
@@ -103,7 +206,17 @@ public final class ResourceManager extends AbstractListenerManager<ResourceEvent
         checkPermission(RESOURCE_WRITE);
         checkNotNull(allocations);
 
-        return store.release(allocations);
+        for (;;) {
+            try (ResourceTransactionContext tx = store.newTransaction()) {
+                tx.release(allocations);
+                ResourceCommitStatus status = tx.commit();
+                if (status == ResourceCommitStatus.SUCCEEDED) {
+                    return true;
+                } else if (status != ResourceCommitStatus.FAILED_CONCURRENT_TRANSACTION) {
+                    return false;
+                }
+            }
+        }
     }
 
     @Override
@@ -204,14 +317,34 @@ public final class ResourceManager extends AbstractListenerManager<ResourceEvent
     public boolean register(List<? extends Resource> resources) {
         checkNotNull(resources);
 
-        return store.register(resources);
+        for (;;) {
+            try (ResourceTransactionContext tx = store.newTransaction()) {
+                tx.register(resources);
+                ResourceCommitStatus status = tx.commit();
+                if (status == ResourceCommitStatus.SUCCEEDED) {
+                    return true;
+                } else if (status != ResourceCommitStatus.FAILED_CONCURRENT_TRANSACTION) {
+                    return false;
+                }
+            }
+        }
     }
 
     @Override
     public boolean unregister(List<? extends ResourceId> ids) {
         checkNotNull(ids);
 
-        return store.unregister(ids);
+        for (;;) {
+            try (ResourceTransactionContext tx = store.newTransaction()) {
+                tx.unregister(ids);
+                ResourceCommitStatus status = tx.commit();
+                if (status == ResourceCommitStatus.SUCCEEDED) {
+                    return true;
+                } else if (status != ResourceCommitStatus.FAILED_CONCURRENT_TRANSACTION) {
+                    return false;
+                }
+            }
+        }
     }
 
     private class InternalStoreDelegate implements ResourceStoreDelegate {

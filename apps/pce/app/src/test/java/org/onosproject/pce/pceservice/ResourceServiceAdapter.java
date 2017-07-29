@@ -22,6 +22,7 @@ import org.onosproject.net.resource.ResourceId;
 import org.onosproject.net.resource.ResourceListener;
 import org.onosproject.net.resource.Resource;
 import org.onosproject.net.resource.ResourceService;
+import org.onosproject.net.resource.ResourceTransaction;
 
 import java.util.Collection;
 import java.util.List;
@@ -31,6 +32,12 @@ import java.util.Set;
  * Adapter for resource service for path computation.
  */
 public class ResourceServiceAdapter implements ResourceService {
+
+    @Override
+    public ResourceTransaction newTransaction() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 
     @Override
     public void addListener(ResourceListener listener) {

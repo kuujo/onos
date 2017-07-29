@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-present Open Networking Laboratory
+ * Copyright 2017-present Open Networking Laboratory
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,22 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.onosproject.net.resource;
+package org.onosproject.store.resource.impl;
 
-import com.google.common.annotations.Beta;
-import org.onosproject.store.Store;
+import org.onosproject.net.resource.ContinuousResource;
+import org.onosproject.net.resource.ContinuousResourceId;
 
 /**
- * Service for storing resource and consumer information.
+ * Continuous resource substore.
  */
-@Beta
-public interface ResourceStore extends Store<ResourceEvent, ResourceStoreDelegate>, ResourceStoreBase {
-
-    /**
-     * Creates a new resource transaction context.
-     *
-     * @return a new resource transaction context
-     */
-    ResourceTransactionContext newTransaction();
-
+public interface ContinuousResourceSubStore
+        extends ConsistentResourceSubStore<ContinuousResourceId, ContinuousResource> {
 }

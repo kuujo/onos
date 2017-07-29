@@ -15,15 +15,6 @@
  */
 package org.onosproject.net.resource;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
-
-import org.onlab.packet.MplsLabel;
-import org.onlab.packet.VlanId;
-import org.onlab.util.Bandwidth;
-import org.onlab.util.Tools;
-import org.onosproject.net.TributarySlot;
-
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,6 +24,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import org.onlab.packet.MplsLabel;
+import org.onlab.packet.VlanId;
+import org.onlab.util.Bandwidth;
+import org.onlab.util.Tools;
+import org.onosproject.net.TributarySlot;
 
 public class MockResourceService implements ResourceService {
 
@@ -53,6 +52,12 @@ public class MockResourceService implements ResourceService {
     }
 
     @Override
+    public ResourceTransaction newTransaction() {
+        // TODO: Test resource transactions
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public List<ResourceAllocation> allocate(ResourceConsumer consumer, List<? extends Resource> resources) {
         assignment.putAll(
                 resources.stream().collect(Collectors.toMap(Function.identity(), x -> consumer))
@@ -61,6 +66,12 @@ public class MockResourceService implements ResourceService {
         return resources.stream()
                 .map(x -> new ResourceAllocation(x, consumer))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<ResourceAllocation> update(ResourceConsumer consumer, List<? extends Resource> resources) {
+        // TODO: Test update method
+        throw new UnsupportedOperationException();
     }
 
     @Override

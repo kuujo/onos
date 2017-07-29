@@ -15,13 +15,19 @@
  */
 package org.onosproject.store.resource.impl;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import org.onosproject.net.resource.DiscreteResource;
 import org.onosproject.net.resource.DiscreteResourceId;
 import org.onosproject.net.resource.Resource;
+import org.onosproject.net.resource.ResourceAllocation;
 import org.onosproject.net.resource.ResourceConsumerId;
+import org.onosproject.net.resource.Resources;
 import org.onosproject.store.service.TransactionContext;
 import org.onosproject.store.service.TransactionalMap;
 import org.slf4j.Logger;
@@ -32,15 +38,15 @@ import static org.onosproject.store.resource.impl.ConsistentResourceStore.SERIAL
 /**
  * Transactional substore for discrete resources.
  */
-class TransactionalDiscreteResourceSubStore
-        implements TransactionalResourceSubStore<DiscreteResourceId, DiscreteResource> {
+class TransactionalDiscreteResourceSubStore implements
+        DiscreteResourceSubStore, TransactionalResourceSubStore<DiscreteResourceId, DiscreteResource> {
     private final Logger log = LoggerFactory.getLogger(getClass());
     private final TransactionalMap<DiscreteResourceId, DiscreteResources> childMap;
     private final TransactionalMap<DiscreteResourceId, ResourceConsumerId> consumers;
 
-    TransactionalDiscreteResourceSubStore(TransactionContext tx) {
-        this.childMap = tx.getTransactionalMap(MapNames.DISCRETE_CHILD_MAP, SERIALIZER);
-        this.consumers = tx.getTransactionalMap(MapNames.DISCRETE_CONSUMER_MAP, SERIALIZER);
+    TransactionalDiscreteResourceSubStore(TransactionContext transactionContext) {
+        this.childMap = transactionContext.getTransactionalMap(MapNames.DISCRETE_CHILD_MAP, SERIALIZER);
+        this.consumers = transactionContext.getTransactionalMap(MapNames.DISCRETE_CONSUMER_MAP, SERIALIZER);
     }
 
     // check the existence in the set: O(1) operation
@@ -136,5 +142,59 @@ class TransactionalDiscreteResourceSubStore
         // if this single release fails (because the resource is allocated to another consumer)
         // the whole release fails
         return consumers.remove(resource.id(), consumerId);
+    }
+
+    @Override
+    public List<ResourceAllocation> getResourceAllocations(DiscreteResourceId resourceId) {
+        ResourceConsumerId consumerId = consumers.get(resourceId);
+        if (consumerId == null) {
+            return ImmutableList.of();
+        }
+
+        return ImmutableList.of(new ResourceAllocation(Resources.discrete(resourceId).resource(), consumerId));
+    }
+
+    @Override
+    public Set<DiscreteResource> getChildResources(DiscreteResourceId resourceId) {
+        DiscreteResources children = childMap.get(resourceId);
+
+        if (children == null) {
+            return ImmutableSet.of();
+        }
+
+        return children.values();
+    }
+
+    @Override
+    public Set<DiscreteResource> getChildResources(DiscreteResourceId resourceId, Class<?> type) {
+        DiscreteResources children = childMap.get(resourceId);
+
+        if (children == null) {
+            return ImmutableSet.of();
+        }
+
+        return children.valuesOf(type);
+    }
+
+    @Override
+    public boolean isAvailable(DiscreteResource resource) {
+        return getResourceAllocations(resource.id()).isEmpty();
+    }
+
+    @Override
+    public Stream<DiscreteResource> getAllocatedResources(DiscreteResourceId parent, Class<?> type) {
+        Set<DiscreteResource> children = getChildResources(parent);
+        if (children.isEmpty()) {
+            return Stream.of();
+        }
+
+        return children.stream()
+                .filter(x -> x.isTypeOf(type))
+                .filter(x -> consumers.containsKey(x.id()));
+    }
+
+    @Override
+    public Stream<DiscreteResource> getResources(ResourceConsumerId consumerId) {
+        throw new UnsupportedOperationException();
     }
 }

@@ -15,13 +15,13 @@
  */
 package org.onosproject.net.resource;
 
-import com.google.common.annotations.Beta;
-import com.google.common.collect.ImmutableList;
-import org.onosproject.event.ListenerService;
-
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+
+import com.google.common.annotations.Beta;
+import com.google.common.collect.ImmutableList;
+import org.onosproject.event.ListenerService;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
@@ -30,6 +30,14 @@ import static com.google.common.base.Preconditions.checkNotNull;
  */
 @Beta
 public interface ResourceService extends ResourceQueryService, ListenerService<ResourceEvent, ResourceListener> {
+
+    /**
+     * Creates a new resource transaction.
+     *
+     * @return a new resource transaction
+     */
+    ResourceTransaction newTransaction();
+
     /**
      * Allocates the specified resource to the specified user.
      *
@@ -75,11 +83,42 @@ public interface ResourceService extends ResourceQueryService, ListenerService<R
      * @return non-empty list of allocation information if succeeded, otherwise empty list
      */
     default List<ResourceAllocation> allocate(ResourceConsumer consumer, Resource... resources) {
-        checkNotNull(consumer);
-        checkNotNull(resources);
-
-        return allocate(consumer, Arrays.asList(resources));
+        return allocate(checkNotNull(consumer), Arrays.asList(checkNotNull(resources)));
     }
+
+    /**
+     * Transactionally allocates or updates the specified resources.
+     * All allocations are made when this method succeeds, or no allocation is made when this method fails.
+     *
+     * @param consumer  resource user which the resources are allocated to
+     * @param resource resource to be allocated
+     * @return non-empty list of allocation information if succeeded, otherwise empty list
+     */
+    default List<ResourceAllocation> update(ResourceConsumer consumer, Resource resource) {
+        return update(consumer, ImmutableList.of(resource));
+    }
+
+    /**
+     * Transactionally allocates or updates the specified resources.
+     * All allocations are made when this method succeeds, or no allocation is made when this method fails.
+     *
+     * @param consumer  resource user which the resources are allocated to
+     * @param resources resources to be allocated
+     * @return non-empty list of allocation information if succeeded, otherwise empty list
+     */
+    default List<ResourceAllocation> update(ResourceConsumer consumer, Resource... resources) {
+        return update(checkNotNull(consumer), Arrays.asList(checkNotNull(resources)));
+    }
+
+    /**
+     * Transactionally allocates or updates the specified resources.
+     * All allocations are made when this method succeeds, or no allocation is made when this method fails.
+     *
+     * @param consumer  resource user which the resources are allocated to
+     * @param resources resources to be allocated
+     * @return non-empty list of allocation information if succeeded, otherwise empty list
+     */
+    List<ResourceAllocation> update(ResourceConsumer consumer, List<? extends Resource> resources);
 
     /**
      * Releases the specified resource allocation.
@@ -88,9 +127,7 @@ public interface ResourceService extends ResourceQueryService, ListenerService<R
      * @return true if succeeded, otherwise false
      */
     default boolean release(ResourceAllocation allocation) {
-        checkNotNull(allocation);
-
-        return release(ImmutableList.of(allocation));
+        return release(ImmutableList.of(checkNotNull(allocation)));
     }
 
     /**
@@ -110,9 +147,7 @@ public interface ResourceService extends ResourceQueryService, ListenerService<R
      * @return true if succeeded, otherwise false
      */
     default boolean release(ResourceAllocation... allocations) {
-        checkNotNull(allocations);
-
-        return release(ImmutableList.copyOf(allocations));
+        return release(ImmutableList.copyOf(checkNotNull(allocations)));
     }
 
     /**
@@ -124,5 +159,4 @@ public interface ResourceService extends ResourceQueryService, ListenerService<R
      */
     boolean release(ResourceConsumer consumer);
 
-    // TODO: listener and event mechanism need to be considered
 }

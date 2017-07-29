@@ -15,30 +15,20 @@
  */
 package org.onosproject.store.resource.impl;
 
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Stream;
+
 import org.onosproject.net.resource.DiscreteResourceId;
 import org.onosproject.net.resource.Resource;
 import org.onosproject.net.resource.ResourceAllocation;
 import org.onosproject.net.resource.ResourceConsumerId;
 import org.onosproject.net.resource.ResourceId;
-import org.onosproject.store.service.TransactionContext;
-
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Stream;
 
 /**
  * Interface for consistent resource substores.
  */
-interface ConsistentResourceSubStore
-        <T extends ResourceId, U extends Resource, V extends TransactionalResourceSubStore> {
-
-    /**
-     * Returns a new transactional substore.
-     *
-     * @param tx the transaction context
-     * @return a transactional resource substore
-     */
-    V transactional(TransactionContext tx);
+interface ConsistentResourceSubStore<T extends ResourceId, U extends Resource> {
 
     /**
      * Returns a list of resource allocations for the given resource ID.
