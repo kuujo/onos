@@ -41,7 +41,6 @@ import org.onlab.util.BoundedThreadPool;
 import org.onlab.util.KryoNamespace;
 import org.onosproject.cfg.ComponentConfigService;
 import org.onosproject.cluster.ClusterService;
-import org.onosproject.cluster.NodeId;
 import org.onosproject.core.CoreService;
 import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
 import org.onosproject.store.cluster.messaging.MessageSubject;
@@ -299,8 +298,7 @@ public class MessagingPerfApp {
                             data,
                             TEST_REQUEST_REPLY_TOPIC,
                             encoder,
-                            decoder,
-                            randomPeer());
+                            decoder);
             response.whenComplete((result, error) -> {
                 if (Objects.equals(data, result)) {
                     completed.incrementAndGet();
@@ -318,8 +316,7 @@ public class MessagingPerfApp {
             communicationService.<Data>unicast(
                     data,
                     TEST_UNICAST_MESSAGE_TOPIC,
-                    encoder,
-                    randomPeer());
+                    encoder);
         } catch (Exception e) {
             log.info("unicast()", e);
         }
@@ -337,15 +334,6 @@ public class MessagingPerfApp {
             log.info("broadcast()", e);
         }
         messageSendingExecutor.submit(this::broadcast);
-    }
-
-    private NodeId randomPeer() {
-        return clusterService.getNodes()
-                    .stream()
-                    .filter(node -> clusterService.getLocalNode().equals(node))
-                    .findAny()
-                    .get()
-                    .id();
     }
 
     private void reportPerformance() {

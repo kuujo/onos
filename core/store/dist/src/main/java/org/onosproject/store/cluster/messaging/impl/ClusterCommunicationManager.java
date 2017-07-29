@@ -15,41 +15,60 @@
  */
 package org.onosproject.store.cluster.messaging.impl;
 
-import com.google.common.base.Throwables;
-import org.apache.felix.scr.annotations.Activate;
-import org.apache.felix.scr.annotations.Component;
-import org.apache.felix.scr.annotations.Deactivate;
-import org.apache.felix.scr.annotations.Reference;
-import org.apache.felix.scr.annotations.ReferenceCardinality;
-import org.apache.felix.scr.annotations.Service;
-import org.onlab.util.Tools;
-import org.onosproject.cluster.ClusterService;
-import org.onosproject.cluster.ControllerNode;
-import org.onosproject.cluster.NodeId;
-import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
-import org.onosproject.store.cluster.messaging.ClusterMessage;
-import org.onosproject.store.cluster.messaging.ClusterMessageHandler;
-import org.onosproject.store.cluster.messaging.Endpoint;
-import org.onosproject.store.cluster.messaging.MessageSubject;
-import org.onosproject.store.cluster.messaging.MessagingService;
-import org.onosproject.utils.MeteringAgent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.google.common.base.Objects;
-
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.google.common.base.Objects;
+import com.google.common.base.Throwables;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Maps;
+import org.apache.felix.scr.annotations.Activate;
+import org.apache.felix.scr.annotations.Component;
+import org.apache.felix.scr.annotations.Deactivate;
+import org.apache.felix.scr.annotations.Reference;
+import org.apache.felix.scr.annotations.ReferenceCardinality;
+import org.apache.felix.scr.annotations.Service;
+import org.onlab.util.KryoNamespace;
+import org.onlab.util.Tools;
+import org.onosproject.cluster.ClusterService;
+import org.onosproject.cluster.ControllerNode;
+import org.onosproject.cluster.NodeId;
+import org.onosproject.store.LogicalTimestamp;
+import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
+import org.onosproject.store.cluster.messaging.ClusterMessage;
+import org.onosproject.store.cluster.messaging.ClusterMessageHandler;
+import org.onosproject.store.cluster.messaging.Endpoint;
+import org.onosproject.store.cluster.messaging.MessageSubject;
+import org.onosproject.store.cluster.messaging.MessagingException;
+import org.onosproject.store.cluster.messaging.MessagingService;
+import org.onosproject.store.serializers.KryoNamespaces;
+import org.onosproject.store.service.Serializer;
+import org.onosproject.store.service.WallClockTimestamp;
+import org.onosproject.utils.MeteringAgent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.Tools.groupedThreads;
 import static org.onosproject.security.AppGuard.checkPermission;
 import static org.onosproject.security.AppPermission.Type.CLUSTER_WRITE;
 
@@ -73,22 +92,58 @@ public class ClusterCommunicationManager
     private static final String ROUND_TRIP_SUFFIX = ".rtt";
     private static final String ONE_WAY_SUFFIX = ".oneway";
 
+    private static final String UPDATE_MESSAGE_NAME = "ClusterCommunicationManager-update";
+    private static final long GOSSIP_INTERVAL_MILLIS = 1000;
+    private static final long TOMBSTONE_EXPIRATION_MILLIS = 1000 * 60;
+
+    private static final Serializer SERIALIZER = Serializer.using(KryoNamespace.newBuilder()
+            .register(KryoNamespaces.API)
+            .register(Subscription.class)
+            .register(MessageSubject.class)
+            .register(LogicalTimestamp.class)
+            .register(WallClockTimestamp.class)
+            .build());
+
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     private ClusterService clusterService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected MessagingService messagingService;
 
+    private final AtomicLong logicalTime = new AtomicLong();
+    private ScheduledExecutorService gossipExecutor;
     private NodeId localNodeId;
+    private final Map<NodeId, Long> updateTimes = Maps.newConcurrentMap();
+    private final Map<MessageSubject, Map<NodeId, Subscription>> subjectSubscriptions = Maps.newConcurrentMap();
+    private final Map<MessageSubject, SubscriberIterator> subjectIterators = Maps.newConcurrentMap();
+    private final BiFunction<Endpoint, byte[], byte[]> gossipConsumer = (ep, payload) -> {
+        update(SERIALIZER.decode(payload));
+        return SERIALIZER.encode(null);
+    };
 
     @Activate
     public void activate() {
         localNodeId = clusterService.getLocalNode().id();
+        gossipExecutor = Executors.newSingleThreadScheduledExecutor(
+                groupedThreads("onos/cluster", "onos-cluster-executor-%d"));
+        gossipExecutor.scheduleAtFixedRate(
+                this::gossip,
+                GOSSIP_INTERVAL_MILLIS,
+                GOSSIP_INTERVAL_MILLIS,
+                TimeUnit.MILLISECONDS);
+        gossipExecutor.scheduleAtFixedRate(
+                this::purgeTombstones,
+                TOMBSTONE_EXPIRATION_MILLIS,
+                TOMBSTONE_EXPIRATION_MILLIS,
+                TimeUnit.MILLISECONDS);
+        messagingService.registerHandler(UPDATE_MESSAGE_NAME, gossipConsumer, gossipExecutor);
         log.info("Started");
     }
 
     @Deactivate
     public void deactivate() {
+        messagingService.unregisterHandler(UPDATE_MESSAGE_NAME);
+        gossipExecutor.shutdown();
         log.info("Stopped");
     }
 
@@ -97,14 +152,15 @@ public class ClusterCommunicationManager
                               MessageSubject subject,
                               Function<M, byte[]> encoder) {
         checkPermission(CLUSTER_WRITE);
-        multicast(message,
-                  subject,
-                  encoder,
-                  clusterService.getNodes()
-                      .stream()
-                      .filter(node -> !Objects.equal(node, clusterService.getLocalNode()))
-                      .map(ControllerNode::id)
-                      .collect(Collectors.toSet()));
+        Collection<? extends NodeId> subscribers = getSubscriberNodes(subject);
+        if (subscribers != null) {
+            multicast(message,
+                    subject,
+                    encoder,
+                    subscribers.stream()
+                            .filter(node -> !Objects.equal(node, localNodeId))
+                            .collect(Collectors.toSet()));
+        }
     }
 
     @Override
@@ -112,13 +168,24 @@ public class ClusterCommunicationManager
                                          MessageSubject subject,
                                          Function<M, byte[]> encoder) {
         checkPermission(CLUSTER_WRITE);
-        multicast(message,
-                  subject,
-                  encoder,
-                  clusterService.getNodes()
-                      .stream()
-                      .map(ControllerNode::id)
-                      .collect(Collectors.toSet()));
+        Collection<? extends NodeId> subscribers = getSubscriberNodes(subject);
+        if (subscribers != null) {
+            multicast(message,
+                    subject,
+                    encoder,
+                    ImmutableSet.copyOf(subscribers));
+        }
+    }
+
+    @Override
+    public <M> CompletableFuture<Void> unicast(M message,
+                                               MessageSubject subject,
+                                               Function<M, byte[]> encoder) {
+        NodeId nodeId = getNextNodeId(subject);
+        if (nodeId != null) {
+            return unicast(message, subject, encoder, nodeId);
+        }
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
@@ -142,6 +209,22 @@ public class ClusterCommunicationManager
     @Override
     public <M> void multicast(M message,
                               MessageSubject subject,
+                              Function<M, byte[]> encoder) {
+        checkPermission(CLUSTER_WRITE);
+        byte[] payload = new ClusterMessage(
+                localNodeId,
+                subject,
+                timeFunction(encoder, subjectMeteringAgent, SERIALIZING).apply(message))
+                .getBytes();
+        Collection<? extends NodeId> subscribers = getSubscriberNodes(subject);
+        if (subscribers != null) {
+            subscribers.forEach(nodeId -> doUnicast(subject, payload, nodeId));
+        }
+    }
+
+    @Override
+    public <M> void multicast(M message,
+                              MessageSubject subject,
                               Function<M, byte[]> encoder,
                               Set<NodeId> nodes) {
         checkPermission(CLUSTER_WRITE);
@@ -151,6 +234,18 @@ public class ClusterCommunicationManager
                 timeFunction(encoder, subjectMeteringAgent, SERIALIZING).apply(message))
                 .getBytes();
         nodes.forEach(nodeId -> doUnicast(subject, payload, nodeId));
+    }
+
+    @Override
+    public <M, R> CompletableFuture<R> sendAndReceive(M message,
+                                                      MessageSubject subject,
+                                                      Function<M, byte[]> encoder,
+                                                      Function<byte[], R> decoder) {
+        NodeId nodeId = getNextNodeId(subject);
+        if (nodeId == null) {
+            return Tools.exceptionalFuture(new MessagingException.NoRemoteHandler());
+        }
+        return sendAndReceive(message, subject, encoder, decoder, nodeId);
     }
 
     @Override
@@ -196,6 +291,81 @@ public class ClusterCommunicationManager
                 });
     }
 
+    /**
+     * Returns the set of nodes with subscribers for the given message subject.
+     *
+     * @param subject the subject for which to return a set of nodes
+     * @return a set of nodes with subscribers for the given subject
+     */
+    private Collection<? extends NodeId> getSubscriberNodes(MessageSubject subject) {
+        Map<NodeId, Subscription> nodeSubscriptions = subjectSubscriptions.get(subject);
+        if (nodeSubscriptions == null) {
+            return null;
+        }
+        return nodeSubscriptions.values()
+                .stream()
+                .filter(s -> clusterService.getState(s.nodeId()).isActive() && !s.isTombstone())
+                .map(s -> s.nodeId())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Returns the next node ID for the given message subject.
+     *
+     * @param subject the subject for which to return the next node ID
+     * @return the next node ID for the given message subject
+     */
+    private NodeId getNextNodeId(MessageSubject subject) {
+        SubscriberIterator iterator = subjectIterators.get(subject);
+        return iterator != null && iterator.hasNext() ? iterator.next() : null;
+    }
+
+    /**
+     * Resets the iterator for the given message subject.
+     *
+     * @param subject the subject for which to reset the iterator
+     */
+    private synchronized void setSubscriberIterator(MessageSubject subject) {
+        Collection<? extends NodeId> subscriberNodes = getSubscriberNodes(subject);
+        if (subscriberNodes != null && !subscriberNodes.isEmpty()) {
+            subjectIterators.put(subject, new SubscriberIterator(subscriberNodes));
+        } else {
+            subjectIterators.remove(subject);
+        }
+    }
+
+    /**
+     * Registers the node as a subscriber for the given subject.
+     *
+     * @param subject the subject for which to register the node as a subscriber
+     */
+    private synchronized void registerSubscriber(MessageSubject subject) {
+        Map<NodeId, Subscription> nodeSubscriptions =
+                subjectSubscriptions.computeIfAbsent(subject, s -> Maps.newConcurrentMap());
+        Subscription subscription = new Subscription(
+                localNodeId,
+                subject,
+                new LogicalTimestamp(logicalTime.incrementAndGet()));
+        nodeSubscriptions.put(localNodeId, subscription);
+        updateNodes();
+    }
+
+    /**
+     * Unregisters the node as a subscriber for the given subject.
+     *
+     * @param subject the subject for which to unregister the node as a subscriber
+     */
+    private synchronized void unregisterSubscriber(MessageSubject subject) {
+        Map<NodeId, Subscription> nodeSubscriptions = subjectSubscriptions.get(subject);
+        if (nodeSubscriptions != null) {
+            Subscription subscription = nodeSubscriptions.get(localNodeId);
+            if (subscription != null) {
+                nodeSubscriptions.put(localNodeId, subscription.asTombstone());
+                updateNodes();
+            }
+        }
+    }
+
     @Override
     public void addSubscriber(MessageSubject subject,
                               ClusterMessageHandler subscriber,
@@ -204,12 +374,14 @@ public class ClusterCommunicationManager
         messagingService.registerHandler(subject.value(),
                 new InternalClusterMessageHandler(subscriber),
                 executor);
+        registerSubscriber(subject);
     }
 
     @Override
     public void removeSubscriber(MessageSubject subject) {
         checkPermission(CLUSTER_WRITE);
         messagingService.unregisterHandler(subject.value());
+        unregisterSubscriber(subject);
     }
 
     @Override
@@ -231,6 +403,7 @@ public class ClusterCommunicationManager
                     });
                     return responseFuture;
                 }));
+        registerSubscriber(subject);
     }
 
     @Override
@@ -241,6 +414,7 @@ public class ClusterCommunicationManager
         checkPermission(CLUSTER_WRITE);
         messagingService.registerHandler(subject.value(),
                 new InternalMessageResponder<>(decoder, encoder, handler));
+        registerSubscriber(subject);
     }
 
     @Override
@@ -252,6 +426,7 @@ public class ClusterCommunicationManager
         messagingService.registerHandler(subject.value(),
                 new InternalMessageConsumer<>(decoder, handler),
                 executor);
+        registerSubscriber(subject);
     }
 
     /**
@@ -287,6 +462,94 @@ public class ClusterCommunicationManager
         };
     }
 
+    /**
+     * Handles a collection of subscription updates received via the gossip protocol.
+     *
+     * @param subscriptions a collection of subscriptions provided by the sender
+     */
+    private void update(Collection<Subscription> subscriptions) {
+        for (Subscription subscription : subscriptions) {
+            Map<NodeId, Subscription> nodeSubscriptions = subjectSubscriptions.computeIfAbsent(
+                    subscription.subject(), s -> Maps.newConcurrentMap());
+            Subscription existingSubscription = nodeSubscriptions.get(subscription.nodeId());
+            if (existingSubscription == null
+                    || existingSubscription.logicalTimestamp().isOlderThan(subscription.logicalTimestamp())) {
+                nodeSubscriptions.put(subscription.nodeId(), subscription);
+                setSubscriberIterator(subscription.subject());
+            }
+        }
+    }
+
+    /**
+     * Sends a gossip message to an active peer.
+     */
+    private void gossip() {
+        List<ControllerNode> nodes = clusterService.getNodes()
+                .stream()
+                .filter(node -> !localNodeId.equals(node.id()))
+                .filter(node -> clusterService.getState(node.id()).isActive())
+                .collect(Collectors.toList());
+
+        if (!nodes.isEmpty()) {
+            Collections.shuffle(nodes);
+            ControllerNode node = nodes.get(0);
+            updateNode(node);
+        }
+    }
+
+    /**
+     * Updates all active peers with a given subscription.
+     */
+    private void updateNodes() {
+        clusterService.getNodes()
+                .stream()
+                .filter(node -> !localNodeId.equals(node.id()))
+                .forEach(this::updateNode);
+    }
+
+    /**
+     * Sends an update to the given node.
+     *
+     * @param node the node to which to send the update
+     */
+    private void updateNode(ControllerNode node) {
+        long updateTime = System.currentTimeMillis();
+        long lastUpdateTime = updateTimes.getOrDefault(node.id(), 0L);
+
+        Collection<Subscription> subscriptions = new ArrayList<>();
+        subjectSubscriptions.values().forEach(ns -> ns.values()
+                .stream()
+                .filter(subscription -> subscription.timestamp().unixTimestamp() > lastUpdateTime)
+                .forEach(subscriptions::add));
+
+        Endpoint ep = new Endpoint(node.ip(), node.tcpPort());
+        messagingService.sendAndReceive(ep, UPDATE_MESSAGE_NAME, SERIALIZER.encode(subscriptions))
+                .whenComplete((result, error) -> {
+                    if (error == null) {
+                        updateTimes.put(node.id(), updateTime);
+                    }
+                });
+    }
+
+    /**
+     * Purges tombstones from the subscription list.
+     */
+    private void purgeTombstones() {
+        long minTombstoneTime = clusterService.getNodes().stream()
+                .map(node -> updateTimes.getOrDefault(node.id(), 0L))
+                .reduce(Math::min)
+                .orElse(0L);
+        for (Map<NodeId, Subscription> nodeSubscriptions : subjectSubscriptions.values()) {
+            Iterator<Map.Entry<NodeId, Subscription>> nodeSubscriptionIterator =
+                    nodeSubscriptions.entrySet().iterator();
+            while (nodeSubscriptionIterator.hasNext()) {
+                Subscription subscription = nodeSubscriptionIterator.next().getValue();
+                if (subscription.isTombstone() && subscription.timestamp().unixTimestamp() < minTombstoneTime) {
+                    nodeSubscriptionIterator.remove();
+                }
+            }
+        }
+    }
 
     private class InternalClusterMessageHandler implements BiFunction<Endpoint, byte[], byte[]> {
         private ClusterMessageHandler handler;
@@ -337,6 +600,30 @@ public class ClusterCommunicationManager
         public void accept(Endpoint sender, byte[] bytes) {
             consumer.accept(timeFunction(decoder, subjectMeteringAgent, DESERIALIZING).
                     apply(ClusterMessage.fromBytes(bytes).payload()));
+        }
+    }
+
+    /**
+     * Subscriber iterator that iterates subscribers in a loop.
+     */
+    private class SubscriberIterator implements Iterator<NodeId> {
+        private final AtomicInteger counter = new AtomicInteger();
+        private final NodeId[] subscribers;
+        private final int length;
+
+        SubscriberIterator(Collection<? extends NodeId> subscribers) {
+            this.length = subscribers.size();
+            this.subscribers = subscribers.toArray(new NodeId[length]);
+        }
+
+        @Override
+        public boolean hasNext() {
+            return true;
+        }
+
+        @Override
+        public NodeId next() {
+            return subscribers[counter.incrementAndGet() % length];
         }
     }
 }
