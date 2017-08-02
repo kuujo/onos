@@ -13,23 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.onosproject.store.service;
+package org.onosproject.store.primitives2;
 
 /**
- * Generator for globally unique numeric identifiers.
+ * Consistent set.
  */
-public interface AtomicIdGenerator extends SynchronousPrimitive<AsyncAtomicIdGenerator> {
+public interface ConsistentSet<T> extends SynchronousPrimitive<AsyncConsistentSet<T>> {
 
-    @Override
-    default Type primitiveType() {
-        return Type.ID_GENERATOR;
-    }
+    boolean add(T value);
 
-    /**
-     * Gets the next globally unique numeric identifier.
-     *
-     * @return the next globally unique numeric identifier
-     */
-    long nextId();
+    boolean remove(T value);
+
+    boolean contains(T value);
+
+    int size();
+
+    void clear();
 
 }

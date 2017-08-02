@@ -13,23 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.onosproject.store.service;
+package org.onosproject.store.primitives2;
 
 /**
- * Generator for globally unique numeric identifiers.
+ * Transactional map.
  */
-public interface AtomicIdGenerator extends SynchronousPrimitive<AsyncAtomicIdGenerator> {
+public interface TransactionalMap<K, V> extends TransactionalPrimitive {
 
-    @Override
-    default Type primitiveType() {
-        return Type.ID_GENERATOR;
-    }
+    boolean containsKey(K key);
 
-    /**
-     * Gets the next globally unique numeric identifier.
-     *
-     * @return the next globally unique numeric identifier
-     */
-    long nextId();
+    V get(K key);
+
+    V put(K key, V value);
 
 }

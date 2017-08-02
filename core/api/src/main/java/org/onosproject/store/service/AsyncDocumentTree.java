@@ -29,7 +29,7 @@ import org.onosproject.store.primitives.DefaultDocumentTree;
  * @param <V> document tree value type
  */
 @NotThreadSafe
-public interface AsyncDocumentTree<V> extends DistributedPrimitive {
+public interface AsyncDocumentTree<V> extends AsyncPrimitive {
 
     @Override
     default Type primitiveType() {

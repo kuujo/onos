@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-present Open Networking Foundation
+ * Copyright 2017-present Open Networking Laboratory
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,20 +16,23 @@
 package org.onosproject.store.service;
 
 /**
- * Generator for globally unique numeric identifiers.
+ * Transactional primitive.
  */
-public interface AtomicIdGenerator extends SynchronousPrimitive<AsyncAtomicIdGenerator> {
-
-    @Override
-    default Type primitiveType() {
-        return Type.ID_GENERATOR;
-    }
+public interface TransactionalPrimitive extends DistributedPrimitive {
 
     /**
-     * Gets the next globally unique numeric identifier.
-     *
-     * @return the next globally unique numeric identifier
+     * Prepares the transaction.
      */
-    long nextId();
+    void prepare();
+
+    /**
+     * Commits the transaction.
+     */
+    void commit();
+
+    /**
+     * Rolls back the transaction.
+     */
+    void rollback();
 
 }

@@ -29,7 +29,7 @@ import org.onosproject.store.primitives.DefaultAtomicValue;
  *
  * @param <V> value type
  */
-public interface AsyncAtomicValue<V> extends DistributedPrimitive {
+public interface AsyncAtomicValue<V> extends AsyncPrimitive {
 
     @Override
     default DistributedPrimitive.Type primitiveType() {

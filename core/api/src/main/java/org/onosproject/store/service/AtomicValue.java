@@ -20,7 +20,7 @@ package org.onosproject.store.service;
  *
  * @param <V> value type
  */
-public interface AtomicValue<V> extends DistributedPrimitive  {
+public interface AtomicValue<V> extends SynchronousPrimitive<AsyncAtomicValue<V>>  {
 
     /**
      * Atomically sets the value to the given updated value if the current value is equal to the expected value.

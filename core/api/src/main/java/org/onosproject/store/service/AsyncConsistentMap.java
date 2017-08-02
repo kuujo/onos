@@ -54,11 +54,11 @@ import org.onosproject.store.primitives.MapUpdate;
  * the returned future will be {@link CompletableFuture#complete completed} when the
  * operation finishes.
  */
-public interface AsyncConsistentMap<K, V> extends DistributedPrimitive, Transactional<MapUpdate<K, V>> {
+public interface AsyncConsistentMap<K, V> extends AsyncPrimitive, Transactional<MapUpdate<K, V>> {
 
     @Override
-    default DistributedPrimitive.Type primitiveType() {
-        return DistributedPrimitive.Type.CONSISTENT_MAP;
+    default Type primitiveType() {
+        return Type.CONSISTENT_MAP;
     }
 
     @Override

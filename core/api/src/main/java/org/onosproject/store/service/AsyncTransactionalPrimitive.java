@@ -15,21 +15,32 @@
  */
 package org.onosproject.store.service;
 
-/**
- * Generator for globally unique numeric identifiers.
- */
-public interface AtomicIdGenerator extends SynchronousPrimitive<AsyncAtomicIdGenerator> {
+import java.util.concurrent.CompletableFuture;
 
-    @Override
-    default Type primitiveType() {
-        return Type.ID_GENERATOR;
-    }
+/**
+ * Asynchronous transactional primitive.
+ */
+public interface AsyncTransactionalPrimitive extends AsyncPrimitive {
 
     /**
-     * Gets the next globally unique numeric identifier.
+     * Prepares the transaction.
      *
-     * @return the next globally unique numeric identifier
+     * @return future to be completed once the transaction has been prepared
      */
-    long nextId();
+    CompletableFuture<Boolean> prepare();
+
+    /**
+     * Commits the transaction.
+     *
+     * @return future to be completed once the transaction is committed
+     */
+    CompletableFuture<Void> commit();
+
+    /**
+     * Rolls back the transaction.
+     *
+     * @return future to be completed once the transaction has been rolled back
+     */
+    CompletableFuture<Void> rollback();
 
 }

@@ -26,11 +26,11 @@ import org.onosproject.event.Change;
  * {@code LeaderElector} provides the same functionality as {@link AsyncLeaderElector} with
  * the only difference that all its methods block until the corresponding operation completes.
  */
-public interface LeaderElector extends DistributedPrimitive {
+public interface LeaderElector extends SynchronousPrimitive<AsyncLeaderElector> {
 
     @Override
-    default DistributedPrimitive.Type primitiveType() {
-        return DistributedPrimitive.Type.LEADER_ELECTOR;
+    default Type primitiveType() {
+        return Type.LEADER_ELECTOR;
     }
 
     /**

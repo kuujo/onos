@@ -22,7 +22,7 @@ import org.onosproject.store.primitives.DefaultAtomicIdGenerator;
 /**
  * An async ID generator for generating globally unique numbers.
  */
-public interface AsyncAtomicIdGenerator extends DistributedPrimitive {
+public interface AsyncAtomicIdGenerator extends AsyncPrimitive {
 
     @Override
     default Type primitiveType() {

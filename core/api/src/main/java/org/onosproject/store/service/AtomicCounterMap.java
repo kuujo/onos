@@ -18,7 +18,7 @@ package org.onosproject.store.service;
 /**
  * Distributed version of com.google.common.util.concurrent.AtomicLongMap.
  */
-public interface AtomicCounterMap<K> extends DistributedPrimitive {
+public interface AtomicCounterMap<K> extends SynchronousPrimitive<AsyncAtomicCounterMap<K>> {
 
     @Override
     default DistributedPrimitive.Type primitiveType() {

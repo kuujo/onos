@@ -13,23 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.onosproject.store.service;
+package org.onosproject.store.primitives2;
+
+import org.onosproject.store.service.Versioned;
 
 /**
- * Generator for globally unique numeric identifiers.
+ *
  */
-public interface AtomicIdGenerator extends SynchronousPrimitive<AsyncAtomicIdGenerator> {
+public interface ConsistentMap<K, V> extends SynchronousPrimitive<AsyncConsistentMap<K, V>> {
 
-    @Override
-    default Type primitiveType() {
-        return Type.ID_GENERATOR;
-    }
+    boolean containsKey(K key);
 
-    /**
-     * Gets the next globally unique numeric identifier.
-     *
-     * @return the next globally unique numeric identifier
-     */
-    long nextId();
+    Versioned<V> get(K key);
+
+    Versioned<V> put(K key, V value);
+
+    int size();
+
+    void clear();
 
 }

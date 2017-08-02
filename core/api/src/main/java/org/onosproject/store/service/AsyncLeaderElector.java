@@ -43,7 +43,7 @@ import org.onosproject.store.primitives.DefaultLeaderElector;
  * The operation itself is executed asynchronous and the returned future will be
  * {@link CompletableFuture#complete completed} when the operation finishes.
  */
-public interface AsyncLeaderElector extends DistributedPrimitive {
+public interface AsyncLeaderElector extends AsyncPrimitive {
 
     @Override
     default DistributedPrimitive.Type primitiveType() {

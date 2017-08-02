@@ -13,23 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.onosproject.store.service;
+package org.onosproject.store.primitives2;
 
 /**
- * Generator for globally unique numeric identifiers.
+ * Synchronous primitive.
  */
-public interface AtomicIdGenerator extends SynchronousPrimitive<AsyncAtomicIdGenerator> {
-
-    @Override
-    default Type primitiveType() {
-        return Type.ID_GENERATOR;
-    }
+public interface SynchronousPrimitive<T extends AsyncPrimitive> extends DistributedPrimitive {
 
     /**
-     * Gets the next globally unique numeric identifier.
+     * Returns the underlying asynchronous primitive.
      *
-     * @return the next globally unique numeric identifier
+     * @return the underlying asynchronous primitive
      */
-    long nextId();
+    T async();
+
+    /**
+     * Destroys the primitive.
+     */
+    void destroy();
+
+    /**
+     * Closes the primitive.
+     */
+    void close();
 
 }

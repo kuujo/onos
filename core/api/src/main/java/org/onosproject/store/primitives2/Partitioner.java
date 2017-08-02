@@ -13,23 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.onosproject.store.service;
+package org.onosproject.store.primitives2;
 
 /**
- * Generator for globally unique numeric identifiers.
+ * Primitive partitioner.
  */
-public interface AtomicIdGenerator extends SynchronousPrimitive<AsyncAtomicIdGenerator> {
-
-    @Override
-    default Type primitiveType() {
-        return Type.ID_GENERATOR;
-    }
+public interface Partitioner<T> {
 
     /**
-     * Gets the next globally unique numeric identifier.
+     * Returns the partition for the given value.
      *
-     * @return the next globally unique numeric identifier
+     * @param value the value for which to return the partition
+     * @return the partition for the given value
      */
-    long nextId();
+    int partition(T value);
 
 }

@@ -23,7 +23,12 @@ import java.util.NavigableSet;
 /**
  * Tree map interface counterpart to {@link AsyncConsistentTreeMap}.
  */
- public interface ConsistentTreeMap<V> extends ConsistentMap<String, V> {
+public interface ConsistentTreeMap<V> extends ConsistentMap<String, V> {
+
+    @Override
+    default Type primitiveType() {
+        return Type.CONSISTENT_TREEMAP;
+    }
 
     /**
      * Returns the lowest key in the map.

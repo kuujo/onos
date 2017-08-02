@@ -26,7 +26,12 @@ package org.onosproject.store.service;
  * @param <K> type of key.
  * @param <V> type of value.
  */
-public interface TransactionalMap<K, V> {
+public interface TransactionalMap<K, V> extends TransactionalPrimitive {
+
+    @Override
+    default Type primitiveType() {
+        return Type.CONSISTENT_MAP;
+    }
 
     /**
      * Returns the value to which the specified key is mapped, or null if this

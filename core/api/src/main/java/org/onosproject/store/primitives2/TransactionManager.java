@@ -13,23 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.onosproject.store.service;
+package org.onosproject.store.primitives2;
+
+import java.util.concurrent.CompletableFuture;
+
+import org.onosproject.store.primitives.TransactionId;
 
 /**
- * Generator for globally unique numeric identifiers.
+ * Transaction manager.
  */
-public interface AtomicIdGenerator extends SynchronousPrimitive<AsyncAtomicIdGenerator> {
+public interface TransactionManager {
 
-    @Override
-    default Type primitiveType() {
-        return Type.ID_GENERATOR;
-    }
+    CompletableFuture<Void> begin(TransactionId transactionId);
 
-    /**
-     * Gets the next globally unique numeric identifier.
-     *
-     * @return the next globally unique numeric identifier
-     */
-    long nextId();
+    CompletableFuture<Void> commit(TransactionId transactionId);
+
+    CompletableFuture<Void> rollback(TransactionId transactionId);
+
+    CompletableFuture<Void> complete(TransactionId transactionId);
 
 }

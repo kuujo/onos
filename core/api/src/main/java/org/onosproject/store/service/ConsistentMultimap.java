@@ -29,7 +29,13 @@ import java.util.concurrent.Executor;
  * {@link AsyncConsistentMultimap}.  Instead of returning futures this map
  * blocks until the future completes then returns the result.
  */
-public interface ConsistentMultimap<K, V> extends DistributedPrimitive {
+public interface ConsistentMultimap<K, V> extends SynchronousPrimitive<AsyncConsistentMultimap<K, V>> {
+
+    @Override
+    default Type primitiveType() {
+        return Type.CONSISTENT_MULTIMAP;
+    }
+
     /**
      * Returns the number of key-value pairs in this multimap.
      * @return the number of key-value pairs

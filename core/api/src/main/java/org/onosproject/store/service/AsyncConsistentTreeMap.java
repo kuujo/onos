@@ -29,6 +29,11 @@ import java.util.concurrent.CompletableFuture;
 public interface AsyncConsistentTreeMap<V>
         extends AsyncConsistentMap<String, V> {
 
+    @Override
+    default Type primitiveType() {
+        return Type.CONSISTENT_TREEMAP;
+    }
+
     /**
      * Return the lowest key in the map.
      *
@@ -171,6 +176,5 @@ public interface AsyncConsistentTreeMap<V>
     default ConsistentTreeMap<V> asTreeMap(long timeoutMillis) {
         return new DefaultConsistentTreeMap<>(this, timeoutMillis);
     }
-
 
 }

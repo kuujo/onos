@@ -13,23 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.onosproject.store.service;
+package org.onosproject.store.primitives2;
+
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Generator for globally unique numeric identifiers.
+ * Asynchronous consistent set.
  */
-public interface AtomicIdGenerator extends SynchronousPrimitive<AsyncAtomicIdGenerator> {
+public interface AsyncConsistentSet<T> extends AsyncPrimitive<ConsistentSet<T>> {
 
-    @Override
-    default Type primitiveType() {
-        return Type.ID_GENERATOR;
-    }
+    CompletableFuture<Boolean> contains(T value);
 
-    /**
-     * Gets the next globally unique numeric identifier.
-     *
-     * @return the next globally unique numeric identifier
-     */
-    long nextId();
+    CompletableFuture<Boolean> add(T value);
+
+    CompletableFuture<Boolean> remove(T value);
+
+    CompletableFuture<Integer> size();
+
+    CompletableFuture<Void> clear();
 
 }

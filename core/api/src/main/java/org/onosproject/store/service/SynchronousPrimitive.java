@@ -16,20 +16,15 @@
 package org.onosproject.store.service;
 
 /**
- * Generator for globally unique numeric identifiers.
+ * Synchronous primitive.
  */
-public interface AtomicIdGenerator extends SynchronousPrimitive<AsyncAtomicIdGenerator> {
-
-    @Override
-    default Type primitiveType() {
-        return Type.ID_GENERATOR;
-    }
+public interface SynchronousPrimitive<T extends AsyncPrimitive> extends DistributedPrimitive {
 
     /**
-     * Gets the next globally unique numeric identifier.
+     * Returns the asynchronous primitive underlying this synchronous wrapper.
      *
-     * @return the next globally unique numeric identifier
+     * @return the asynchronous primitive underlying this synchronous wrapper
      */
-    long nextId();
+    T async();
 
 }

@@ -22,7 +22,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * An async atomic counter map dispenses monotonically increasing values associated with key.
  */
-public interface AsyncAtomicCounterMap<K> extends DistributedPrimitive {
+public interface AsyncAtomicCounterMap<K> extends AsyncPrimitive {
 
     @Override
     default DistributedPrimitive.Type primitiveType() {

@@ -22,7 +22,7 @@ import org.onosproject.store.primitives.DefaultAtomicCounter;
 /**
  * An async atomic counter dispenses monotonically increasing values.
  */
-public interface AsyncAtomicCounter extends DistributedPrimitive {
+public interface AsyncAtomicCounter extends AsyncPrimitive {
 
     @Override
     default DistributedPrimitive.Type primitiveType() {

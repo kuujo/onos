@@ -26,7 +26,7 @@ import javax.annotation.concurrent.NotThreadSafe;
  * @param <V> document tree value type
  */
 @NotThreadSafe
-public interface DocumentTree<V> extends DistributedPrimitive {
+public interface DocumentTree<V> extends SynchronousPrimitive<AsyncDocumentTree<V>> {
 
     @Override
     default Type primitiveType() {

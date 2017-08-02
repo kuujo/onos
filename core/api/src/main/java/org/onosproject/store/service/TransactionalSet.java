@@ -24,7 +24,12 @@ package org.onosproject.store.service;
  *
  * @param <E> type of element.
  */
-public interface TransactionalSet<E> {
+public interface TransactionalSet<E> extends TransactionalPrimitive {
+
+    @Override
+    default Type primitiveType() {
+        return Type.SET;
+    }
 
     /**
      * Adds the specified element to this set if it is not already present

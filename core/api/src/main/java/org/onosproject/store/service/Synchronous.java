@@ -23,7 +23,7 @@ import java.util.concurrent.CompletableFuture;
  *
  * @param <T> type of DistributedPrimitive
  */
-public abstract class Synchronous<T extends DistributedPrimitive> implements DistributedPrimitive {
+public abstract class Synchronous<T extends AsyncPrimitive> implements SynchronousPrimitive<T> {
 
     private final T primitive;
 
@@ -39,6 +39,11 @@ public abstract class Synchronous<T extends DistributedPrimitive> implements Dis
     @Override
     public Type primitiveType() {
         return primitive.primitiveType();
+    }
+
+    @Override
+    public T async() {
+        return primitive;
     }
 
     @Override

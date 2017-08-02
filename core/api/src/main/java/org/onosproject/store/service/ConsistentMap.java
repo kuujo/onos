@@ -34,7 +34,12 @@ import com.google.common.util.concurrent.MoreExecutors;
  * @param <K> type of key
  * @param <V> type of value
  */
-public interface ConsistentMap<K, V> extends DistributedPrimitive {
+public interface ConsistentMap<K, V> extends SynchronousPrimitive<AsyncConsistentMap<K, V>> {
+
+    @Override
+    default Type primitiveType() {
+        return Type.CONSISTENT_MAP;
+    }
 
     /**
      * Returns the number of entries in the map.
