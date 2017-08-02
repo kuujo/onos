@@ -92,14 +92,13 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
             .register(KryoNamespaces.BASIC)
             .register(AtomixConsistentMapOperations.NAMESPACE)
             .register(AtomixConsistentMapEvents.NAMESPACE)
-            .nextId(KryoNamespaces.BEGIN_USER_CUSTOM_ID + 100)
             .build());
 
     private final Map<MapEventListener<String, byte[]>, Executor> mapEventListeners = new ConcurrentHashMap<>();
 
     public AtomixConsistentMap(RaftProxy proxy) {
         super(proxy);
-        proxy.addEventListener(CHANGE, SERIALIZER::decode, this::handleEvent);
+        proxy.addEventListener(CHANGE, serializer()::decode, this::handleEvent);
         proxy.addStateChangeListener(state -> {
             if (state == RaftProxy.State.CONNECTED && isListening()) {
                 proxy.invoke(ADD_LISTENER);

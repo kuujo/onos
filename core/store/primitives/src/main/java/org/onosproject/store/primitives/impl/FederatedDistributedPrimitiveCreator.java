@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
 import org.onlab.util.HexString;
 import org.onosproject.cluster.PartitionId;
@@ -41,8 +42,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Function;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onlab.util.HexString.fromHexString;
+import static org.onlab.util.HexString.toHexString;
 
 /**
  * {@code DistributedPrimitiveCreator} that federates responsibility for creating
@@ -62,19 +66,24 @@ public class FederatedDistributedPrimitiveCreator implements DistributedPrimitiv
     public <K, V> AsyncConsistentMap<K, V> newAsyncConsistentMap(String name, Serializer serializer) {
         checkNotNull(name);
         checkNotNull(serializer);
-        Map<PartitionId, AsyncConsistentMap<String, byte[]>> maps =
-                Maps.transformValues(members,
-                                     partition -> partition.newAsyncConsistentMap(name, null));
-        Hasher<String> hasher = key -> {
-            int hashCode = Hashing.sha256().hashString(key, Charsets.UTF_8).asInt();
-            return sortedMemberPartitionIds.get(Math.abs(hashCode) % members.size());
+        Map<PartitionId, AsyncConsistentMap<byte[], byte[]>> maps =
+                Maps.transformValues(members, partition -> DistributedPrimitives.newTranscodingMap(
+                        partition.<String, byte[]>newAsyncConsistentMap(name, null),
+                        key -> toHexString(key),
+                        bytes -> fromHexString(bytes),
+                        value -> value,
+                        bytes -> bytes));
+        HashFunction hashFunction = Hashing.murmur3_32();
+        Hasher<byte[]> hasher = key -> {
+            int hashCode = hashFunction.hashBytes(key).asInt();
+            return sortedMemberPartitionIds.get(Math.abs(hashCode) % sortedMemberPartitionIds.size());
         };
-        AsyncConsistentMap<String, byte[]> partitionedMap = new PartitionedAsyncConsistentMap<>(name, maps, hasher);
+        AsyncConsistentMap<byte[], byte[]> partitionedMap = new PartitionedAsyncConsistentMap<>(name, maps, hasher);
         return DistributedPrimitives.newTranscodingMap(partitionedMap,
-                key -> HexString.toHexString(serializer.encode(key)),
-                string -> serializer.decode(HexString.fromHexString(string)),
+                key -> serializer.encode(key),
+                bytes -> serializer.decode(bytes),
                 value -> value == null ? null : serializer.encode(value),
-                bytes -> serializer.decode(bytes));
+                bytes -> bytes == null ? null : serializer.decode(bytes));
     }
 
     @Override
