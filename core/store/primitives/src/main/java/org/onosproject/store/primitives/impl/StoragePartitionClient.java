@@ -114,14 +114,11 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                         .open()
                         .join());
 
-        if (serializer != null) {
-            return DistributedPrimitives.newTranscodingMap(rawMap,
-                    key -> HexString.toHexString(serializer.encode(key)),
-                    string -> serializer.decode(HexString.fromHexString(string)),
-                    value -> value == null ? null : serializer.encode(value),
-                    bytes -> serializer.decode(bytes));
-        }
-        return (AsyncConsistentMap<K, V>) rawMap;
+        return DistributedPrimitives.newTranscodingMap(rawMap,
+                key -> HexString.toHexString(serializer.encode(key)),
+                string -> serializer.decode(HexString.fromHexString(string)),
+                value -> value == null ? null : serializer.encode(value),
+                bytes -> serializer.decode(bytes));
     }
 
     @Override
@@ -139,13 +136,10 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                         .open()
                         .join());
 
-        if (serializer != null) {
-            return DistributedPrimitives.newTranscodingTreeMap(
-                            rawMap,
-                            value -> value == null ? null : serializer.encode(value),
-                            bytes -> serializer.decode(bytes));
-        }
-        return (AsyncConsistentTreeMap<V>) rawMap;
+        return DistributedPrimitives.newTranscodingTreeMap(
+                rawMap,
+                value -> value == null ? null : serializer.encode(value),
+                bytes -> serializer.decode(bytes));
     }
 
     @Override
@@ -163,15 +157,12 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                         .open()
                         .join());
 
-        if (serializer != null) {
-            return DistributedPrimitives.newTranscodingMultimap(
-                            rawMap,
-                            key -> HexString.toHexString(serializer.encode(key)),
-                            string -> serializer.decode(HexString.fromHexString(string)),
-                            value -> serializer.encode(value),
-                            bytes -> serializer.decode(bytes));
-        }
-        return (AsyncConsistentMultimap<K, V>) rawMap;
+        return DistributedPrimitives.newTranscodingMultimap(
+                rawMap,
+                key -> HexString.toHexString(serializer.encode(key)),
+                string -> serializer.decode(HexString.fromHexString(string)),
+                value -> serializer.encode(value),
+                bytes -> serializer.decode(bytes));
     }
 
     @Override
@@ -193,13 +184,10 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                 .open()
                 .join());
 
-        if (serializer != null) {
-            return DistributedPrimitives.newTranscodingAtomicCounterMap(
-                            rawMap,
-                            key -> HexString.toHexString(serializer.encode(key)),
-                            string -> serializer.decode(HexString.fromHexString(string)));
-        }
-        return (AsyncAtomicCounterMap<K>) rawMap;
+        return DistributedPrimitives.newTranscodingAtomicCounterMap(
+                rawMap,
+                key -> HexString.toHexString(serializer.encode(key)),
+                string -> serializer.decode(HexString.fromHexString(string)));
     }
 
     @Override

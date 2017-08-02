@@ -103,8 +103,7 @@ public class TransactionManager {
         }
 
         Hasher<K> hasher = key -> {
-            int hashCode = Hashing.sha256()
-                    .hashString(HexString.toHexString(serializer.encode(key)), Charsets.UTF_8).asInt();
+            int hashCode = Hashing.sha256().hashBytes(serializer.encode(key)).asInt();
             return sortedPartitions.get(Math.abs(hashCode) % sortedPartitions.size());
         };
         return new PartitionedTransactionalMap<>(partitions, hasher);

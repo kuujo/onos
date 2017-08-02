@@ -62,19 +62,14 @@ public class FederatedDistributedPrimitiveCreator implements DistributedPrimitiv
     public <K, V> AsyncConsistentMap<K, V> newAsyncConsistentMap(String name, Serializer serializer) {
         checkNotNull(name);
         checkNotNull(serializer);
-        Map<PartitionId, AsyncConsistentMap<String, byte[]>> maps =
+        Map<PartitionId, AsyncConsistentMap<K, V>> maps =
                 Maps.transformValues(members,
-                                     partition -> partition.newAsyncConsistentMap(name, null));
-        Hasher<String> hasher = key -> {
-            int hashCode = Hashing.sha256().hashString(key, Charsets.UTF_8).asInt();
+                        partition -> partition.newAsyncConsistentMap(name, serializer));
+        Hasher<K> hasher = key -> {
+            int hashCode = Hashing.sha256().hashBytes(serializer.encode(key)).asInt();
             return sortedMemberPartitionIds.get(Math.abs(hashCode) % members.size());
         };
-        AsyncConsistentMap<String, byte[]> partitionedMap = new PartitionedAsyncConsistentMap<>(name, maps, hasher);
-        return DistributedPrimitives.newTranscodingMap(partitionedMap,
-                key -> HexString.toHexString(serializer.encode(key)),
-                string -> serializer.decode(HexString.fromHexString(string)),
-                value -> value == null ? null : serializer.encode(value),
-                bytes -> serializer.decode(bytes));
+        return new PartitionedAsyncConsistentMap<>(name, maps, hasher);
     }
 
     @Override
