@@ -24,8 +24,11 @@ import io.atomix.protocols.raft.operation.OperationId;
 import io.atomix.protocols.raft.operation.OperationType;
 import org.onlab.util.KryoNamespace;
 import org.onlab.util.Match;
+import org.onosproject.store.primitives.NodeUpdate;
+import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.DocumentPath;
+import org.onosproject.store.service.TransactionLog;
 import org.onosproject.store.service.Versioned;
 
 /**
@@ -37,7 +40,12 @@ public enum AtomixDocumentTreeOperations implements OperationId {
     GET("incrementAndGet", OperationType.QUERY),
     GET_CHILDREN("getAndIncrement", OperationType.QUERY),
     UPDATE("addAndGet", OperationType.COMMAND),
-    CLEAR("getAndAdd", OperationType.COMMAND);
+    CLEAR("getAndAdd", OperationType.COMMAND),
+    BEGIN("begin", OperationType.COMMAND),
+    PREPARE("prepare", OperationType.COMMAND),
+    PREPARE_AND_COMMIT("prepareAndCommit", OperationType.COMMAND),
+    COMMIT("commit", OperationType.COMMAND),
+    ROLLBACK("rollback", OperationType.COMMAND);
 
     private final String id;
     private final OperationType type;
@@ -66,6 +74,18 @@ public enum AtomixDocumentTreeOperations implements OperationId {
             .register(Get.class)
             .register(GetChildren.class)
             .register(Update.class)
+            .register(TransactionBegin.class)
+            .register(TransactionPrepare.class)
+            .register(TransactionPrepareAndCommit.class)
+            .register(TransactionCommit.class)
+            .register(TransactionRollback.class)
+            .register(TransactionId.class)
+            .register(TransactionLog.class)
+            .register(PrepareResult.class)
+            .register(CommitResult.class)
+            .register(RollbackResult.class)
+            .register(NodeUpdate.class)
+            .register(NodeUpdate.Type.class)
             .register(DocumentPath.class)
             .register(Match.class)
             .register(Versioned.class)
@@ -218,4 +238,131 @@ public enum AtomixDocumentTreeOperations implements OperationId {
                     .toString();
         }
     }
+
+    //SITH BEGIN
+    /**
+     * Transaction begin command.
+     */
+    public static class TransactionBegin extends DocumentTreeOperation {
+        private TransactionId transactionId;
+
+        public TransactionBegin() {
+            super(null);
+        }
+
+        public TransactionBegin(TransactionId transactionId) {
+            super(DocumentPath.from(transactionId.toString()));
+            this.transactionId = transactionId;
+        }
+
+        public TransactionId transactionId() {
+            return transactionId;
+        }
+    }
+
+    /**
+     * Map prepare command.
+     */
+    @SuppressWarnings("serial")
+    public static class TransactionPrepare extends DocumentTreeOperation {
+        private TransactionLog<NodeUpdate<byte[]>> transactionLog;
+
+        public TransactionPrepare() {
+            super(null);
+        }
+
+        public TransactionPrepare(TransactionLog<NodeUpdate<byte[]>> transactionLog) {
+            super(DocumentPath.from(transactionLog.transactionId().toString()));
+            this.transactionLog = transactionLog;
+        }
+
+        public TransactionLog<NodeUpdate<byte[]>> transactionLog() {
+            return transactionLog;
+        }
+
+        @Override
+        public String toString() {
+            return MoreObjects.toStringHelper(getClass())
+                    .add("transactionLog", transactionLog)
+                    .toString();
+        }
+    }
+
+    /**
+     * Map prepareAndCommit command.
+     */
+    @SuppressWarnings("serial")
+    public static class TransactionPrepareAndCommit extends TransactionPrepare {
+        public TransactionPrepareAndCommit() {
+        }
+
+        public TransactionPrepareAndCommit(TransactionLog<NodeUpdate<byte[]>> transactionLog) {
+            super(transactionLog);
+        }
+    }
+
+    /**
+     * Map transaction commit command.
+     */
+    @SuppressWarnings("serial")
+    public static class TransactionCommit extends DocumentTreeOperation {
+        private TransactionId transactionId;
+
+        public TransactionCommit() {
+            super(null);
+        }
+
+        public TransactionCommit(TransactionId transactionId) {
+            super(DocumentPath.from(transactionId.toString()));
+            this.transactionId = transactionId;
+        }
+
+        /**
+         * Returns the transaction identifier.
+         * @return transaction id
+         */
+        public TransactionId transactionId() {
+            return transactionId;
+        }
+
+        @Override
+        public String toString() {
+            return MoreObjects.toStringHelper(getClass())
+                    .add("transactionId", transactionId)
+                    .toString();
+        }
+    }
+
+    /**
+     * Map transaction rollback command.
+     */
+    @SuppressWarnings("serial")
+    public static class TransactionRollback extends DocumentTreeOperation {
+        private TransactionId transactionId;
+
+        public TransactionRollback() {
+            super(null);
+        }
+
+        public TransactionRollback(TransactionId transactionId) {
+            super(DocumentPath.from(transactionId.toString()));
+            this.transactionId = transactionId;
+        }
+
+        /**
+         * Returns the transaction identifier.
+         * @return transaction id
+         */
+        public TransactionId transactionId() {
+            return transactionId;
+        }
+
+        @Override
+        public String toString() {
+            return MoreObjects.toStringHelper(getClass())
+                    .add("transactionId", transactionId)
+                    .toString();
+        }
+    }
+    //SITH END
 }
