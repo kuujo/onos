@@ -28,6 +28,7 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
@@ -36,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
+import com.google.common.util.concurrent.Futures;
 import org.apache.commons.lang3.RandomUtils;
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
@@ -109,6 +111,7 @@ import static org.onosproject.store.device.impl.GossipDeviceStoreMessageSubjects
 import static org.onosproject.store.device.impl.GossipDeviceStoreMessageSubjects.DEVICE_OFFLINE;
 import static org.onosproject.store.device.impl.GossipDeviceStoreMessageSubjects.DEVICE_REMOVED;
 import static org.onosproject.store.device.impl.GossipDeviceStoreMessageSubjects.DEVICE_REMOVE_REQ;
+import static org.onosproject.store.device.impl.GossipDeviceStoreMessageSubjects.DEVICE_REQUEST;
 import static org.onosproject.store.device.impl.GossipDeviceStoreMessageSubjects.DEVICE_UPDATE;
 import static org.onosproject.store.device.impl.GossipDeviceStoreMessageSubjects.PORT_STATUS_UPDATE;
 import static org.onosproject.store.device.impl.GossipDeviceStoreMessageSubjects.PORT_UPDATE;
@@ -180,6 +183,7 @@ public class GossipDeviceStore
                     .register(new InternalPortEventSerializer(), InternalPortEvent.class)
                     .register(new InternalPortStatusEventSerializer(), InternalPortStatusEvent.class)
                     .register(DeviceAntiEntropyAdvertisement.class)
+                    .register(DeviceRequest.class)
                     .register(DeviceFragmentId.class)
                     .register(PortFragmentId.class)
                     .build("GossipDevice"));
@@ -206,6 +210,12 @@ public class GossipDeviceStore
         addSubscriber(PORT_UPDATE, this::handlePortEvent);
         addSubscriber(PORT_STATUS_UPDATE, this::handlePortStatusEvent);
         addSubscriber(DEVICE_ADVERTISE, this::handleDeviceAdvertisement);
+        clusterCommunicator.addSubscriber(
+                DEVICE_REQUEST,
+                SERIALIZER::decode,
+                this::handleDeviceRequest,
+                SERIALIZER::encode,
+                executor);
 
         // start anti-entropy thread
         backgroundExecutor.scheduleAtFixedRate(new SendAdvertisementTask(),
@@ -267,6 +277,7 @@ public class GossipDeviceStore
         clusterCommunicator.removeSubscriber(PORT_UPDATE);
         clusterCommunicator.removeSubscriber(PORT_STATUS_UPDATE);
         clusterCommunicator.removeSubscriber(DEVICE_ADVERTISE);
+        clusterCommunicator.removeSubscriber(DEVICE_REQUEST);
         log.info("Stopped");
     }
 
@@ -293,7 +304,11 @@ public class GossipDeviceStore
 
     @Override
     public Device getDevice(DeviceId deviceId) {
-        return devices.get(deviceId);
+        Device device = devices.get(deviceId);
+        if (device != null) {
+            return device;
+        }
+        return Futures.getUnchecked(requestDevice(deviceId));
     }
 
     @Override
@@ -1483,6 +1498,38 @@ public class GossipDeviceStore
 //            log.error("Failed to send advertisement reply to "
 //                      + advertisement.sender(), e);
 //        }
+    }
+
+    private CompletableFuture<Device> requestDevice(DeviceId deviceId) {
+        NodeId deviceMaster = mastershipService.getMasterFor(deviceId);
+        if (deviceMaster == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        DeviceRequest request = new DeviceRequest(
+                clusterService.getLocalNode().id(),
+                ImmutableList.of(deviceId));
+        return clusterCommunicator.<DeviceRequest, Collection<Device>>sendAndReceive(
+                request,
+                DEVICE_REQUEST,
+                SERIALIZER::encode,
+                SERIALIZER::decode,
+                deviceMaster)
+                .thenApply(devices -> {
+                    Iterator<Device> iterator = devices.iterator();
+                    return iterator.hasNext() ? iterator.next() : null;
+                });
+    }
+
+    private Collection<Device> handleDeviceRequest(DeviceRequest request) {
+        List<Device> devices = new ArrayList<>(request.devices().size());
+        for (DeviceId deviceId : request.devices()) {
+            Device device = this.devices.get(deviceId);
+            if (device != null) {
+                devices.add(device);
+            }
+        }
+        return devices;
     }
 
     private void notifyDelegateIfNotNull(DeviceEvent event) {
