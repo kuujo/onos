@@ -62,6 +62,7 @@ import org.onosproject.store.service.StorageService;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -216,6 +217,14 @@ public class GossipDeviceStoreTest {
         reset(clusterCommunicator);
         clusterCommunicator.<InternalDeviceEvent>broadcast(
                 anyObject(InternalDeviceEvent.class), anyObject(MessageSubject.class), anyObject(Function.class));
+        expectLastCall().anyTimes();
+        expect(clusterCommunicator.<DeviceRequest, Collection<Device>>sendAndReceive(
+                anyObject(DeviceRequest.class),
+                anyObject(MessageSubject.class),
+                anyObject(Function.class),
+                anyObject(Function.class),
+                anyObject(NodeId.class)))
+                .andReturn(CompletableFuture.completedFuture(Collections.emptyList()));
         expectLastCall().anyTimes();
         replay(clusterCommunicator);
         deviceStore.createOrUpdateDevice(PID, deviceId, description);
