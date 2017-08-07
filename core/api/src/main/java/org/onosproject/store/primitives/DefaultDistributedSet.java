@@ -19,14 +19,10 @@ import java.lang.reflect.Array;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import org.onosproject.store.service.AsyncDistributedSet;
 import org.onosproject.store.service.DistributedSet;
 import org.onosproject.store.service.SetEventListener;
-import org.onosproject.store.service.StorageException;
 import org.onosproject.store.service.Synchronous;
 
 /**
@@ -135,19 +131,6 @@ public class DefaultDistributedSet<E> extends Synchronous<AsyncDistributedSet<E>
     }
 
     private <T> T complete(CompletableFuture<T> future) {
-        try {
-            return future.get(operationTimeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new StorageException.Interrupted();
-        } catch (TimeoutException e) {
-            throw new StorageException.Timeout();
-        } catch (ExecutionException e) {
-            if (e.getCause() instanceof StorageException) {
-                throw (StorageException) e.getCause();
-            } else {
-                throw new StorageException(e.getCause());
-            }
-        }
+        return complete(future, operationTimeoutMillis);
     }
 }

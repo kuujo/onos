@@ -16,28 +16,23 @@
 
 package org.onosproject.store.primitives;
 
-import com.google.common.base.Throwables;
-
-import org.onosproject.store.service.ConsistentMapException;
-import org.onosproject.store.service.AsyncConsistentTreeMap;
-import org.onosproject.store.service.MapEventListener;
-import org.onosproject.store.service.Synchronous;
-import org.onosproject.store.service.ConsistentTreeMap;
-import org.onosproject.store.service.Versioned;
-
 import java.util.Collection;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
+
+import org.onosproject.store.service.AsyncConsistentTreeMap;
+import org.onosproject.store.service.ConsistentMapException;
+import org.onosproject.store.service.ConsistentTreeMap;
+import org.onosproject.store.service.MapEventListener;
+import org.onosproject.store.service.Synchronous;
+import org.onosproject.store.service.Versioned;
 
 /**
  * Implementation of the {@link ConsistentTreeMap} interface.
@@ -57,17 +52,12 @@ public class DefaultConsistentTreeMap<V>
     }
 
     private <T> T complete(CompletableFuture<T> future) {
-        try {
-            return future.get(operationTimeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ConsistentMapException.Interrupted();
-        } catch (ExecutionException e) {
-            Throwables.propagateIfPossible(e.getCause());
-            throw new ConsistentMapException(e.getCause());
-        } catch (TimeoutException e) {
-            throw new ConsistentMapException.Timeout();
-        }
+        return complete(
+                future,
+                operationTimeoutMillis,
+                e -> new ConsistentMapException.Interrupted(),
+                e -> new ConsistentMapException.Timeout(name()),
+                e -> new ConsistentMapException(e.getCause()));
     }
 
     @Override

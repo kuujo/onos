@@ -21,10 +21,7 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -38,8 +35,6 @@ import org.onosproject.store.service.ConsistentMapException.ConcurrentModificati
 import org.onosproject.store.service.MapEventListener;
 import org.onosproject.store.service.Synchronous;
 import org.onosproject.store.service.Versioned;
-
-import com.google.common.base.Throwables;
 
 /**
  * Default implementation of {@code ConsistentMap}.
@@ -224,16 +219,11 @@ public class DefaultConsistentMap<K, V> extends Synchronous<AsyncConsistentMap<K
     }
 
     private <T> T complete(CompletableFuture<T> future) {
-        try {
-            return future.get(operationTimeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ConsistentMapException.Interrupted();
-        } catch (TimeoutException e) {
-            throw new ConsistentMapException.Timeout(name());
-        } catch (ExecutionException e) {
-            Throwables.propagateIfPossible(e.getCause());
-            throw new ConsistentMapException(e.getCause());
-        }
+        return complete(
+                future,
+                operationTimeoutMillis,
+                e -> new ConsistentMapException.Interrupted(),
+                e -> new ConsistentMapException.Timeout(name()),
+                e -> new ConsistentMapException(e.getCause()));
     }
 }

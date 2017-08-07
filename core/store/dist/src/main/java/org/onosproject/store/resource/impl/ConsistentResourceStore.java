@@ -23,7 +23,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -54,7 +53,6 @@ import org.onosproject.net.resource.Resources;
 import org.onosproject.store.AbstractStore;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.CommitStatus;
-import org.onosproject.store.service.DistributedPrimitive;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.TransactionContext;
@@ -366,7 +364,7 @@ public class ConsistentResourceStore extends AbstractStore<ResourceEvent, Resour
      */
     private CommitStatus commitTransaction(TransactionContext tx)
             throws InterruptedException, ExecutionException, TimeoutException {
-        return tx.commit().get(DistributedPrimitive.DEFAULT_OPERATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+        return tx.commit().join();
     }
 
     /**

@@ -16,7 +16,9 @@
 
 package org.onosproject.store.primitives;
 
-import com.google.common.base.Throwables;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
 import org.onosproject.store.service.AsyncDocumentTree;
 import org.onosproject.store.service.ConsistentMapException;
 import org.onosproject.store.service.DocumentException;
@@ -25,12 +27,6 @@ import org.onosproject.store.service.DocumentTree;
 import org.onosproject.store.service.DocumentTreeListener;
 import org.onosproject.store.service.Synchronous;
 import org.onosproject.store.service.Versioned;
-
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
  * Synchronous wrapper for a {@link AsyncDocumentTree}. All operations are
@@ -111,16 +107,11 @@ public class DefaultDocumentTree<V> extends Synchronous<AsyncDocumentTree<V>> im
     }
 
     private <T> T complete(CompletableFuture<T> future) {
-        try {
-            return future.get(operationTimeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new DocumentException.Interrupted();
-        } catch (TimeoutException e) {
-            throw new DocumentException.Timeout(name());
-        } catch (ExecutionException e) {
-            Throwables.propagateIfPossible(e.getCause());
-            throw new ConsistentMapException(e.getCause());
-        }
+        return complete(
+                future,
+                operationTimeoutMillis,
+                e -> new DocumentException.Interrupted(),
+                e -> new DocumentException.Timeout(name()),
+                e -> new ConsistentMapException(e.getCause()));
     }
 }

@@ -18,9 +18,6 @@ package org.onosproject.store.primitives;
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 
 import org.onosproject.cluster.Leadership;
@@ -28,7 +25,6 @@ import org.onosproject.cluster.NodeId;
 import org.onosproject.event.Change;
 import org.onosproject.store.service.AsyncLeaderElector;
 import org.onosproject.store.service.LeaderElector;
-import org.onosproject.store.service.StorageException;
 import org.onosproject.store.service.Synchronous;
 
 /**
@@ -106,15 +102,6 @@ public class DefaultLeaderElector extends Synchronous<AsyncLeaderElector> implem
     }
 
     private <T> T complete(CompletableFuture<T> future) {
-        try {
-            return future.get(operationTimeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new StorageException.Interrupted();
-        } catch (TimeoutException e) {
-            throw new StorageException.Timeout();
-        } catch (ExecutionException e) {
-            throw new StorageException(e.getCause());
-        }
+        return complete(future, operationTimeoutMillis);
     }
 }

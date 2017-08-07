@@ -15,15 +15,11 @@
  */
 package org.onosproject.store.primitives;
 
+import java.util.concurrent.CompletableFuture;
+
 import org.onosproject.store.service.AsyncAtomicCounter;
 import org.onosproject.store.service.AtomicCounter;
-import org.onosproject.store.service.StorageException;
 import org.onosproject.store.service.Synchronous;
-
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
  * Default implementation for a {@code AtomicCounter} backed by a {@link AsyncAtomicCounter}.
@@ -75,15 +71,6 @@ public class DefaultAtomicCounter extends Synchronous<AsyncAtomicCounter> implem
     }
 
     private <T> T complete(CompletableFuture<T> future) {
-        try {
-            return future.get(operationTimeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new StorageException.Interrupted();
-        } catch (TimeoutException e) {
-            throw new StorageException.Timeout();
-        } catch (ExecutionException e) {
-            throw new StorageException(e.getCause());
-        }
+        return complete(future, operationTimeoutMillis);
     }
 }

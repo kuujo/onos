@@ -15,16 +15,11 @@
  */
 package org.onosproject.store.primitives;
 
-import com.google.common.base.Throwables;
+import java.util.concurrent.CompletableFuture;
+
 import org.onosproject.store.service.AsyncAtomicCounterMap;
 import org.onosproject.store.service.AtomicCounterMap;
-import org.onosproject.store.service.ConsistentMapException;
 import org.onosproject.store.service.Synchronous;
-
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
  * Default implementation of {@code AtomicCounterMap}.
@@ -118,16 +113,6 @@ public class DefaultAtomicCounterMap<K> extends Synchronous<AsyncAtomicCounterMa
     }
 
     private <T> T complete(CompletableFuture<T> future) {
-        try {
-            return future.get(operationTimeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ConsistentMapException.Interrupted();
-        } catch (TimeoutException e) {
-            throw new ConsistentMapException.Timeout(name());
-        } catch (ExecutionException e) {
-            Throwables.propagateIfPossible(e.getCause());
-            throw new ConsistentMapException(e.getCause());
-        }
+        return complete(future, operationTimeoutMillis);
     }
 }

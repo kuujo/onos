@@ -15,7 +15,13 @@
  */
 package org.onosproject.store.service;
 
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
 
 /**
  * DistributedPrimitive that is a synchronous (blocking) version of
@@ -44,5 +50,54 @@ public abstract class Synchronous<T extends DistributedPrimitive> implements Dis
     @Override
     public CompletableFuture<Void> destroy() {
         return primitive.destroy();
+    }
+
+    protected <T> T complete(CompletableFuture<T> future, long operationTimeoutMillis) {
+        return complete(
+                future,
+                operationTimeoutMillis,
+                e -> new StorageException.Interrupted(),
+                e -> new StorageException.Timeout(),
+                e -> {
+                    if (e.getCause() instanceof StorageException) {
+                        throw (StorageException) e.getCause();
+                    } else {
+                        throw new StorageException(e.getCause());
+                    }
+                });
+    }
+
+    protected <T> T complete(
+            CompletableFuture<T> future,
+            long operationTimeoutMillis,
+            Function<Throwable, ? extends RuntimeException> interruptedSupplier,
+            Function<Throwable, ? extends RuntimeException> timeoutSupplier,
+            Function<Throwable, ? extends RuntimeException> exceptionSupplier) {
+        if (operationTimeoutMillis > 0) {
+            try {
+                return future.get(operationTimeoutMillis, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw interruptedSupplier.apply(e);
+            } catch (TimeoutException e) {
+                throw timeoutSupplier.apply(e);
+            } catch (ExecutionException e) {
+                if (e.getCause() instanceof StorageException) {
+                    throw (StorageException) e.getCause();
+                }
+                throw exceptionSupplier.apply(e.getCause());
+            }
+        } else {
+            try {
+                return future.join();
+            } catch (CancellationException e) {
+                throw interruptedSupplier.apply(e);
+            } catch (CompletionException e) {
+                if (e.getCause() instanceof StorageException) {
+                    throw (StorageException) e.getCause();
+                }
+                throw exceptionSupplier.apply(e.getCause());
+            }
+        }
     }
 }

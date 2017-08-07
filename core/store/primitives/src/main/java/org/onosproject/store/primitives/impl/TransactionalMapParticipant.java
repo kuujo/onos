@@ -20,21 +20,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
-import com.google.common.base.Throwables;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.service.ConsistentMap;
-import org.onosproject.store.service.DistributedPrimitive;
-import org.onosproject.store.service.TransactionException;
 import org.onosproject.store.service.TransactionalMap;
 import org.onosproject.store.service.Version;
 
@@ -78,18 +72,7 @@ public abstract class TransactionalMapParticipant<K, V> implements Transactional
         if (lock == null) {
             synchronized (this) {
                 if (lock == null) {
-                    try {
-                        lock = transaction.begin()
-                                .get(DistributedPrimitive.DEFAULT_OPERATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new TransactionException.Interrupted();
-                    } catch (TimeoutException e) {
-                        throw new TransactionException.Timeout();
-                    } catch (ExecutionException e) {
-                        Throwables.propagateIfPossible(e.getCause());
-                        throw new TransactionException(e.getCause());
-                    }
+                    lock = transaction.begin().join();
                 }
             }
         }
