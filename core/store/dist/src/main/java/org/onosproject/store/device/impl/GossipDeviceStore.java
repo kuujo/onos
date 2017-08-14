@@ -321,16 +321,17 @@ public class GossipDeviceStore
 
         synchronized (device) {
             deviceEvent = createOrUpdateDeviceInternal(providerId, deviceId, deltaDesc);
+            if (deviceEvent == null) {
+                return null;
+            }
             mergedDesc = device.get(providerId).getDeviceDesc();
         }
 
         // If this node is the master for the device, update peers.
         if (isMaster) {
-            if (deviceEvent != null) {
-                log.debug("Notifying peers of a device update topology event for providerId: {} and deviceId: {}",
-                          providerId, deviceId);
-                notifyPeers(new InternalDeviceEvent(providerId, deviceId, mergedDesc));
-            }
+            log.debug("Notifying peers of a device update topology event for providerId: {} and deviceId: {}",
+                    providerId, deviceId);
+            notifyPeers(new InternalDeviceEvent(providerId, deviceId, mergedDesc));
         } else {
             return null;
         }
