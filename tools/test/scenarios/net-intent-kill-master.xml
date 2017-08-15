@@ -1,0 +1,62 @@
+<!--
+  ~ Copyright 2017-present Open Networking Foundation
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+<scenario name="net-intent-kill-master" description="Network master kill test">
+    <group name="Net-Intent-Kill-Master">
+        <step name="Net-Intent-Kill-Master.Find-Host-1"
+              exec="onos-mininet sendAndExpect h1 ping -c1 -w1 h2 --expect ."/>
+        <step name="Net-Intent-Kill-Master.Find-Host-2" requires="^"
+              exec="onos-mininet sendAndExpect h2 ping -c1 -w1 h1 --expect ."/>
+
+        <step name="Net-Intent-Kill-Master.Create-Intent" requires="^"
+              exec="onos-create-intent ${OC1} h2h host 00:00:00:00:00:01/-1 00:00:00:00:00:02/-1"/>
+        <step name="Net-Intent-Kill-Master.Validate-Intent-Installed"
+              requires="Net-Intent-Kill-Master.Create-Intent"
+              exec="onos-check-intent ${OC1} h2h INSTALLED"/>
+
+        <step name="Net-Intent-Kill-Master.Assign-Master-1" requires="^"
+              exec="onos ${OC1} device-role of:0000000000000001 ${OC1} master"/>
+        <step name="Net-Intent-Kill-Master.Assign-Master-2" requires="^"
+              exec="onos ${OC1} device-role of:0000000000000002 ${OC2} master"/>
+        <step name="Net-Intent-Kill-Master.Breathe"
+              requires="Net-Intent-Kill-Master.Assign-Master-1,Net-Intent-Kill-Master.Assign-Master-1"
+              exec="sleep 5"/>
+
+        <!-- TODO: Verify the master is set to $OC1 -->
+
+        <step name="Net-Intent-Kill-Master.Kill-Master" requires="^"
+              exec="onos-die ${OC1}"/>
+        <step name="Net-Intent-Kill-Master.Validate-Death" requires="^"
+              exec="onos-check-node-status ${OC2} ${OC1} INACTIVE"/>
+
+        <step name="Net-Intent-Kill-Master.Await-Recompile" requires="^"
+              exec="sleep 15"/>
+
+        <step name="Net-Intent-Kill-Master.Validate-Intent-Installed-Still" requires="^"
+              exec="onos-check-intent ${OC2} h2h INSTALLED"/>
+
+        <step name="Net-Intent-Kill-Master.Node-Start" requires="^"
+              exec="onos-service ${OC1} start"/>
+
+        <step name="Net-Intent-Kill-Master.Wait-for-Start" requires="^"
+              exec="onos-wait-for-start ${OC1}"/>
+
+        <step name="Net-Intent-Kill-Master.Validate-Intent-Installed-Still-2" requires="^"
+              exec="onos-check-intent ${OC1} h2h INSTALLED"/>
+
+        <step name="Net-Intent-Kill-Master.Balance-Masters" requires="^"
+              exec="onos ${OC2} balance-masters"/>
+    </group>
+</scenario>
