@@ -48,7 +48,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 
 import com.google.common.cache.Cache;
@@ -87,7 +86,11 @@ import org.apache.felix.scr.annotations.Service;
 import org.onosproject.cluster.ClusterMetadataService;
 import org.onosproject.cluster.ControllerNode;
 import org.onosproject.core.HybridLogicalClockService;
+import org.onosproject.core.Version;
+import org.onosproject.core.VersionService;
 import org.onosproject.store.cluster.messaging.Endpoint;
+import org.onosproject.store.cluster.messaging.MessageConsumer;
+import org.onosproject.store.cluster.messaging.MessageHandler;
 import org.onosproject.store.cluster.messaging.MessagingException;
 import org.onosproject.store.cluster.messaging.MessagingService;
 import org.slf4j.Logger;
@@ -128,7 +131,11 @@ public class NettyMessagingManager implements MessagingService {
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected HybridLogicalClockService clockService;
 
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected VersionService versionService;
+
     private Endpoint localEndpoint;
+    private Version localVersion;
     private int preamble;
     private final AtomicBoolean started = new AtomicBoolean(false);
     private final Map<String, BiConsumer<InternalRequest, ServerConnection>> handlers = new ConcurrentHashMap<>();
@@ -167,6 +174,7 @@ public class NettyMessagingManager implements MessagingService {
         }
         this.preamble = clusterMetadataService.getClusterMetadata().getName().hashCode();
         this.localEndpoint = new Endpoint(localNode.ip(), localNode.tcpPort());
+        this.localVersion = versionService.version();
         initEventLoopGroup();
         startAcceptingConnections();
         timeoutExecutor = Executors.newSingleThreadScheduledExecutor(
@@ -299,6 +307,7 @@ public class NettyMessagingManager implements MessagingService {
                 clockService.timeNow(),
                 messageIdGenerator.incrementAndGet(),
                 localEndpoint,
+                localVersion,
                 type,
                 payload);
         return executeOnPooledConnection(ep, type, c -> c.sendAsync(message), MoreExecutors.directExecutor());
@@ -318,6 +327,7 @@ public class NettyMessagingManager implements MessagingService {
                 clockService.timeNow(),
                 messageId,
                 localEndpoint,
+                localVersion,
                 type,
                 payload);
         return executeOnPooledConnection(ep, type, c -> c.sendAndReceive(message), executor);
@@ -432,20 +442,20 @@ public class NettyMessagingManager implements MessagingService {
     }
 
     @Override
-    public void registerHandler(String type, BiConsumer<Endpoint, byte[]> handler, Executor executor) {
+    public void registerHandler(String type, MessageConsumer<byte[]> handler, Executor executor) {
         checkPermission(CLUSTER_WRITE);
         handlers.put(type, (message, connection) -> executor.execute(() ->
-                handler.accept(message.sender(), message.payload())));
+                handler.consume(message.sender(), message.payload(), message.version())));
     }
 
     @Override
-    public void registerHandler(String type, BiFunction<Endpoint, byte[], byte[]> handler, Executor executor) {
+    public void registerHandler(String type, MessageHandler<byte[], byte[]> handler, Executor executor) {
         checkPermission(CLUSTER_WRITE);
         handlers.put(type, (message, connection) -> executor.execute(() -> {
             byte[] responsePayload = null;
             InternalReply.Status status = InternalReply.Status.OK;
             try {
-                responsePayload = handler.apply(message.sender(), message.payload());
+                responsePayload = handler.handle(message.sender(), message.payload(), message.version());
             } catch (Exception e) {
                 log.debug("An error occurred in a message handler: {}", e);
                 status = InternalReply.Status.ERROR_HANDLER_EXCEPTION;
@@ -455,10 +465,10 @@ public class NettyMessagingManager implements MessagingService {
     }
 
     @Override
-    public void registerHandler(String type, BiFunction<Endpoint, byte[], CompletableFuture<byte[]>> handler) {
+    public void registerHandler(String type, MessageHandler<byte[], CompletableFuture<byte[]>> handler) {
         checkPermission(CLUSTER_WRITE);
         handlers.put(type, (message, connection) -> {
-            handler.apply(message.sender(), message.payload()).whenComplete((result, error) -> {
+            handler.handle(message.sender(), message.payload(), message.version()).whenComplete((result, error) -> {
                 InternalReply.Status status;
                 if (error == null) {
                     status = InternalReply.Status.OK;
@@ -563,7 +573,7 @@ public class NettyMessagingManager implements MessagingService {
             serverSslEngine.setEnableSessionCreation(true);
 
             channel.pipeline().addLast("ssl", new io.netty.handler.ssl.SslHandler(serverSslEngine))
-                    .addLast("encoder", new MessageEncoder(localEndpoint, preamble))
+                    .addLast("encoder", new MessageEncoder(localEndpoint, localVersion, preamble))
                     .addLast("decoder", new MessageDecoder())
                     .addLast("handler", dispatcher);
         }
@@ -588,7 +598,7 @@ public class NettyMessagingManager implements MessagingService {
             clientSslEngine.setEnableSessionCreation(true);
 
             channel.pipeline().addLast("ssl", new io.netty.handler.ssl.SslHandler(clientSslEngine))
-                    .addLast("encoder", new MessageEncoder(localEndpoint, preamble))
+                    .addLast("encoder", new MessageEncoder(localEndpoint, localVersion, preamble))
                     .addLast("decoder", new MessageDecoder())
                     .addLast("handler", dispatcher);
         }
@@ -603,7 +613,7 @@ public class NettyMessagingManager implements MessagingService {
         @Override
         protected void initChannel(SocketChannel channel) throws Exception {
             channel.pipeline()
-                    .addLast("encoder", new MessageEncoder(localEndpoint, preamble))
+                    .addLast("encoder", new MessageEncoder(localEndpoint, localVersion, preamble))
                     .addLast("decoder", new MessageDecoder())
                     .addLast("handler", dispatcher);
         }

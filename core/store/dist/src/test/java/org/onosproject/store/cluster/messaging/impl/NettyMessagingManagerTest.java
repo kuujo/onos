@@ -30,8 +30,10 @@ import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.core.HybridLogicalClockService;
 import org.onosproject.core.HybridLogicalTime;
+import org.onosproject.core.Version;
 import org.onosproject.net.provider.ProviderId;
 import org.onosproject.store.cluster.messaging.Endpoint;
+import org.onosproject.store.cluster.messaging.MessageHandler;
 
 import java.net.ConnectException;
 import java.util.Arrays;
@@ -87,12 +89,14 @@ public class NettyMessagingManagerTest {
         netty1 = new NettyMessagingManager();
         netty1.clusterMetadataService = dummyMetadataService(DUMMY_NAME, IP_STRING, ep1);
         netty1.clockService = testClockService;
+        netty1.versionService = () -> Version.version("1.0.0");
         netty1.activate();
 
         ep2 = new Endpoint(IpAddress.valueOf("127.0.0.1"), findAvailablePort(5003));
         netty2 = new NettyMessagingManager();
         netty2.clusterMetadataService = dummyMetadataService(DUMMY_NAME, IP_STRING, ep2);
         netty2.clockService = testClockService;
+        netty2.versionService = () -> Version.version("2.0.0");
         netty2.activate();
     }
 
@@ -144,7 +148,8 @@ public class NettyMessagingManagerTest {
         AtomicReference<byte[]> request = new AtomicReference<>();
         AtomicReference<Endpoint> sender = new AtomicReference<>();
 
-        BiFunction<Endpoint, byte[], byte[]> handler = (ep, data) -> {
+        MessageHandler<byte[], byte[]> handler = (ep, data, version) -> {
+            assertEquals(Version.version("1.0.0"), version);
             handlerInvoked.set(true);
             sender.set(ep);
             request.set(data);

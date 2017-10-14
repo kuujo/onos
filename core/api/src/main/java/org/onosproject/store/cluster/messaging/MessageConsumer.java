@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-present Open Networking Foundation
+ * Copyright 2017-present Open Networking Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,24 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.onosproject.store.cluster.messaging.impl;
+package org.onosproject.store.cluster.messaging;
+
+import org.onosproject.core.Version;
 
 /**
- * State transitions a decoder goes through as it is decoding an incoming message.
+ * Message consumer that consumes messages with source information.
  */
-public enum DecoderState {
-    READ_TYPE,
-    READ_PREAMBLE,
-    READ_LOGICAL_TIME,
-    READ_LOGICAL_COUNTER,
-    READ_MESSAGE_ID,
-    READ_SENDER_IP_VERSION,
-    READ_SENDER_IP,
-    READ_SENDER_PORT,
-    READ_SENDER_VERSION,
-    READ_SUBJECT_LENGTH,
-    READ_SUBJECT,
-    READ_STATUS,
-    READ_CONTENT_LENGTH,
-    READ_CONTENT
+public interface MessageConsumer<T> {
+
+    /**
+     * Consumes a message with source information.
+     *
+     * @param endpoint the source endpoint
+     * @param message the message
+     * @param version the source version
+     */
+    void consume(Endpoint endpoint, T message, Version version);
+
 }

@@ -60,7 +60,10 @@ public interface MessagingService {
      * @param handler message handler
      * @param executor executor to use for running message handler logic.
      */
-    void registerHandler(String type, BiConsumer<Endpoint, byte[]> handler, Executor executor);
+    default void registerHandler(String type, BiConsumer<Endpoint, byte[]> handler, Executor executor) {
+        registerHandler(type, (MessageConsumer<byte[]>) (endpoint, message, version) ->
+                handler.accept(endpoint, message), executor);
+    }
 
     /**
      * Registers a new message handler for message type.
@@ -68,14 +71,42 @@ public interface MessagingService {
      * @param handler message handler
      * @param executor executor to use for running message handler logic.
      */
-    void registerHandler(String type, BiFunction<Endpoint, byte[], byte[]> handler, Executor executor);
+    void registerHandler(String type, MessageConsumer<byte[]> handler, Executor executor);
+
+    /**
+     * Registers a new message handler for message type.
+     * @param type message type.
+     * @param handler message handler
+     * @param executor executor to use for running message handler logic.
+     */
+    default void registerHandler(String type, BiFunction<Endpoint, byte[], byte[]> handler, Executor executor) {
+        registerHandler(type, (MessageHandler<byte[], byte[]>) (endpoint, message, version) ->
+                handler.apply(endpoint, message), executor);
+    }
+
+    /**
+     * Registers a new message handler for message type.
+     * @param type message type.
+     * @param handler message handler
+     * @param executor executor to use for running message handler logic.
+     */
+    void registerHandler(String type, MessageHandler<byte[], byte[]> handler, Executor executor);
 
     /**
      * Registers a new message handler for message type.
      * @param type message type.
      * @param handler message handler
      */
-    void registerHandler(String type, BiFunction<Endpoint, byte[], CompletableFuture<byte[]>> handler);
+    default void registerHandler(String type, BiFunction<Endpoint, byte[], CompletableFuture<byte[]>> handler) {
+        registerHandler(type, (endpoint, message, version) -> handler.apply(endpoint, message));
+    }
+
+    /**
+     * Registers a new message handler for message type.
+     * @param type message type.
+     * @param handler message handler
+     */
+    void registerHandler(String type, MessageHandler<byte[], CompletableFuture<byte[]>> handler);
 
     /**
      * Unregister current handler, if one exists for message type.
