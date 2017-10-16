@@ -17,7 +17,6 @@ package org.onosproject.store.primitives.resources.impl;
 
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.concurrent.ScheduledExecutorService;
 
 import io.atomix.protocols.raft.ReadConsistency;
 import io.atomix.protocols.raft.cluster.MemberId;
@@ -82,7 +81,7 @@ public class AtomixWorkQueueServiceTest {
                 5000,
                 context,
                 server,
-                mock(ScheduledExecutorService.class));
+                () -> mock(ThreadContext.class));
 
         AtomixWorkQueueService service = new AtomixWorkQueueService();
         service.init(context);

@@ -15,8 +15,6 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import java.util.concurrent.ScheduledExecutorService;
-
 import io.atomix.protocols.raft.ReadConsistency;
 import io.atomix.protocols.raft.cluster.MemberId;
 import io.atomix.protocols.raft.impl.RaftContext;
@@ -88,7 +86,7 @@ public class AtomixLeaderElectorServiceTest {
                         5000,
                         context,
                         server,
-                        mock(ScheduledExecutorService.class)),
+                        () -> mock(ThreadContext.class)),
                 System.currentTimeMillis()));
 
         try (SnapshotWriter writer = snapshot.openWriter()) {
