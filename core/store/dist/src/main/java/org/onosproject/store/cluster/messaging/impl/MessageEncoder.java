@@ -16,13 +16,13 @@
 package org.onosproject.store.cluster.messaging.impl;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 import com.google.common.base.Charsets;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToByteEncoder;
 import org.onlab.packet.IpAddress;
-import org.onlab.packet.IpAddress.Version;
 import org.onosproject.store.cluster.messaging.Endpoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,16 +61,22 @@ public class MessageEncoder extends MessageToByteEncoder<Object> {
     private void encodeMessage(InternalMessage message, ByteBuf out) {
         // If the endpoint hasn't been written to the channel, write it.
         if (!endpointWritten) {
+            // Write the sender IP.
             IpAddress senderIp = endpoint.host();
-            if (senderIp.version() == Version.INET) {
+            if (senderIp.version() == IpAddress.Version.INET) {
                 out.writeByte(0);
             } else {
                 out.writeByte(1);
             }
             out.writeBytes(senderIp.toOctets());
 
-            // write sender port
+            // Write the sender port.
             out.writeInt(endpoint.port());
+
+            // Write the sender version.
+            byte[] versionBytes = endpoint.version().toString().getBytes(StandardCharsets.UTF_8);
+            out.writeInt(versionBytes.length);
+            out.writeBytes(versionBytes);
 
             endpointWritten = true;
         }

@@ -16,7 +16,6 @@
 package org.onosproject.store.cluster.messaging.impl;
 
 import com.google.common.base.MoreObjects;
-
 import org.onlab.util.ByteArraySizeHashPrinter;
 import org.onosproject.core.HybridLogicalTime;
 import org.onosproject.store.cluster.messaging.Endpoint;
@@ -25,23 +24,27 @@ import org.onosproject.store.cluster.messaging.Endpoint;
  * Internal request message.
  */
 public final class InternalRequest extends InternalMessage {
+    private final Type type;
     private final Endpoint sender;
     private final String subject;
 
-    public InternalRequest(int preamble,
-                           HybridLogicalTime time,
-                           long id,
-                           Endpoint sender,
-                           String subject,
-                           byte[] payload) {
+    public InternalRequest(
+            Type type,
+            int preamble,
+            HybridLogicalTime time,
+            long id,
+            Endpoint sender,
+            String subject,
+            byte[] payload) {
         super(preamble, time, id, payload);
+        this.type = type;
         this.sender = sender;
         this.subject = subject;
     }
 
     @Override
     public Type type() {
-        return Type.REQUEST;
+        return type;
     }
 
     public String subject() {

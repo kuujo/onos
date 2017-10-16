@@ -27,7 +27,8 @@ public abstract class InternalMessage {
      */
     public enum Type {
         REQUEST(1),
-        REPLY(2);
+        REPLY(2),
+        VERSIONED(3);
 
         private final int id;
 
@@ -56,6 +57,8 @@ public abstract class InternalMessage {
                     return REQUEST;
                 case 2:
                     return REPLY;
+                case 3:
+                    return VERSIONED;
                 default:
                     throw new IllegalArgumentException("Unknown status ID " + id);
             }
@@ -80,7 +83,7 @@ public abstract class InternalMessage {
     public abstract Type type();
 
     public boolean isRequest() {
-        return type() == Type.REQUEST;
+        return type() == Type.REQUEST || type() == Type.VERSIONED;
     }
 
     public boolean isReply() {

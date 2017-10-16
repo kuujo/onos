@@ -15,6 +15,20 @@
  */
 package org.onosproject.store.cluster.messaging.impl;
 
+import java.net.ConnectException;
+import java.util.Arrays;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
+
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.Uninterruptibles;
@@ -30,22 +44,10 @@ import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.core.HybridLogicalClockService;
 import org.onosproject.core.HybridLogicalTime;
+import org.onosproject.core.Version;
 import org.onosproject.net.provider.ProviderId;
 import org.onosproject.store.cluster.messaging.Endpoint;
-
-import java.net.ConnectException;
-import java.util.Arrays;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiFunction;
+import org.onosproject.store.cluster.messaging.MessagingException;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -73,27 +75,38 @@ public class NettyMessagingManagerTest {
 
     NettyMessagingManager netty1;
     NettyMessagingManager netty2;
+    NettyMessagingManager netty3;
 
     private static final String DUMMY_NAME = "node";
     private static final String IP_STRING = "127.0.0.1";
 
-    Endpoint ep1 = new Endpoint(IpAddress.valueOf(IP_STRING), 5001);
-    Endpoint ep2 = new Endpoint(IpAddress.valueOf(IP_STRING), 5002);
-    Endpoint invalidEndPoint = new Endpoint(IpAddress.valueOf(IP_STRING), 5003);
+    Endpoint ep1 = new Endpoint(IpAddress.valueOf(IP_STRING), 5001, Version.version("1.0.0"));
+    Endpoint ep2 = new Endpoint(IpAddress.valueOf(IP_STRING), 5002, Version.version("1.0.0"));
+    Endpoint ep3 = new Endpoint(IpAddress.valueOf(IP_STRING), 5003, Version.version("2.0.0"));
+    Endpoint invalidEndPoint = new Endpoint(IpAddress.valueOf(IP_STRING), 5004);
 
     @Before
     public void setUp() throws Exception {
-        ep1 = new Endpoint(IpAddress.valueOf("127.0.0.1"), findAvailablePort(5001));
+        ep1 = new Endpoint(IpAddress.valueOf("127.0.0.1"), findAvailablePort(5001), Version.version("1.0.0"));
         netty1 = new NettyMessagingManager();
         netty1.clusterMetadataService = dummyMetadataService(DUMMY_NAME, IP_STRING, ep1);
         netty1.clockService = testClockService;
+        netty1.versionService = () -> Version.version("1.0.0");
         netty1.activate();
 
-        ep2 = new Endpoint(IpAddress.valueOf("127.0.0.1"), findAvailablePort(5003));
+        ep2 = new Endpoint(IpAddress.valueOf("127.0.0.1"), findAvailablePort(5002), Version.version("1.0.0"));
         netty2 = new NettyMessagingManager();
         netty2.clusterMetadataService = dummyMetadataService(DUMMY_NAME, IP_STRING, ep2);
         netty2.clockService = testClockService;
+        netty2.versionService = () -> Version.version("1.0.0");
         netty2.activate();
+
+        ep3 = new Endpoint(IpAddress.valueOf("127.0.0.1"), findAvailablePort(5002), Version.version("2.0.0"));
+        netty3 = new NettyMessagingManager();
+        netty3.clusterMetadataService = dummyMetadataService(DUMMY_NAME, IP_STRING, ep3);
+        netty3.clockService = testClockService;
+        netty3.versionService = () -> Version.version("2.0.0");
+        netty3.activate();
     }
 
     /**
@@ -145,6 +158,7 @@ public class NettyMessagingManagerTest {
         AtomicReference<Endpoint> sender = new AtomicReference<>();
 
         BiFunction<Endpoint, byte[], byte[]> handler = (ep, data) -> {
+            assertEquals(Version.version("1.0.0"), ep.version());
             handlerInvoked.set(true);
             sender.set(ep);
             request.set(data);
@@ -152,11 +166,57 @@ public class NettyMessagingManagerTest {
         };
         netty2.registerHandler(subject, handler, MoreExecutors.directExecutor());
 
-        CompletableFuture<byte[]> response = netty1.sendAndReceive(ep2, subject, "hello world".getBytes());
+        CompletableFuture<byte[]> response = netty1.sendAndReceive(
+                Endpoint.endpoint(ep2.host(), ep2.port()), subject, "hello world".getBytes());
         assertTrue(Arrays.equals("hello there".getBytes(), response.join()));
         assertTrue(handlerInvoked.get());
         assertTrue(Arrays.equals(request.get(), "hello world".getBytes()));
-        assertEquals(ep1, sender.get());
+        assertTrue(ep1.equalsIgnoreVersion(sender.get()));
+    }
+
+    @Test
+    @Ignore
+    public void testSendAndReceiveVersioned() {
+        String subject = nextSubject();
+        AtomicBoolean handlerInvoked = new AtomicBoolean(false);
+        AtomicReference<byte[]> request = new AtomicReference<>();
+        AtomicReference<Endpoint> sender = new AtomicReference<>();
+
+        BiFunction<Endpoint, byte[], byte[]> handler = (ep, data) -> {
+            assertEquals(Version.version("1.0.0"), ep.version());
+            handlerInvoked.set(true);
+            sender.set(ep);
+            request.set(data);
+            return "hello there".getBytes();
+        };
+        netty2.registerHandler(subject, handler, MoreExecutors.directExecutor());
+
+        CompletableFuture<byte[]> response = netty1.sendAndReceive(
+                Endpoint.versioned(ep2.host(), ep2.port()), subject, "hello world".getBytes());
+        assertTrue(Arrays.equals("hello there".getBytes(), response.join()));
+        assertTrue(handlerInvoked.get());
+        assertTrue(Arrays.equals(request.get(), "hello world".getBytes()));
+        assertTrue(ep1.equalsIgnoreVersion(sender.get()));
+    }
+
+    @Test
+    @Ignore
+    public void testSendAndReceiveVersionedFailure() {
+        String subject = nextSubject();
+        BiFunction<Endpoint, byte[], byte[]> handler = (ep, data) -> {
+            fail();
+            return "hello there".getBytes();
+        };
+        netty3.registerHandler(subject, handler, MoreExecutors.directExecutor());
+
+        CompletableFuture<byte[]> response = netty1.sendAndReceive(
+                new Endpoint(ep3.host(), ep3.port(), Version.version("1.0.0")), subject, "hello world".getBytes());
+        try {
+            response.join();
+            fail();
+        } catch (CompletionException e) {
+            assertTrue(e.getCause() instanceof MessagingException.NoRemoteHandler);
+        }
     }
 
     @Test

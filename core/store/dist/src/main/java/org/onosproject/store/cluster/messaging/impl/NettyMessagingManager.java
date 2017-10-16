@@ -33,6 +33,7 @@ import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.concurrent.CompletableFuture;
@@ -87,6 +88,8 @@ import org.apache.felix.scr.annotations.Service;
 import org.onosproject.cluster.ClusterMetadataService;
 import org.onosproject.cluster.ControllerNode;
 import org.onosproject.core.HybridLogicalClockService;
+import org.onosproject.core.Version;
+import org.onosproject.core.VersionService;
 import org.onosproject.store.cluster.messaging.Endpoint;
 import org.onosproject.store.cluster.messaging.MessagingException;
 import org.onosproject.store.cluster.messaging.MessagingService;
@@ -156,6 +159,9 @@ public class NettyMessagingManager implements MessagingService {
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected ClusterMetadataService clusterMetadataService;
 
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected VersionService versionService;
+
     @Activate
     public void activate() throws Exception {
         ControllerNode localNode = clusterMetadataService.getLocalNode();
@@ -166,7 +172,7 @@ public class NettyMessagingManager implements MessagingService {
             return;
         }
         this.preamble = clusterMetadataService.getClusterMetadata().getName().hashCode();
-        this.localEndpoint = new Endpoint(localNode.ip(), localNode.tcpPort());
+        this.localEndpoint = new Endpoint(localNode.ip(), localNode.tcpPort(), versionService.version());
         initEventLoopGroup();
         startAcceptingConnections();
         timeoutExecutor = Executors.newSingleThreadScheduledExecutor(
@@ -292,10 +298,22 @@ public class NettyMessagingManager implements MessagingService {
         }
     }
 
+    private void checkVersion(Endpoint ep) {
+        Version version = ep.version();
+        if (version != null && !version.equals(localEndpoint.version()) && !version.equals(Version.NONE)) {
+            throw new IllegalArgumentException("Endpoint version must be equivalent to the local version "
+                    + localEndpoint.version());
+        }
+    }
+
     @Override
     public CompletableFuture<Void> sendAsync(Endpoint ep, String type, byte[] payload) {
         checkPermission(CLUSTER_WRITE);
-        InternalRequest message = new InternalRequest(preamble,
+        checkVersion(ep);
+
+        InternalRequest message = new InternalRequest(
+                ep.version() != null ? InternalMessage.Type.VERSIONED : InternalMessage.Type.REQUEST,
+                preamble,
                 clockService.timeNow(),
                 messageIdGenerator.incrementAndGet(),
                 localEndpoint,
@@ -313,8 +331,12 @@ public class NettyMessagingManager implements MessagingService {
     @Override
     public CompletableFuture<byte[]> sendAndReceive(Endpoint ep, String type, byte[] payload, Executor executor) {
         checkPermission(CLUSTER_WRITE);
+        checkVersion(ep);
+
         long messageId = messageIdGenerator.incrementAndGet();
-        InternalRequest message = new InternalRequest(preamble,
+        InternalRequest message = new InternalRequest(
+                ep.version() != null ? InternalMessage.Type.VERSIONED : InternalMessage.Type.REQUEST,
+                preamble,
                 clockService.timeNow(),
                 messageId,
                 localEndpoint,
@@ -404,7 +426,7 @@ public class NettyMessagingManager implements MessagingService {
             Function<ClientConnection, CompletableFuture<T>> callback,
             Executor executor,
             CompletableFuture<T> future) {
-        if (endpoint.equals(localEndpoint)) {
+        if (endpoint.equalsIgnoreVersion(localEndpoint)) {
             callback.apply(localClientConnection).whenComplete((result, error) -> {
                if (error == null) {
                    executor.execute(() -> future.complete(result));
@@ -742,6 +764,12 @@ public class NettyMessagingManager implements MessagingService {
     private final class LocalClientConnection implements ClientConnection {
         @Override
         public CompletableFuture<Void> sendAsync(InternalRequest message) {
+            if (message.type() == InternalMessage.Type.VERSIONED
+                    && !Objects.equals(localEndpoint.version(), message.sender().version())) {
+                log.debug("Incorrect version message from {}", message.sender());
+                return CompletableFuture.completedFuture(null);
+            }
+
             BiConsumer<InternalRequest, ServerConnection> handler = handlers.get(message.subject());
             if (handler != null) {
                 handler.accept(message, localServerConnection);
@@ -754,13 +782,19 @@ public class NettyMessagingManager implements MessagingService {
         @Override
         public CompletableFuture<byte[]> sendAndReceive(InternalRequest message) {
             CompletableFuture<byte[]> future = new CompletableFuture<>();
-            BiConsumer<InternalRequest, ServerConnection> handler = handlers.get(message.subject());
-            if (handler != null) {
-                handler.accept(message, new LocalServerConnection(future));
-            } else {
-                log.debug("No handler for message type {} from {}", message.type(), message.sender());
+            if (message.type() == InternalMessage.Type.VERSIONED
+                    && !Objects.equals(localEndpoint.version(), message.sender().version())) {
                 new LocalServerConnection(future)
                         .reply(message, InternalReply.Status.ERROR_NO_HANDLER, Optional.empty());
+            } else {
+                BiConsumer<InternalRequest, ServerConnection> handler = handlers.get(message.subject());
+                if (handler != null) {
+                    handler.accept(message, new LocalServerConnection(future));
+                } else {
+                    log.debug("No handler for message type {} from {}", message.type(), message.sender());
+                    new LocalServerConnection(future)
+                            .reply(message, InternalReply.Status.ERROR_NO_HANDLER, Optional.empty());
+                }
             }
             return future;
         }
@@ -935,6 +969,13 @@ public class NettyMessagingManager implements MessagingService {
             if (message.preamble() != preamble) {
                 log.debug("Received {} with invalid preamble from {}", message.type(), message.sender());
                 reply(message, InternalReply.Status.PROTOCOL_EXCEPTION, Optional.empty());
+                return;
+            }
+
+            if (message.type() == InternalMessage.Type.VERSIONED
+                    && !Objects.equals(localEndpoint.version(), message.sender().version())) {
+                log.debug("Rejected {} from {}", message.type(), message.sender());
+                reply(message, InternalReply.Status.ERROR_NO_HANDLER, Optional.empty());
                 return;
             }
 

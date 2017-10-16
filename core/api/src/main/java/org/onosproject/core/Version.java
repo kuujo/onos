@@ -26,6 +26,8 @@ import static java.lang.Integer.parseInt;
  */
 public final class Version {
 
+    public static final Version NONE = version("0.0");
+
     public static final String FORMAT_MINIMAL = "%d.%d";
     public static final String FORMAT_SHORT = "%d.%d.%s";
     public static final String FORMAT_LONG = "%d.%d.%s.%s";

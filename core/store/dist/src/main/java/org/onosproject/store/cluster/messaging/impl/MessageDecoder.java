@@ -22,12 +22,13 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ReplayingDecoder;
 
 import org.onlab.packet.IpAddress;
-import org.onlab.packet.IpAddress.Version;
 import org.onosproject.core.HybridLogicalTime;
+import org.onosproject.core.Version;
 import org.onosproject.store.cluster.messaging.Endpoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static com.google.common.base.Preconditions.checkState;
@@ -39,9 +40,10 @@ public class MessageDecoder extends ReplayingDecoder<DecoderState> {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
-    private Version ipVersion;
+    private IpAddress.Version ipVersion;
     private IpAddress senderIp;
     private int senderPort;
+    private Version senderVersion;
 
     private InternalMessage.Type type;
     private int preamble;
@@ -67,7 +69,7 @@ public class MessageDecoder extends ReplayingDecoder<DecoderState> {
 
         switch (state()) {
             case READ_SENDER_IP_VERSION:
-                ipVersion = buffer.readByte() == 0x0 ? Version.INET : Version.INET6;
+                ipVersion = buffer.readByte() == 0x0 ? IpAddress.Version.INET : IpAddress.Version.INET6;
                 checkpoint(DecoderState.READ_SENDER_IP);
             case READ_SENDER_IP:
                 byte[] octets = new byte[IpAddress.byteLength(ipVersion)];
@@ -76,6 +78,12 @@ public class MessageDecoder extends ReplayingDecoder<DecoderState> {
                 checkpoint(DecoderState.READ_SENDER_PORT);
             case READ_SENDER_PORT:
                 senderPort = buffer.readInt();
+                checkpoint(DecoderState.READ_SENDER_VERSION);
+            case READ_SENDER_VERSION:
+                int versionLength = buffer.readInt();
+                byte[] versionBytes = new byte[versionLength];
+                buffer.readBytes(versionBytes);
+                senderVersion = Version.version(new String(versionBytes, StandardCharsets.UTF_8));
                 checkpoint(DecoderState.READ_TYPE);
             case READ_TYPE:
                 type = InternalMessage.Type.forId(buffer.readByte());
@@ -106,6 +114,7 @@ public class MessageDecoder extends ReplayingDecoder<DecoderState> {
 
                 switch (type) {
                     case REQUEST:
+                    case VERSIONED:
                         checkpoint(DecoderState.READ_SUBJECT_LENGTH);
                         break;
                     case REPLY:
@@ -121,6 +130,7 @@ public class MessageDecoder extends ReplayingDecoder<DecoderState> {
 
         switch (type) {
             case REQUEST:
+            case VERSIONED:
                 switch (state()) {
                     case READ_SUBJECT_LENGTH:
                         subjectLength = buffer.readShort();
@@ -129,10 +139,12 @@ public class MessageDecoder extends ReplayingDecoder<DecoderState> {
                         byte[] messageTypeBytes = new byte[subjectLength];
                         buffer.readBytes(messageTypeBytes);
                         subject = new String(messageTypeBytes, Charsets.UTF_8);
-                        InternalRequest message = new InternalRequest(preamble,
+                        InternalRequest message = new InternalRequest(
+                                type,
+                                preamble,
                                 new HybridLogicalTime(logicalTime, logicalCounter),
                                 messageId,
-                                new Endpoint(senderIp, senderPort),
+                                new Endpoint(senderIp, senderPort, senderVersion),
                                 subject,
                                 content);
                         out.add(message);
