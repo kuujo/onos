@@ -43,9 +43,10 @@ import org.onosproject.core.Version;
 import org.onosproject.core.VersionService;
 import org.onosproject.event.Change;
 import org.onosproject.store.AbstractStore;
+import org.onosproject.store.service.DistributedPrimitive;
 import org.onosproject.store.service.DistributedPrimitive.Status;
-import org.onosproject.store.service.CoordinationService;
 import org.onosproject.store.service.LeaderElector;
+import org.onosproject.store.service.StorageService;
 import org.onosproject.upgrade.UpgradeEvent;
 import org.onosproject.upgrade.UpgradeEventListener;
 import org.onosproject.upgrade.UpgradeService;
@@ -76,7 +77,7 @@ public class DistributedLeadershipStore
     protected ClusterService clusterService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected CoordinationService storageService;
+    protected StorageService storageService;
 
     @Reference(cardinality = MANDATORY_UNARY)
     protected ComponentConfigService configService;
@@ -172,6 +173,7 @@ public class DistributedLeadershipStore
         leaderElector = storageService.leaderElectorBuilder()
                 .withName("onos-leadership-elections")
                 .withElectionTimeout(electionTimeoutMillis)
+                .withIsolation(DistributedPrimitive.Isolation.NONE)
                 .build()
                 .asLeaderElector();
         leaderElector.addChangeListener(leadershipChangeListener);
@@ -201,6 +203,7 @@ public class DistributedLeadershipStore
             leaderElector = storageService.leaderElectorBuilder()
                     .withName("onos-leadership-elections")
                     .withElectionTimeout(electionTimeoutMillis)
+                    .withIsolation(DistributedPrimitive.Isolation.NONE)
                     .build()
                     .asLeaderElector();
         }

@@ -16,7 +16,6 @@
 
 package org.onosproject.store.primitives.impl;
 
-import org.onosproject.store.primitives.DistributedPrimitiveCreator;
 import org.onosproject.store.service.AsyncConsistentMultimap;
 import org.onosproject.store.service.ConsistentMultimap;
 import org.onosproject.store.service.ConsistentMultimapBuilder;
@@ -27,16 +26,16 @@ import org.onosproject.store.service.ConsistentMultimapBuilder;
 public class DefaultConsistentMultimapBuilder<K, V>
         extends ConsistentMultimapBuilder<K, V> {
 
-    private final DistributedPrimitiveCreator primitiveCreator;
+    private final FederatedDistributedPrimitiveCreator primitiveCreator;
 
     public DefaultConsistentMultimapBuilder(
-            DistributedPrimitiveCreator primitiveCreator) {
+            FederatedDistributedPrimitiveCreator primitiveCreator) {
         this.primitiveCreator = primitiveCreator;
     }
 
     @Override
     public AsyncConsistentMultimap<K, V> buildMultimap() {
-        return primitiveCreator.newAsyncConsistentSetMultimap(name(), serializer());
+        return primitiveCreator.newAsyncConsistentSetMultimap(name(), serializer(), isolation());
     }
 
     @Override

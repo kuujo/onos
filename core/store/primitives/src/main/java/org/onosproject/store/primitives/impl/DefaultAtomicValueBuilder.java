@@ -20,6 +20,7 @@ import java.util.function.Supplier;
 import org.onosproject.store.service.AsyncAtomicValue;
 import org.onosproject.store.service.AtomicValueBuilder;
 import org.onosproject.store.service.ConsistentMapBuilder;
+import org.onosproject.store.service.DistributedPrimitive;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
@@ -34,6 +35,12 @@ public class DefaultAtomicValueBuilder<V> extends AtomicValueBuilder<V> {
 
     public DefaultAtomicValueBuilder(Supplier<ConsistentMapBuilder<String, byte[]>> mapBuilderSupplier) {
         mapBuilder = mapBuilderSupplier.get();
+    }
+
+    @Override
+    public AtomicValueBuilder<V> withIsolation(DistributedPrimitive.Isolation isolation) {
+        mapBuilder.withIsolation(isolation);
+        return this;
     }
 
     @Override

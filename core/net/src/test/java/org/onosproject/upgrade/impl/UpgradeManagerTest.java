@@ -42,7 +42,7 @@ import org.onosproject.store.service.AsyncAtomicValueAdapter;
 import org.onosproject.store.service.AtomicValue;
 import org.onosproject.store.service.AtomicValueAdapter;
 import org.onosproject.store.service.AtomicValueBuilder;
-import org.onosproject.store.service.CoordinationServiceAdapter;
+import org.onosproject.store.service.StorageServiceAdapter;
 import org.onosproject.upgrade.Upgrade;
 
 import static org.junit.Assert.assertEquals;
@@ -125,7 +125,7 @@ public class UpgradeManagerTest {
             }
         };
 
-        upgradeManager.coordinationService = new CoordinationServiceAdapter() {
+        upgradeManager.storageService = new StorageServiceAdapter() {
             @Override
             public <V> AtomicValueBuilder<V> atomicValueBuilder() {
                 return new AtomicValueBuilder<V>() {

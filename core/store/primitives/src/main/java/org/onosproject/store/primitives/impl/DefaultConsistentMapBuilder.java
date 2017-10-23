@@ -15,7 +15,6 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import org.onosproject.store.primitives.DistributedPrimitiveCreator;
 import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.ConsistentMapBuilder;
@@ -28,9 +27,9 @@ import org.onosproject.store.service.ConsistentMapBuilder;
  */
 public class DefaultConsistentMapBuilder<K, V> extends ConsistentMapBuilder<K, V> {
 
-    private final DistributedPrimitiveCreator primitiveCreator;
+    private final FederatedDistributedPrimitiveCreator primitiveCreator;
 
-    public DefaultConsistentMapBuilder(DistributedPrimitiveCreator primitiveCreator) {
+    public DefaultConsistentMapBuilder(FederatedDistributedPrimitiveCreator primitiveCreator) {
         this.primitiveCreator = primitiveCreator;
     }
 
@@ -41,7 +40,7 @@ public class DefaultConsistentMapBuilder<K, V> extends ConsistentMapBuilder<K, V
 
     @Override
     public AsyncConsistentMap<K, V> buildAsyncMap() {
-        AsyncConsistentMap<K, V> map = primitiveCreator.newAsyncConsistentMap(name(), serializer());
+        AsyncConsistentMap<K, V> map = primitiveCreator.newAsyncConsistentMap(name(), serializer(), isolation());
         map = nullValues() ? map : DistributedPrimitives.newNotNullMap(map);
         map = relaxedReadConsistency() ? DistributedPrimitives.newCachingMap(map) : map;
         map = readOnly() ? DistributedPrimitives.newUnmodifiableMap(map) : map;

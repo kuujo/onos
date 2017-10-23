@@ -15,7 +15,6 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import org.onosproject.store.primitives.DistributedPrimitiveCreator;
 import org.onosproject.store.service.AsyncAtomicCounter;
 import org.onosproject.store.service.AtomicCounterBuilder;
 
@@ -24,14 +23,14 @@ import org.onosproject.store.service.AtomicCounterBuilder;
  */
 public class DefaultAtomicCounterBuilder extends AtomicCounterBuilder {
 
-    private final DistributedPrimitiveCreator primitiveCreator;
+    private final FederatedDistributedPrimitiveCreator primitiveCreator;
 
-    public DefaultAtomicCounterBuilder(DistributedPrimitiveCreator primitiveCreator) {
+    public DefaultAtomicCounterBuilder(FederatedDistributedPrimitiveCreator primitiveCreator) {
         this.primitiveCreator = primitiveCreator;
     }
 
     @Override
     public AsyncAtomicCounter build() {
-        return primitiveCreator.newAsyncCounter(name());
+        return primitiveCreator.newAsyncCounter(name(), isolation());
     }
 }

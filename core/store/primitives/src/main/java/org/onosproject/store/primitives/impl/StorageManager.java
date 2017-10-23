@@ -97,7 +97,7 @@ public class StorageManager implements StorageService, StorageAdminService {
 
     private final Supplier<TransactionId> transactionIdGenerator =
             () -> TransactionId.from(UUID.randomUUID().toString());
-    private DistributedPrimitiveCreator federatedPrimitiveCreator;
+    private FederatedDistributedPrimitiveCreator federatedPrimitiveCreator;
     private TransactionManager transactionManager;
 
     @Activate
@@ -106,7 +106,10 @@ public class StorageManager implements StorageService, StorageAdminService {
         partitionService.getAllPartitionIds().stream()
             .filter(id -> !id.equals(PartitionId.SHARED))
             .forEach(id -> partitionMap.put(id, partitionService.getDistributedPrimitiveCreator(id)));
-        federatedPrimitiveCreator = new FederatedDistributedPrimitiveCreator(partitionMap, BUCKETS);
+        federatedPrimitiveCreator = new FederatedDistributedPrimitiveCreator(
+                partitionService.getDistributedPrimitiveCreator(PartitionId.SHARED),
+                partitionMap,
+                BUCKETS);
         transactionManager = new TransactionManager(this, partitionService, BUCKETS);
         log.info("Started");
     }

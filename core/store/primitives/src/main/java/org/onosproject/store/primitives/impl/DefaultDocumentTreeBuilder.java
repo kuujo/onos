@@ -15,7 +15,6 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import org.onosproject.store.primitives.DistributedPrimitiveCreator;
 import org.onosproject.store.service.AsyncDocumentTree;
 import org.onosproject.store.service.DocumentTreeBuilder;
 
@@ -26,9 +25,9 @@ import org.onosproject.store.service.DocumentTreeBuilder;
  */
 public class DefaultDocumentTreeBuilder<V> extends DocumentTreeBuilder<V> {
 
-    private final DistributedPrimitiveCreator primitiveCreator;
+    private final FederatedDistributedPrimitiveCreator primitiveCreator;
 
-    public DefaultDocumentTreeBuilder(DistributedPrimitiveCreator primitiveCreator) {
+    public DefaultDocumentTreeBuilder(FederatedDistributedPrimitiveCreator primitiveCreator) {
         this.primitiveCreator = primitiveCreator;
     }
 
@@ -47,7 +46,8 @@ public class DefaultDocumentTreeBuilder<V> extends DocumentTreeBuilder<V> {
     @Deprecated
     @Override
     public AsyncDocumentTree<V> build() {
-        AsyncDocumentTree<V> tree = primitiveCreator.newAsyncDocumentTree(name(), serializer(), ordering());
+        AsyncDocumentTree<V> tree = primitiveCreator.newAsyncDocumentTree(
+                name(), serializer(), ordering(), isolation());
         tree = relaxedReadConsistency() ? DistributedPrimitives.newCachingDocumentTree(tree) : tree;
         return tree;
     }

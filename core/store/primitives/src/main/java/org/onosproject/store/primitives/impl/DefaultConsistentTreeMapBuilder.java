@@ -15,7 +15,6 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import org.onosproject.store.primitives.DistributedPrimitiveCreator;
 import org.onosproject.store.service.AsyncConsistentTreeMap;
 import org.onosproject.store.service.ConsistentTreeMap;
 import org.onosproject.store.service.ConsistentTreeMapBuilder;
@@ -27,15 +26,15 @@ import org.onosproject.store.service.ConsistentTreeMapBuilder;
  */
 public class DefaultConsistentTreeMapBuilder<V> extends ConsistentTreeMapBuilder<V> {
 
-    private final DistributedPrimitiveCreator primitiveCreator;
+    private final FederatedDistributedPrimitiveCreator primitiveCreator;
 
-    public DefaultConsistentTreeMapBuilder(DistributedPrimitiveCreator primitiveCreator) {
+    public DefaultConsistentTreeMapBuilder(FederatedDistributedPrimitiveCreator primitiveCreator) {
         this.primitiveCreator = primitiveCreator;
     }
 
     @Override
     public AsyncConsistentTreeMap<V> buildTreeMap() {
-        return primitiveCreator.newAsyncConsistentTreeMap(name(), serializer());
+        return primitiveCreator.newAsyncConsistentTreeMap(name(), serializer(), isolation());
     }
 
     @Override

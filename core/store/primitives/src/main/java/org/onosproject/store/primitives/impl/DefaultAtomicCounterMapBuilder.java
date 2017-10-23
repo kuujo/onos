@@ -15,7 +15,6 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import org.onosproject.store.primitives.DistributedPrimitiveCreator;
 import org.onosproject.store.service.AsyncAtomicCounterMap;
 import org.onosproject.store.service.AtomicCounterMap;
 import org.onosproject.store.service.AtomicCounterMapBuilder;
@@ -25,15 +24,15 @@ import org.onosproject.store.service.AtomicCounterMapBuilder;
  */
 public class DefaultAtomicCounterMapBuilder<K> extends AtomicCounterMapBuilder<K> {
 
-    private final DistributedPrimitiveCreator primitiveCreator;
+    private final FederatedDistributedPrimitiveCreator primitiveCreator;
 
-    public DefaultAtomicCounterMapBuilder(DistributedPrimitiveCreator primitiveCreator) {
+    public DefaultAtomicCounterMapBuilder(FederatedDistributedPrimitiveCreator primitiveCreator) {
         this.primitiveCreator = primitiveCreator;
     }
 
     @Override
     public AsyncAtomicCounterMap<K> buildAsyncMap() {
-        return primitiveCreator.newAsyncAtomicCounterMap(name(), serializer());
+        return primitiveCreator.newAsyncAtomicCounterMap(name(), serializer(), isolation());
     }
 
     @Override

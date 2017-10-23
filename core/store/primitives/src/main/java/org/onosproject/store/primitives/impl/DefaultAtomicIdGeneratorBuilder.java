@@ -15,7 +15,6 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import org.onosproject.store.primitives.DistributedPrimitiveCreator;
 import org.onosproject.store.service.AsyncAtomicIdGenerator;
 import org.onosproject.store.service.AtomicIdGeneratorBuilder;
 
@@ -24,14 +23,14 @@ import org.onosproject.store.service.AtomicIdGeneratorBuilder;
  */
 public class DefaultAtomicIdGeneratorBuilder extends AtomicIdGeneratorBuilder {
 
-    private final DistributedPrimitiveCreator primitiveCreator;
+    private final FederatedDistributedPrimitiveCreator primitiveCreator;
 
-    public DefaultAtomicIdGeneratorBuilder(DistributedPrimitiveCreator primitiveCreator) {
+    public DefaultAtomicIdGeneratorBuilder(FederatedDistributedPrimitiveCreator primitiveCreator) {
         this.primitiveCreator = primitiveCreator;
     }
 
     @Override
     public AsyncAtomicIdGenerator build() {
-        return primitiveCreator.newAsyncIdGenerator(name());
+        return primitiveCreator.newAsyncIdGenerator(name(), isolation());
     }
 }

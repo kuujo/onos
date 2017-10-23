@@ -19,6 +19,8 @@ import org.onosproject.core.ApplicationId;
 import org.onosproject.store.service.DistributedPrimitive;
 import org.onosproject.store.service.Serializer;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 /**
  * Abstract builder for distributed primitives.
  *
@@ -35,6 +37,7 @@ public abstract class DistributedPrimitiveBuilder<B extends DistributedPrimitive
     private boolean meteringDisabled = false;
     private boolean readOnly = false;
     private boolean relaxedReadConsistency = false;
+    private DistributedPrimitive.Isolation isolation = DistributedPrimitive.Isolation.LOCAL_VERSION;
 
     public DistributedPrimitiveBuilder(DistributedPrimitive.Type type) {
         this.type = type;
@@ -103,6 +106,26 @@ public abstract class DistributedPrimitiveBuilder<B extends DistributedPrimitive
     }
 
     /**
+     * Disables version isolation for the primitive.
+     *
+     * @return this builder
+     */
+    public B withIsolationDisabled() {
+        return withIsolation(DistributedPrimitive.Isolation.NONE);
+    }
+
+    /**
+     * Sets the version isolation of the primitive.
+     *
+     * @param isolation the primitive version isolation
+     * @return this builder
+     */
+    public B withIsolation(DistributedPrimitive.Isolation isolation) {
+        this.isolation = checkNotNull(isolation);
+        return (B) this;
+    }
+
+    /**
      * Returns if metering is enabled.
      *
      * @return {@code true} if yes; {@code false} otherwise
@@ -154,6 +177,15 @@ public abstract class DistributedPrimitiveBuilder<B extends DistributedPrimitive
      */
     public final ApplicationId applicationId() {
         return applicationId;
+    }
+
+    /**
+     * Returns the primitive isolation.
+     *
+     * @return primitive isolation
+     */
+    public final DistributedPrimitive.Isolation isolation() {
+        return isolation;
     }
 
     /**

@@ -20,6 +20,7 @@ import java.util.function.Supplier;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.store.service.AsyncDistributedSet;
 import org.onosproject.store.service.ConsistentMapBuilder;
+import org.onosproject.store.service.DistributedPrimitive;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.DistributedSetBuilder;
 
@@ -79,6 +80,12 @@ public class DefaultDistributedSetBuilder<E> extends DistributedSetBuilder<E> {
     @Override
     public DistributedSetBuilder<E> withMeteringDisabled() {
         metering = false;
+        return this;
+    }
+
+    @Override
+    public DistributedSetBuilder<E> withIsolation(DistributedPrimitive.Isolation isolation) {
+        mapBuilder.withIsolation(isolation);
         return this;
     }
 

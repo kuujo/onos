@@ -126,6 +126,23 @@ public interface DistributedPrimitive {
     }
 
     /**
+     * Primitive isolation configuration.
+     */
+    enum Isolation {
+
+        /**
+         * Indicates that a primitive's state can be merged across multiple versions.
+         */
+        NONE,
+
+        /**
+         * Indicates that a primitive must be isolated to the local version.
+         */
+        LOCAL_VERSION,
+
+    }
+
+    /**
      * Use {@link #DEFAULT_OPERATION_TIMEOUT_MILLIS} instead.
      */
     @Deprecated

@@ -39,8 +39,9 @@ import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.AtomicValue;
 import org.onosproject.store.service.AtomicValueEvent;
 import org.onosproject.store.service.AtomicValueEventListener;
-import org.onosproject.store.service.CoordinationService;
+import org.onosproject.store.service.DistributedPrimitive;
 import org.onosproject.store.service.Serializer;
+import org.onosproject.store.service.StorageService;
 import org.onosproject.upgrade.Upgrade;
 import org.onosproject.upgrade.UpgradeAdminService;
 import org.onosproject.upgrade.UpgradeEvent;
@@ -52,9 +53,6 @@ import static org.slf4j.LoggerFactory.getLogger;
 
 /**
  * Upgrade service implementation.
- * <p>
- * This implementation uses the {@link CoordinationService} to store upgrade state in a version-agnostic primitive.
- * Upgrade state can be seen by current and future version nodes.
  */
 @Component(immediate = true)
 @Service
@@ -68,7 +66,7 @@ public class UpgradeManager
     protected VersionService versionService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected CoordinationService coordinationService;
+    protected StorageService storageService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected ClusterService clusterService;
@@ -84,9 +82,10 @@ public class UpgradeManager
 
     @Activate
     public void activate() {
-        state = coordinationService.<Upgrade>atomicValueBuilder()
+        state = storageService.<Upgrade>atomicValueBuilder()
                 .withName("onos-upgrade-state")
                 .withSerializer(Serializer.using(KryoNamespaces.API))
+                .withIsolation(DistributedPrimitive.Isolation.NONE)
                 .build()
                 .asAtomicValue();
         localVersion = versionService.version();

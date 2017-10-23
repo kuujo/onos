@@ -39,6 +39,8 @@ import org.onosproject.cluster.ClusterMetadataEvent;
 import org.onosproject.cluster.ClusterMetadataEventListener;
 import org.onosproject.cluster.ClusterMetadataService;
 import org.onosproject.cluster.ClusterService;
+import org.onosproject.cluster.ControllerNode;
+import org.onosproject.cluster.DefaultPartition;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.cluster.PartitionDiff;
 import org.onosproject.cluster.PartitionId;
@@ -87,6 +89,7 @@ public class PartitionManager extends AbstractListenerManager<PartitionEvent, Pa
 
     private final Map<PartitionId, StoragePartition> inactivePartitions = Maps.newConcurrentMap();
     private final Map<PartitionId, StoragePartition> activePartitions = Maps.newConcurrentMap();
+    private StoragePartition sharedPartition;
     private final AtomicReference<ClusterMetadata> currentClusterMetadata = new AtomicReference<>();
     private final InternalClusterMetadataListener metadataListener = new InternalClusterMetadataListener();
 
@@ -95,6 +98,21 @@ public class PartitionManager extends AbstractListenerManager<PartitionEvent, Pa
         eventDispatcher.addSink(PartitionEvent.class, listenerRegistry);
         currentClusterMetadata.set(metadataService.getClusterMetadata());
         metadataService.addListener(metadataListener);
+
+        sharedPartition = new StoragePartition(
+                new DefaultPartition(
+                        PartitionId.SHARED,
+                        clusterService.getNodes()
+                                .stream()
+                                .map(ControllerNode::id)
+                                .collect(Collectors.toSet())),
+                null,
+                null,
+                clusterCommunicator,
+                clusterService,
+                new File(System.getProperty("karaf.data") + "/partitions/coordination"));
+        sharedPartition.open().join();
+        activePartitions.put(sharedPartition.getId(), sharedPartition);
 
         // If an upgrade is currently in progress and this node is an upgraded node, initialize upgrade partitions.
         CompletableFuture<Void> openFuture;
@@ -216,6 +234,13 @@ public class PartitionManager extends AbstractListenerManager<PartitionEvent, Pa
                     .stream()
                     .filter(PartitionDiff::hasChanged)
                     .forEach(diff -> activePartitions.get(diff.partitionId()).onUpdate(diff.newValue()));
+        activePartitions.get(PartitionId.SHARED)
+                .onUpdate(new DefaultPartition(
+                        PartitionId.SHARED,
+                        clusterMetadata.getNodes()
+                                .stream()
+                                .map(ControllerNode::id)
+                                .collect(Collectors.toList())));
     }
 
     private class InternalClusterMetadataListener implements ClusterMetadataEventListener {
