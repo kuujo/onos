@@ -20,6 +20,7 @@ import java.util.Map;
 
 import com.google.common.base.MoreObjects;
 import org.onosproject.cluster.PartitionId;
+import org.onosproject.store.service.TransactionParticipant;
 import org.onosproject.store.service.TransactionalMap;
 
 /**
@@ -35,13 +36,9 @@ public class PartitionedTransactionalMap<K, V> implements TransactionalMap<K, V>
         this.hasher = hasher;
     }
 
-    /**
-     * Returns the collection of map partitions.
-     *
-     * @return a collection of map partitions
-     */
+    @Override
     @SuppressWarnings("unchecked")
-    Collection<TransactionParticipant> participants() {
+    public Collection<TransactionParticipant> participants() {
         return (Collection) partitions.values();
     }
 

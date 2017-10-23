@@ -60,7 +60,9 @@ import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.StorageAdminService;
 import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.Topic;
+import org.onosproject.store.service.TransactionAdminService;
 import org.onosproject.store.service.TransactionContextBuilder;
+import org.onosproject.store.service.TransactionService;
 import org.onosproject.store.service.WorkQueue;
 import org.onosproject.store.service.WorkQueueStats;
 import org.slf4j.Logger;
@@ -95,10 +97,15 @@ public class StorageManager implements StorageService, StorageAdminService {
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected PartitionAdminService partitionAdminService;
 
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected TransactionService transactionService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected TransactionAdminService transactionAdminService;
+
     private final Supplier<TransactionId> transactionIdGenerator =
             () -> TransactionId.from(UUID.randomUUID().toString());
     private DistributedPrimitiveCreator federatedPrimitiveCreator;
-    private TransactionManager transactionManager;
 
     @Activate
     public void activate() {
@@ -107,7 +114,6 @@ public class StorageManager implements StorageService, StorageAdminService {
             .filter(id -> !id.equals(PartitionId.SHARED))
             .forEach(id -> partitionMap.put(id, partitionService.getDistributedPrimitiveCreator(id)));
         federatedPrimitiveCreator = new FederatedDistributedPrimitiveCreator(partitionMap, BUCKETS);
-        transactionManager = new TransactionManager(this, partitionService, BUCKETS);
         log.info("Started");
     }
 
@@ -186,7 +192,7 @@ public class StorageManager implements StorageService, StorageAdminService {
     @Override
     public TransactionContextBuilder transactionContextBuilder() {
         checkPermission(STORAGE_WRITE);
-        return new DefaultTransactionContextBuilder(transactionIdGenerator.get(), transactionManager);
+        return new DefaultTransactionContextBuilder(transactionIdGenerator.get(), transactionAdminService);
     }
 
     @Override
@@ -256,7 +262,7 @@ public class StorageManager implements StorageService, StorageAdminService {
 
     @Override
     public Collection<TransactionId> getPendingTransactions() {
-        return transactionManager.getPendingTransactions();
+        return transactionService.getPendingTransactions();
     }
 
     private List<MapInfo> listMapInfo(DistributedPrimitiveCreator creator) {

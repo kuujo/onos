@@ -24,6 +24,10 @@ import org.onlab.util.Tools;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.service.CommitStatus;
 import org.onosproject.store.service.Serializer;
+import org.onosproject.store.service.Transaction;
+import org.onosproject.store.service.TransactionAdminService;
+import org.onosproject.store.service.TransactionCoordinator;
+import org.onosproject.store.service.TransactionParticipant;
 import org.onosproject.store.service.TransactionalMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,15 +37,15 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 /**
  * Transaction coordinator.
  */
-public class TransactionCoordinator {
+public class DefaultTransactionCoordinator implements TransactionCoordinator {
     private final Logger log = LoggerFactory.getLogger(getClass());
     protected final TransactionId transactionId;
-    protected final TransactionManager transactionManager;
+    protected final TransactionAdminService transactionService;
     protected final Set<TransactionParticipant> transactionParticipants = Sets.newConcurrentHashSet();
 
-    public TransactionCoordinator(TransactionId transactionId, TransactionManager transactionManager) {
+    public DefaultTransactionCoordinator(TransactionId transactionId, TransactionAdminService transactionService) {
         this.transactionId = transactionId;
-        this.transactionManager = transactionManager;
+        this.transactionService = transactionService;
     }
 
     /**
@@ -54,7 +58,7 @@ public class TransactionCoordinator {
      * @return a transactional map for this transaction
      */
     public <K, V> TransactionalMap<K, V> getTransactionalMap(String name, Serializer serializer) {
-        PartitionedTransactionalMap<K, V> map = transactionManager.getTransactionalMap(name, serializer, this);
+        TransactionalMap<K, V> map = transactionService.getTransactionalMap(name, serializer, transactionId);
         transactionParticipants.addAll(map.participants());
         return map;
     }
@@ -86,17 +90,17 @@ public class TransactionCoordinator {
                     .filter(TransactionParticipant::hasPendingUpdates)
                     .collect(Collectors.toSet());
 
-            CompletableFuture<CommitStatus> status = transactionManager.updateState(
+            CompletableFuture<CommitStatus> status = transactionService.updateTransaction(
                     transactionId, Transaction.State.PREPARING)
                     .thenCompose(v -> prepare(transactionParticipants))
                     .thenCompose(result -> result
-                            ? transactionManager.updateState(transactionId, Transaction.State.COMMITTING)
+                            ? transactionService.updateTransaction(transactionId, Transaction.State.COMMITTING)
                             .thenCompose(v -> commit(transactionParticipants))
                             .thenApply(v -> CommitStatus.SUCCESS)
-                            : transactionManager.updateState(transactionId, Transaction.State.ROLLING_BACK)
+                            : transactionService.updateTransaction(transactionId, Transaction.State.ROLLING_BACK)
                             .thenCompose(v -> rollback(transactionParticipants))
                             .thenApply(v -> CommitStatus.FAILURE));
-            return status.thenCompose(v -> transactionManager.remove(transactionId).thenApply(u -> v));
+            return status.thenCompose(v -> transactionService.removeTransaction(transactionId).thenApply(u -> v));
         }
     }
 

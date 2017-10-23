@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.onosproject.store.primitives.impl;
+package org.onosproject.store.service;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -45,7 +45,7 @@ public class Transaction<T> {
      * <p>
      * The transaction state is used to indicate the phase within which the transaction is currently running.
      */
-    enum State {
+    public enum State {
 
         /**
          * Active transaction state.

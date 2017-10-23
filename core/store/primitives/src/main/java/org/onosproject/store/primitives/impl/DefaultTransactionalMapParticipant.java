@@ -15,6 +15,8 @@
  */
 package org.onosproject.store.primitives.impl;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -22,6 +24,8 @@ import com.google.common.collect.Maps;
 import org.apache.commons.lang3.tuple.Pair;
 import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.service.ConsistentMap;
+import org.onosproject.store.service.Transaction;
+import org.onosproject.store.service.TransactionParticipant;
 import org.onosproject.store.service.Version;
 import org.onosproject.store.service.Versioned;
 
@@ -34,6 +38,11 @@ public class DefaultTransactionalMapParticipant<K, V> extends TransactionalMapPa
     public DefaultTransactionalMapParticipant(
             ConsistentMap<K, V> backingMap, Transaction<MapUpdate<K, V>> transaction) {
         super(backingMap, transaction);
+    }
+
+    @Override
+    public Collection<TransactionParticipant> participants() {
+        return Collections.singletonList(this);
     }
 
     @Override

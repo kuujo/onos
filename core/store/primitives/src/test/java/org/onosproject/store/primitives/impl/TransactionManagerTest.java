@@ -83,7 +83,7 @@ public class TransactionManagerTest {
 
         TransactionManager transactionManager = new TransactionManager(storageService, partitionService, 128);
         TransactionId transactionId = TransactionId.from(UUID.randomUUID().toString());
-        TransactionCoordinator transactionCoordinator = new TransactionCoordinator(transactionId, transactionManager);
+        DefaultTransactionCoordinator transactionCoordinator = new DefaultTransactionCoordinator(transactionId, transactionManager);
         Serializer serializer = Serializer.using(KryoNamespaces.API);
 
         PartitionedTransactionalMap<String, String> transactionalMap1 = (PartitionedTransactionalMap)

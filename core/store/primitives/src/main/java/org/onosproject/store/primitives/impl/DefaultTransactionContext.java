@@ -37,10 +37,10 @@ public class DefaultTransactionContext implements TransactionContext {
     private final Logger log = LoggerFactory.getLogger(getClass());
     private final AtomicBoolean isOpen = new AtomicBoolean(false);
     private final TransactionId transactionId;
-    private final TransactionCoordinator transactionCoordinator;
+    private final DefaultTransactionCoordinator transactionCoordinator;
     private final MeteringAgent monitor;
 
-    public DefaultTransactionContext(TransactionId transactionId, TransactionCoordinator transactionCoordinator) {
+    public DefaultTransactionContext(TransactionId transactionId, DefaultTransactionCoordinator transactionCoordinator) {
         this.transactionId = transactionId;
         this.transactionCoordinator = transactionCoordinator;
         this.monitor = new MeteringAgent("transactionContext", "*", true);

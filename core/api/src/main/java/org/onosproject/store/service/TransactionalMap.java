@@ -16,6 +16,8 @@
 
 package org.onosproject.store.service;
 
+import java.util.Collection;
+
 /**
  * Transactional Map data structure.
  * <p>
@@ -97,4 +99,11 @@ public interface TransactionalMap<K, V> {
      * @return true if the value was replaced
      */
     boolean replace(K key, V oldValue, V newValue);
+
+    /**
+     * Returns the collection of participants.
+     *
+     * @return the collection of participants
+     */
+    Collection<TransactionParticipant> participants();
 }

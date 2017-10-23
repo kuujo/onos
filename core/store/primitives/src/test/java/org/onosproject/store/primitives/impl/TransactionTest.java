@@ -42,6 +42,7 @@ import org.onosproject.store.service.CommitStatus;
 import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.MapEventListener;
 import org.onosproject.store.service.Serializer;
+import org.onosproject.store.service.Transaction;
 import org.onosproject.store.service.TransactionLog;
 import org.onosproject.store.service.Version;
 import org.onosproject.store.service.Versioned;
@@ -202,7 +203,7 @@ public class TransactionTest {
                 .anyTimes();
         mocks.add(transactionManager);
 
-        TransactionCoordinator transactionCoordinator = new TransactionCoordinator(transactionId, transactionManager);
+        DefaultTransactionCoordinator transactionCoordinator = new DefaultTransactionCoordinator(transactionId, transactionManager);
 
         Hasher<String> hasher = key -> {
             int hashCode = Hashing.sha256().hashBytes(key.getBytes()).asInt();

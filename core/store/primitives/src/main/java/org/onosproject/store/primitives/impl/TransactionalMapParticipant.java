@@ -34,7 +34,9 @@ import com.google.common.collect.Sets;
 import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.DistributedPrimitive;
+import org.onosproject.store.service.Transaction;
 import org.onosproject.store.service.TransactionException;
+import org.onosproject.store.service.TransactionParticipant;
 import org.onosproject.store.service.TransactionalMap;
 import org.onosproject.store.service.Version;
 

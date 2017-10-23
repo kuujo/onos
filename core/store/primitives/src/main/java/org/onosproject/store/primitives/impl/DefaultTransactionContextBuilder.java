@@ -16,6 +16,7 @@
 package org.onosproject.store.primitives.impl;
 
 import org.onosproject.store.primitives.TransactionId;
+import org.onosproject.store.service.TransactionAdminService;
 import org.onosproject.store.service.TransactionContext;
 import org.onosproject.store.service.TransactionContextBuilder;
 
@@ -25,16 +26,16 @@ import org.onosproject.store.service.TransactionContextBuilder;
 public class DefaultTransactionContextBuilder extends TransactionContextBuilder {
 
     private final TransactionId transactionId;
-    private final TransactionManager transactionManager;
+    private final TransactionAdminService transactionService;
 
-    public DefaultTransactionContextBuilder(TransactionId transactionId, TransactionManager transactionManager) {
+    public DefaultTransactionContextBuilder(TransactionId transactionId, TransactionAdminService transactionService) {
         this.transactionId = transactionId;
-        this.transactionManager = transactionManager;
+        this.transactionService = transactionService;
     }
 
     @Override
     public TransactionContext build() {
         return new DefaultTransactionContext(transactionId,
-                new TransactionCoordinator(transactionId, transactionManager));
+                new DefaultTransactionCoordinator(transactionId, transactionService));
     }
 }
