@@ -20,6 +20,7 @@ import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Deactivate;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
+import org.apache.felix.scr.annotations.ReferencePolicy;
 import org.apache.felix.scr.annotations.Service;
 import org.onlab.util.ItemNotFoundException;
 import org.onosproject.net.AbstractProjectableModel;
@@ -63,8 +64,9 @@ public class DriverManager implements DriverService {
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected DriverRegistry registry;
 
-    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected DeviceService deviceService;
+    // This must be optional to avoid a cyclic dependency
+    @Reference(cardinality = ReferenceCardinality.OPTIONAL_UNARY, policy = ReferencePolicy.DYNAMIC)
+    protected volatile DeviceService deviceService;
 
     @Activate
     protected void activate() {

@@ -26,7 +26,6 @@ import org.onosproject.cfg.ComponentConfigAdapter;
 import org.onosproject.common.event.impl.TestEventDispatcher;
 import org.onosproject.component.ComponentService;
 import org.onosproject.core.ApplicationId;
-import org.onosproject.net.device.DeviceServiceAdapter;
 import org.onosproject.net.driver.DefaultDriver;
 import org.onosproject.net.driver.DefaultDriverProvider;
 import org.onosproject.net.driver.DriverEvent;
@@ -51,7 +50,6 @@ public class DriverRegistryManagerTest {
     @Before
     public void setUp() {
         mgr = new DriverRegistryManager();
-        mgr.deviceService = new DeviceServiceAdapter();
         mgr.componentConfigService = new ComponentConfigAdapter();
         mgr.eventDispatcher = new TestEventDispatcher();
         mgr.componenService = componentService;

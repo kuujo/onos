@@ -30,7 +30,6 @@ import org.onosproject.cfg.ComponentConfigService;
 import org.onosproject.component.ComponentService;
 import org.onosproject.event.EventDeliveryService;
 import org.onosproject.event.ListenerRegistry;
-import org.onosproject.net.device.DeviceService;
 import org.onosproject.net.driver.Behaviour;
 import org.onosproject.net.driver.DefaultDriverProvider;
 import org.onosproject.net.driver.Driver;
@@ -72,9 +71,6 @@ public class DriverRegistryManager extends DefaultDriverProvider implements Driv
     private static final String COMMA = ",";
     private static final String NO_DRIVER = "Driver not found";
     private static final String DEFAULT = "default";
-
-    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected DeviceService deviceService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected ComponentConfigService componentConfigService;
