@@ -1,0 +1,50 @@
+<!--
+  ~ Copyright 2017-present Open Networking Foundation
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<scenario name="distributed-document-tree-test"
+          description="ONOS DocumentTree distributed primitive Test">
+    <group name="Distributed-Primitive-DocumentTree">
+
+        <step name="Distributed-Primitive-DocumentTree.Test-DocumentTree-Get"
+              exec="onos-cluster-execute-expect doc-tree-test foo get root.a --expect null"/>
+
+        <step name="Distributed-Primitive-DocumentTree.Test-DocumentTree-Create-Child"
+              requires="Distributed-Primitive-DocumentTree.Test-DocumentTree-Get"
+              exec="onos ${OCI} doc-tree-test foo create root.a b"/>
+
+        <step name="Distributed-Primitive-DocumentTree.Test-DocumentTree-Updated-After-Set"
+              requires="Distributed-Primitive-DocumentTree.Test-DocumentTree-Create-Child"
+              exec="onos-cluster-execute-expect doc-tree-test foo get root.a --expect b"/>
+
+        <step name="Distributed-Primitive-DocumentTree.Test-DocumentTree-Remove-Node"
+              requires="Distributed-Primitive-DocumentTree.Test-DocumentTree-Updated-After-Set"
+              exec="onos-execute-expect ${OCI} doc-tree-test foo removeNode root.a --expect b"/>
+
+        <step name="Distributed-Primitive-DocumentTree.Test-DocumentTree-Removed-After-Remove"
+              requires="Distributed-Primitive-DocumentTree.Test-DocumentTree-Remove-Node"
+              exec="onos-cluster-execute-expect doc-tree-test foo get root.a --expect null"/>
+
+        <group name="Distributed-Primitive-DocumentTree.Check-Log-Exceptions"
+               requires="Distributed-Primitive-DocumentTree.Test-DocumentTree-Removed-After-Remove">
+            <parallel var="${OC#}">
+                <step name="Distributed-Primitive-DocumentTree.Check-Log-Exceptions-${#}"
+                      exec="onos-check-logs ${OC#}"/>
+            </parallel>
+        </group>
+
+    </group>
+</scenario>
+

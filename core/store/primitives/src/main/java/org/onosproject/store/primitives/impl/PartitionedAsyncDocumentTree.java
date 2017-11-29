@@ -30,7 +30,6 @@ import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.service.AsyncDocumentTree;
 import org.onosproject.store.service.DocumentPath;
 import org.onosproject.store.service.DocumentTreeListener;
-import org.onosproject.store.service.NoSuchDocumentPathException;
 import org.onosproject.store.service.TransactionLog;
 import org.onosproject.store.service.Version;
 import org.onosproject.store.service.Versioned;
@@ -86,13 +85,17 @@ public class PartitionedAsyncDocumentTree<V> implements AsyncDocumentTree<V> {
 
     @Override
     public CompletableFuture<Map<String, Versioned<V>>> getChildren(DocumentPath path) {
-        return Tools.allOf(partitions().stream()
-                .map(partition -> partition.getChildren(path).exceptionally(r -> null))
-                .collect(Collectors.toList())).thenApply(allChildren -> {
-            Map<String, Versioned<V>> children = Maps.newLinkedHashMap();
-            allChildren.stream().filter(Objects::nonNull).forEach(children::putAll);
-            return children;
-        });
+        if (path.equals(DocumentPath.ROOT)) {
+            return Tools.allOf(partitions().stream()
+                    .map(partition -> partition.getChildren(path).exceptionally(r -> null))
+                    .collect(Collectors.toList())).thenApply(allChildren -> {
+                Map<String, Versioned<V>> children = Maps.newLinkedHashMap();
+                allChildren.stream().filter(Objects::nonNull).forEach(children::putAll);
+                return children;
+            });
+        } else {
+            return partition(path).getChildren(path);
+        }
     }
 
     @Override
@@ -107,19 +110,7 @@ public class PartitionedAsyncDocumentTree<V> implements AsyncDocumentTree<V> {
 
     @Override
     public CompletableFuture<Boolean> create(DocumentPath path, V value) {
-        if (path.parent() == null) {
-            // create value on root
-            return partition(path).createRecursive(path, value);
-        }
-        // TODO: This operation is not atomic
-        return partition(path.parent()).get(path.parent()).thenCompose(parentValue -> {
-            if (parentValue == null) {
-                return Tools.exceptionalFuture(new NoSuchDocumentPathException(String.valueOf(path.parent())));
-            } else {
-                // not atomic: parent did exist at some point, so moving forward
-                return partition(path).createRecursive(path, value);
-            }
-        });
+        return partition(path).create(path, value);
     }
 
     @Override

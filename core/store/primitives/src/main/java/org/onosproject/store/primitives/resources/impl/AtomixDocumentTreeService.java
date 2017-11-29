@@ -281,10 +281,10 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
 
     protected void clear(Commit<Void> commit) {
         Queue<DocumentPath> toClearQueue = Queues.newArrayDeque();
-        Map<String, Versioned<byte[]>> topLevelChildren = docTree.getChildren(DocumentPath.from("root"));
+        Map<String, Versioned<byte[]>> topLevelChildren = docTree.getChildren(DocumentPath.ROOT);
         toClearQueue.addAll(topLevelChildren.keySet()
                 .stream()
-                .map(name -> new DocumentPath(name, DocumentPath.from("root")))
+                .map(name -> new DocumentPath(name, DocumentPath.ROOT))
                 .collect(Collectors.toList()));
         while (!toClearQueue.isEmpty()) {
             DocumentPath path = toClearQueue.remove();
