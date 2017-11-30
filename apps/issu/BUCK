@@ -1,0 +1,35 @@
+COMPILE_DEPS = [
+    '//lib:CORE_DEPS',
+    '//apps/intentsync:onos-apps-intentsync',
+ ]
+
+BUNDLES = [
+    '//apps/issu:onos-apps-issu',
+]
+
+TEST_DEPS = [
+    '//lib:TEST_ADAPTERS'
+]
+
+EXCLUDED_BUNDLES = [
+]
+
+REQUIRED_APPS = [
+    'org.onosproject.intentsynchronizer',
+]
+
+osgi_jar_with_tests (
+    deps = COMPILE_DEPS,
+    test_deps = TEST_DEPS,
+)
+
+onos_app (
+    app_name = 'org.onosproject.issu',
+    title = 'ISSU',
+    category = 'Monitoring',
+    url = 'http://onosproject.org',
+    description = 'Artemis',
+    included_bundles = BUNDLES,
+    excluded_bundles = EXCLUDED_BUNDLES,
+    required_apps = REQUIRED_APPS,
+)
