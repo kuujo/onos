@@ -1,0 +1,96 @@
+<!--
+  ~ Copyright 2017-present Open Networking Foundation
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+<scenario name="upgrade-step2" description="ONOS cluster upgrade">
+    <import file="${ONOS_SCENARIOS}/dist-setup.xml"/>
+    <dependency name="Distributed-Primitives-Setup"/>
+
+    <group name="Upgrade" requires="Distributed-Primitives-Setup">
+        <step name="Run-Upgrade"
+              exec="onos ${OC1} issu upgrade"/>
+
+        <group name="Phase-2" requires="Run-Upgrade">
+            <sequential var="${OCMA#}"
+                        starts="Phase-Two-Stop-Service-${#}"
+                        ends="Phase-Two-Wait-for-Start-${#-1}">
+                <step name="Phase-Two-Stop-Service-${#}"
+                      exec="onos-service ${OCMA#} stop"
+                      requires="Run-Upgrade"/>
+
+                <step name="Phase-Two-Wait-for-Stop-${#}"
+                      exec="onos-wait-for-stop ${OCMA#}"
+                      requires="~Phase-Two-Stop-Service-${#}"/>
+
+                <step name="Phase-Two-Uninstall-${#}"
+                      exec="onos-uninstall ${OCMA#}"
+                      requires="~Phase-Two-Wait-for-Stop-${#}"/>
+
+                <step name="Phase-Two-Push-Bits-${#}"
+                      exec="onos-push-bits ${OCMA#}"
+                      unless="${OCT}"
+                      requires="~Phase-Two-Stop-Service-${#}"/>
+
+                <step name="Phase-Two-Install-Upgrade-${#}"
+                      exec="onos-install -v ${OCMA#}"
+                      requires="Phase-Two-Push-Bits-${#},Phase-Two-Uninstall-${#}"/>
+
+                <step name="Phase-Two-Secure-SSH-${#}"
+                      exec="onos-secure-ssh -u ${ONOS_WEB_USER} -p ${ONOS_WEB_PASS} ${OCMA#}"
+                      requires="~Phase-Two-Install-Upgrade-${#}"/>
+
+                <step name="Phase-Two-Wait-for-Start-${#}"
+                      exec="onos-wait-for-start ${OCMA#}"
+                      requires="Phase-Two-Secure-SSH-${#}"/>
+
+                <step name="Phase-Two-Distributed-Primitives-Check-Apps-${#}"
+                      exec="onos-check-apps ${OCMA#} distributedprimitives includes"
+                      requires="Phase-Two-Wait-for-Start-${#}"/>
+
+                <step name="Phase-Two-Check-ECM-${#}"
+                      exec="onos-execute-expect ${OC#} ec-map-test foo get a --retry 5 --expect c"
+                      requires="Phase-Two-Distributed-Primitives-Check-Apps-${#}"/>
+
+                <step name="Phase-Two-Check-CM-${#}"
+                      exec="onos-execute-expect ${OC#} map-test foo get a --retry 5 --expect c"
+                      requires="Phase-Two-Check-ECM-${#}"/>
+            </sequential>
+        </group>
+
+        <step name="Commit-Upgrade"
+              exec="onos ${OC1} issu commit"
+              requires="Phase-2"/>
+
+        <group name="Verify-Upgrade" requires="Commit-Upgrade">
+            <parallel var="${OC#}">
+                <step name="Check-Nodes-${#}"
+                      exec="onos-check-nodes ${OC#}"
+                      delay="3"/>
+
+                <step name="Check-Components-${#}"
+                      exec="onos-check-components ${OC#}"
+                      delay="5"
+                      requires="~Check-Nodes-${#}"/>
+
+                <step name="Check-Logs-${#}"
+                      exec="onos-check-logs ${OC#}"
+                      requires="~Check-Components-${#}"/>
+
+                <step name="Check-Apps-${#}"
+                      exec="onos-check-apps ${OC#} ${ONOS_APPS},distributedprimitives includes"
+                      requires="~Check-Components-${#}"/>
+            </parallel>
+        </group>
+    </group>
+</scenario>

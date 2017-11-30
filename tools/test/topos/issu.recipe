@@ -1,0 +1,4 @@
+# Default topology recipe
+export OTD=7
+export OTL=12
+export OTH=4
