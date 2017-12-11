@@ -25,7 +25,7 @@ import org.onosproject.store.primitives.DistributedPrimitiveBuilder;
 public abstract class LeaderElectorBuilder
     extends DistributedPrimitiveBuilder<LeaderElectorBuilder, AsyncLeaderElector> {
 
-    private long electionTimeoutMillis = DistributedPrimitive.DEFAULT_OPERATION_TIMEOUT_MILLIS;
+    private long electionTimeoutMillis = 5000;
 
     public LeaderElectorBuilder() {
         super(DistributedPrimitive.Type.LEADER_ELECTOR);

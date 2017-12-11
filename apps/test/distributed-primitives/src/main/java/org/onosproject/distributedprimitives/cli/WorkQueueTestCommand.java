@@ -106,7 +106,7 @@ public class WorkQueueTestCommand extends AbstractShellCommand {
 
     private <T> T get(CompletableFuture<T> future) {
         try {
-            return future.get(DistributedPrimitive.DEFAULT_OPERATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+            return future.get(5000, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             throw Throwables.propagate(e);
         }

@@ -74,7 +74,11 @@ public class DefaultAtomicValue<V> extends Synchronous<AsyncAtomicValue<V>> impl
 
     private <T> T complete(CompletableFuture<T> future) {
         try {
-            return future.get(operationTimeoutMillis, TimeUnit.MILLISECONDS);
+            if (operationTimeoutMillis == -1) {
+                return future.get();
+            } else {
+                return future.get(operationTimeoutMillis, TimeUnit.MILLISECONDS);
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new StorageException.Interrupted();

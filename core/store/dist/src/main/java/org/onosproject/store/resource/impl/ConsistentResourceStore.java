@@ -23,7 +23,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -54,7 +53,6 @@ import org.onosproject.net.resource.Resources;
 import org.onosproject.store.AbstractStore;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.CommitStatus;
-import org.onosproject.store.service.DistributedPrimitive;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.TransactionContext;
@@ -366,7 +364,7 @@ public class ConsistentResourceStore extends AbstractStore<ResourceEvent, Resour
      */
     private CommitStatus commitTransaction(TransactionContext tx)
             throws InterruptedException, ExecutionException, TimeoutException {
-        return tx.commit().get(DistributedPrimitive.DEFAULT_OPERATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+        return tx.commit().get();
     }
 
     /**
@@ -390,8 +388,8 @@ public class ConsistentResourceStore extends AbstractStore<ResourceEvent, Resour
      */
     // computational complexity: O(n) where n is the number of the specified value
     private boolean register(TransactionalDiscreteResourceSubStore discreteTxStore,
-                             TransactionalContinuousResourceSubStore continuousTxStore,
-                             DiscreteResourceId parent, List<Resource> resources) {
+            TransactionalContinuousResourceSubStore continuousTxStore,
+            DiscreteResourceId parent, List<Resource> resources) {
         // it's assumed that the passed "values" is non-empty
 
         // This is 2-pass scan. Nicer to have 1-pass scan
@@ -419,8 +417,8 @@ public class ConsistentResourceStore extends AbstractStore<ResourceEvent, Resour
      * @return true if the operation succeeds, false otherwise
      */
     private boolean unregister(TransactionalDiscreteResourceSubStore discreteTxStore,
-                               TransactionalContinuousResourceSubStore continuousTxStore,
-                               DiscreteResourceId parent, List<Resource> resources) {
+            TransactionalContinuousResourceSubStore continuousTxStore,
+            DiscreteResourceId parent, List<Resource> resources) {
         // it's assumed that the passed "values" is non-empty
 
         // This is 2-pass scan. Nicer to have 1-pass scan

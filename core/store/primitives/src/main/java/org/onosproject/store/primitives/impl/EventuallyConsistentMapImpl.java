@@ -771,7 +771,7 @@ public class EventuallyConsistentMapImpl<K, V>
         }
         try {
             requestBootstrapFromPeers(activePeers)
-                    .get(DistributedPrimitive.DEFAULT_OPERATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+                    .get(15000, TimeUnit.MILLISECONDS);
         } catch (ExecutionException | InterruptedException | TimeoutException e) {
             log.debug("Failed to bootstrap ec map {}: {}", mapName, ExceptionUtils.getStackTrace(e));
         }

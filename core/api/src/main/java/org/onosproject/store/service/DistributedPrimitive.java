@@ -134,7 +134,7 @@ public interface DistributedPrimitive {
     /**
      * Default timeout for primitive operations.
      */
-    long DEFAULT_OPERATION_TIMEOUT_MILLIS = 5000L;
+    long DEFAULT_OPERATION_TIMEOUT_MILLIS = -1;
 
     /**
      * Returns the name of this primitive.

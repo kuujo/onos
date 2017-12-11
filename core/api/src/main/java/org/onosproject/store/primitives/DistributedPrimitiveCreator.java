@@ -124,7 +124,7 @@ public interface DistributedPrimitiveCreator {
      * @return leader elector
      */
     default AsyncLeaderElector newAsyncLeaderElector(String name) {
-        return newAsyncLeaderElector(name, DEFAULT_OPERATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+        return newAsyncLeaderElector(name, 5000, TimeUnit.MILLISECONDS);
     }
 
     /**
