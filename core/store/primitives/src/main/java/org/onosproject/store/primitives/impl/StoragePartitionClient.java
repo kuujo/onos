@@ -73,7 +73,7 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
     private static final String ATOMIC_VALUES_CONSISTENT_MAP_NAME = "onos-atomic-values";
     private final com.google.common.base.Supplier<AsyncConsistentMap<String, byte[]>> onosAtomicValuesMap =
             Suppliers.memoize(() -> newAsyncConsistentMap(ATOMIC_VALUES_CONSISTENT_MAP_NAME,
-                                                          Serializer.using(KryoNamespaces.BASIC)));
+                    Serializer.using(KryoNamespaces.BASIC)));
 
     public StoragePartitionClient(StoragePartition partition, MemberId localMemberId, RaftClientProtocol protocol) {
         this.partition = partition;
@@ -142,9 +142,9 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
 
         if (serializer != null) {
             return DistributedPrimitives.newTranscodingTreeMap(
-                            rawMap,
-                            value -> value == null ? null : serializer.encode(value),
-                            bytes -> serializer.decode(bytes));
+                    rawMap,
+                    value -> value == null ? null : serializer.encode(value),
+                    bytes -> serializer.decode(bytes));
         }
         return (AsyncConsistentTreeMap<V>) rawMap;
     }
@@ -166,11 +166,11 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
 
         if (serializer != null) {
             return DistributedPrimitives.newTranscodingMultimap(
-                            rawMap,
-                            key -> HexString.toHexString(serializer.encode(key)),
-                            string -> serializer.decode(HexString.fromHexString(string)),
-                            value -> serializer.encode(value),
-                            bytes -> serializer.decode(bytes));
+                    rawMap,
+                    key -> HexString.toHexString(serializer.encode(key)),
+                    string -> serializer.decode(HexString.fromHexString(string)),
+                    value -> serializer.encode(value),
+                    bytes -> serializer.decode(bytes));
         }
         return (AsyncConsistentMultimap<K, V>) rawMap;
     }
@@ -196,9 +196,9 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
 
         if (serializer != null) {
             return DistributedPrimitives.newTranscodingAtomicCounterMap(
-                            rawMap,
-                            key -> HexString.toHexString(serializer.encode(key)),
-                            string -> serializer.decode(HexString.fromHexString(string)));
+                    rawMap,
+                    key -> HexString.toHexString(serializer.encode(key)),
+                    string -> serializer.decode(HexString.fromHexString(string)));
         }
         return (AsyncAtomicCounterMap<K>) rawMap;
     }
@@ -262,8 +262,8 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
         AtomixLeaderElector leaderElector = new AtomixLeaderElector(client.newProxyBuilder()
                 .withName(name)
                 .withServiceType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
-                .withReadConsistency(ReadConsistency.LINEARIZABLE)
-                .withCommunicationStrategy(CommunicationStrategy.LEADER)
+                .withReadConsistency(ReadConsistency.SEQUENTIAL)
+                .withCommunicationStrategy(CommunicationStrategy.ANY)
                 .withMinTimeout(Duration.ofMillis(timeUnit.toMillis(leaderTimeout)))
                 .withMaxTimeout(Duration.ofSeconds(5))
                 .withMaxRetries(5)
@@ -308,6 +308,7 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
 
     /**
      * Returns the {@link PartitionClientInfo information} for this client.
+     *
      * @return partition client information
      */
     public PartitionClientInfo clientInfo() {

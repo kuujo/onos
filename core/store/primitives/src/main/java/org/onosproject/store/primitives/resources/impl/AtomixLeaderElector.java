@@ -48,7 +48,6 @@ import static org.onosproject.store.primitives.resources.impl.AtomixLeaderElecto
 import static org.onosproject.store.primitives.resources.impl.AtomixLeaderElectorOperations.GET_ELECTED_TOPICS;
 import static org.onosproject.store.primitives.resources.impl.AtomixLeaderElectorOperations.GET_LEADERSHIP;
 import static org.onosproject.store.primitives.resources.impl.AtomixLeaderElectorOperations.PROMOTE;
-import static org.onosproject.store.primitives.resources.impl.AtomixLeaderElectorOperations.REMOVE_LISTENER;
 import static org.onosproject.store.primitives.resources.impl.AtomixLeaderElectorOperations.RUN;
 import static org.onosproject.store.primitives.resources.impl.AtomixLeaderElectorOperations.WITHDRAW;
 
@@ -63,7 +62,6 @@ public class AtomixLeaderElector extends AbstractRaftPrimitive implements AsyncL
             .build());
 
     private final Set<Consumer<Change<Leadership>>> leadershipChangeListeners = Sets.newCopyOnWriteArraySet();
-    private final Consumer<Change<Leadership>> cacheUpdater;
     private final Consumer<Status> statusListener;
 
     private final LoadingCache<String, CompletableFuture<Leadership>> cache;
@@ -75,10 +73,6 @@ public class AtomixLeaderElector extends AbstractRaftPrimitive implements AsyncL
                 .build(CacheLoader.from(topic -> proxy.invoke(
                         GET_LEADERSHIP, SERIALIZER::encode, new GetLeadership(topic), SERIALIZER::decode)));
 
-        cacheUpdater = change -> {
-            Leadership leadership = change.newValue();
-            cache.put(leadership.topic(), CompletableFuture.completedFuture(leadership));
-        };
         statusListener = status -> {
             if (status == Status.SUSPENDED || status == Status.INACTIVE) {
                 cache.invalidateAll();
@@ -87,25 +81,22 @@ public class AtomixLeaderElector extends AbstractRaftPrimitive implements AsyncL
         addStatusChangeListener(statusListener);
 
         proxy.addStateChangeListener(state -> {
-            if (state == RaftProxy.State.CONNECTED && isListening()) {
+            if (state == RaftProxy.State.CONNECTED) {
                 proxy.invoke(ADD_LISTENER);
             }
         });
         proxy.addEventListener(CHANGE, SERIALIZER::decode, this::handleEvent);
     }
 
-    @Override
-    public CompletableFuture<Void> destroy() {
-        removeStatusChangeListener(statusListener);
-        return removeChangeListener(cacheUpdater);
+    private void handleEvent(List<Change<Leadership>> changes) {
+        changes.forEach(change -> {
+            cache.put(change.newValue().topic(), CompletableFuture.completedFuture(change.newValue()));
+            leadershipChangeListeners.forEach(l -> l.accept(change));
+        });
     }
 
     public CompletableFuture<AtomixLeaderElector> setupCache() {
-        return addChangeListener(cacheUpdater).thenApply(v -> this);
-    }
-
-    private void handleEvent(List<Change<Leadership>> changes) {
-        changes.forEach(change -> leadershipChangeListeners.forEach(l -> l.accept(change)));
+        return proxy.invoke(ADD_LISTENER).thenApply(v -> this);
     }
 
     @Override
@@ -159,23 +150,19 @@ public class AtomixLeaderElector extends AbstractRaftPrimitive implements AsyncL
 
     @Override
     public synchronized CompletableFuture<Void> addChangeListener(Consumer<Change<Leadership>> consumer) {
-        if (leadershipChangeListeners.isEmpty()) {
-            return proxy.invoke(ADD_LISTENER).thenRun(() -> leadershipChangeListeners.add(consumer));
-        } else {
-            leadershipChangeListeners.add(consumer);
-            return CompletableFuture.completedFuture(null);
-        }
+        leadershipChangeListeners.add(consumer);
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
     public synchronized CompletableFuture<Void> removeChangeListener(Consumer<Change<Leadership>> consumer) {
-        if (leadershipChangeListeners.remove(consumer) && leadershipChangeListeners.isEmpty()) {
-            return proxy.invoke(REMOVE_LISTENER).thenApply(v -> null);
-        }
+        leadershipChangeListeners.remove(consumer);
         return CompletableFuture.completedFuture(null);
     }
 
-    private boolean isListening() {
-        return !leadershipChangeListeners.isEmpty();
+    @Override
+    public CompletableFuture<Void> destroy() {
+        removeStatusChangeListener(statusListener);
+        return CompletableFuture.completedFuture(null);
     }
 }
