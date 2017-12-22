@@ -75,10 +75,10 @@ public class AtomixLeaderElectorServiceTest {
         service.init(context);
 
         NodeId nodeId = NodeId.nodeId("1");
-        service.run(new DefaultCommit<>(
+        service.apply(new DefaultCommit<>(
                 2,
                 RUN,
-                new AtomixLeaderElectorOperations.Run("test", nodeId),
+                AtomixLeaderElectorService.SERIALIZER.encode(new AtomixLeaderElectorOperations.Run("test", nodeId)),
                 new RaftSessionContext(
                         SessionId.from(1),
                         MemberId.from("1"),

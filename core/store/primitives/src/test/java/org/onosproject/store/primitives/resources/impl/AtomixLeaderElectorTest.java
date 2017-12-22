@@ -15,6 +15,7 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
+import java.time.Duration;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
@@ -42,7 +43,7 @@ public class AtomixLeaderElectorTest extends AtomixTestBase<AtomixLeaderElector>
 
     @Override
     protected RaftService createService() {
-        return new AtomixLeaderElectorService();
+        return new AtomixLeaderElectorService(Duration.ofSeconds(5));
     }
 
     @Override
@@ -73,6 +74,16 @@ public class AtomixLeaderElectorTest extends AtomixTestBase<AtomixLeaderElector>
 
         AtomixLeaderElector elector2 = newPrimitive("test-elector-run");
         elector2.run("bar", node2).thenAccept(result -> {
+            assertEquals(node1, result.leaderNodeId());
+            assertEquals(1, result.leader().term());
+            assertEquals(2, result.candidates().size());
+            assertEquals(node1, result.candidates().get(0));
+            assertEquals(node2, result.candidates().get(1));
+        }).join();
+
+        Thread.sleep(10000);
+
+        elector2.getLeadership("bar").thenAccept(result -> {
             assertEquals(node2, result.leaderNodeId());
             assertEquals(2, result.leader().term());
             assertEquals(2, result.candidates().size());
