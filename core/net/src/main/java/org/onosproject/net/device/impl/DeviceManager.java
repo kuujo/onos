@@ -951,7 +951,16 @@ public class DeviceManager
     private class InternalStoreDelegate implements DeviceStoreDelegate {
         @Override
         public void notify(DeviceEvent event) {
-            post(event);
+            if (event.type() == DeviceEvent.Type.DEVICE_ADDED) {
+                mastershipService.requestRoleFor(event.subject().id()).whenComplete((role, error) -> {
+                    if (error == null && role == NONE) {
+                        reassertRole(event.subject().id(), NONE);
+                    }
+                    post(event);
+                });
+            } else {
+                post(event);
+            }
         }
     }
 

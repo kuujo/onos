@@ -27,7 +27,9 @@ import org.apache.felix.scr.annotations.Deactivate;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
+import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.Leadership;
+import org.onosproject.cluster.NodeId;
 import org.onosproject.core.VersionService;
 import org.onosproject.event.AbstractListenerManager;
 import org.onosproject.event.Change;
@@ -64,6 +66,11 @@ public class ReplicaInfoManager
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected VersionService versionService;
 
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected ClusterService clusterService;
+
+    private NodeId localNodeId;
+
     private final Consumer<Change<Leadership>> leadershipChangeListener = change -> {
         Leadership oldLeadership = change.oldValue();
         Leadership newLeadership = change.newValue();
@@ -92,6 +99,7 @@ public class ReplicaInfoManager
     @Activate
     public void activate() {
         eventDispatcher.addSink(ReplicaInfoEvent.class, listenerRegistry);
+        localNodeId = clusterService.getLocalNode().id();
         leaderElector = coordinationService.leaderElectorBuilder()
                 .withName("onos-leadership-elections")
                 .build()
@@ -110,6 +118,14 @@ public class ReplicaInfoManager
     @Override
     public ReplicaInfo getReplicaInfoFor(DeviceId deviceId) {
         return buildFromLeadership(leaderElector.getLeadership(createDeviceMastershipTopic(deviceId)));
+    }
+
+    @Override
+    public boolean isLocalMaster(DeviceId deviceId) {
+        ReplicaInfo replicaInfo = getReplicaInfoFor(deviceId);
+        return replicaInfo != null
+            && replicaInfo.master().isPresent()
+            && replicaInfo.master().get().equals(localNodeId);
     }
 
     @Override
@@ -141,8 +157,8 @@ public class ReplicaInfoManager
     }
 
     static ReplicaInfo buildFromLeadership(Leadership leadership) {
-        return new ReplicaInfo(leadership.leaderNodeId(), leadership.candidates().stream()
+        return leadership != null ? new ReplicaInfo(leadership.leaderNodeId(), leadership.candidates().stream()
                 .filter(nodeId -> !Objects.equals(nodeId, leadership.leaderNodeId()))
-                .collect(Collectors.toList()));
+                .collect(Collectors.toList())) : null;
     }
 }

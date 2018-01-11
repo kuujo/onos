@@ -27,6 +27,9 @@ import com.google.common.collect.Sets;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.onlab.packet.IpAddress;
+import org.onosproject.cluster.ClusterService;
+import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.Leader;
 import org.onosproject.cluster.Leadership;
 import org.onosproject.cluster.NodeId;
@@ -50,7 +53,6 @@ import static org.junit.Assert.assertTrue;
 public class ReplicaInfoManagerTest {
 
     private static final DeviceId DID1 = DeviceId.deviceId("of:1");
-    private static final DeviceId DID2 = DeviceId.deviceId("of:2");
     private static final NodeId NID1 = new NodeId("foo");
     private static final NodeId NID2 = new NodeId("bar");
 
@@ -62,16 +64,37 @@ public class ReplicaInfoManagerTest {
         leaderElector = new TestLeaderElector();
         manager = new TestReplicaInfoManager();
         manager.versionService = () -> Version.version("1.0.0");
-        CoordinationService coordinationService = mock(CoordinationService.class);
+
+        ClusterService clusterService = mock(ClusterService.class);
+        expect(clusterService.getLocalNode()).andReturn(new ControllerNode() {
+            @Override
+            public NodeId id() {
+                return NID1;
+            }
+            @Override
+            public IpAddress ip() {
+                return null;
+            }
+            @Override
+            public int tcpPort() {
+                return 0;
+            }
+        }).anyTimes();
+
         AsyncLeaderElector leaderElector = mock(AsyncLeaderElector.class);
         expect(leaderElector.asLeaderElector()).andReturn(this.leaderElector).anyTimes();
+
+        CoordinationService coordinationService = mock(CoordinationService.class);
         expect(coordinationService.leaderElectorBuilder()).andReturn(new LeaderElectorBuilder() {
             @Override
             public AsyncLeaderElector build() {
                 return leaderElector;
             }
         }).anyTimes();
-        replay(coordinationService, leaderElector);
+
+        replay(clusterService, coordinationService, leaderElector);
+
+        manager.clusterService = clusterService;
         manager.coordinationService = coordinationService;
 
         manager.activate();
@@ -94,7 +117,7 @@ public class ReplicaInfoManagerTest {
     }
 
     @Test
-    public void testReplicaEvents() throws Exception {
+    public void testReplicaInfo() throws Exception {
         Queue<ReplicaInfoEvent> events = new ArrayBlockingQueue<>(2);
         manager.addListener(events::add);
 
@@ -114,6 +137,7 @@ public class ReplicaInfoManagerTest {
         assertEquals(ReplicaInfoEvent.Type.MASTER_CHANGED, event.type());
         assertEquals(NID2, event.replicaInfo().master().get());
         assertEquals(1, event.replicaInfo().backups().size());
+        assertFalse(manager.isLocalMaster(DID1));
 
         event = events.remove();
         assertEquals(ReplicaInfoEvent.Type.BACKUPS_CHANGED, event.type());
@@ -142,6 +166,7 @@ public class ReplicaInfoManagerTest {
 
         assertEquals(NID1, manager.getReplicaInfoFor(DID1).master().get());
         assertEquals(1, manager.getReplicaInfoFor(DID1).backups().size());
+        assertTrue(manager.isLocalMaster(DID1));
     }
 
     private class TestReplicaInfoManager extends ReplicaInfoManager {

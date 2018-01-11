@@ -39,11 +39,18 @@ import org.onosproject.net.flow.DefaultFlowRule;
 import org.onosproject.net.flow.oldbatch.FlowRuleBatchOperation;
 import org.onosproject.net.intent.IntentTestsMocks;
 import org.onosproject.store.cluster.messaging.ClusterCommunicationServiceAdapter;
+import org.onosproject.store.flow.ReplicaInfo;
+import org.onosproject.store.flow.ReplicaInfoEventListener;
+import org.onosproject.store.flow.ReplicaInfoService;
 import org.onosproject.store.persistence.PersistenceServiceAdapter;
 import org.onosproject.store.service.TestStorageService;
 
 import org.onlab.packet.Ip4Address;
+
+import java.util.Collections;
 import java.util.Iterator;
+
+import org.onosproject.upgrade.UpgradeServiceAdapter;
 import org.osgi.service.component.ComponentContext;
 
 import static org.easymock.EasyMock.createMock;
@@ -105,6 +112,27 @@ public class ECFlowRuleStoreTest {
         }
     }
 
+    static class ReplicaOfAll implements ReplicaInfoService {
+        @Override
+        public ReplicaInfo getReplicaInfoFor(DeviceId deviceId) {
+            return new ReplicaInfo(NodeId.nodeId("1"), Collections.emptyList());
+        }
+
+        @Override
+        public boolean isLocalMaster(DeviceId deviceId) {
+            return true;
+        }
+
+        @Override
+        public void addListener(ReplicaInfoEventListener listener) {
+
+        }
+
+        @Override
+        public void removeListener(ReplicaInfoEventListener listener) {
+
+        }
+    }
 
     private static class MockControllerNode implements ControllerNode {
         final NodeId id;
@@ -133,7 +161,8 @@ public class ECFlowRuleStoreTest {
     public void setUp() throws Exception {
         flowStoreImpl = new ECFlowRuleStore();
         flowStoreImpl.storageService = new TestStorageService();
-        flowStoreImpl.replicaInfoManager = new ReplicaInfoManager();
+        flowStoreImpl.replicaService = new ReplicaOfAll();
+
         mockClusterService = createMock(ClusterService.class);
         flowStoreImpl.clusterService = mockClusterService;
         nodeId = new NodeId("1");
@@ -149,6 +178,7 @@ public class ECFlowRuleStoreTest {
         flowStoreImpl.coreService = new CoreServiceAdapter();
         flowStoreImpl.configService = new ComponentConfigAdapter();
         flowStoreImpl.persistenceService = new PersistenceServiceAdapter();
+        flowStoreImpl.upgradeService = new UpgradeServiceAdapter();
         flowStoreImpl.activate(context);
     }
 

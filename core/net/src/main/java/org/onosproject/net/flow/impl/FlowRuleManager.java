@@ -620,12 +620,12 @@ public class FlowRuleManager
 
                 FlowOperationsProcessor fops = pendingFlowOperations.remove(
                         event.subject().batchId());
-                if (event.result().isSuccess()) {
-                    if (fops != null) {
+                if (fops != null) {
+                    if (event.result().isSuccess()) {
                         fops.satisfy(event.deviceId());
+                    } else {
+                        fops.fail(event.deviceId(), event.result().failedItems());
                     }
-                } else {
-                    fops.fail(event.deviceId(), event.result().failedItems());
                 }
 
                 break;
