@@ -26,6 +26,16 @@ import org.onosproject.core.Version;
 public interface MembershipService {
 
     /**
+     * Returns the membership group identifier for the given version.
+     *
+     * @param version the version
+     * @return the membership group identifier for the given version
+     */
+    default MembershipGroupId getGroupId(Version version) {
+        return MembershipGroupId.from(version);
+    }
+
+    /**
      * Returns the local member.
      *
      * @return local member
@@ -33,11 +43,20 @@ public interface MembershipService {
     Member getLocalMember();
 
     /**
+     * Returns the local group identifier.
+     *
+     * @return the local group identifier
+     */
+    MembershipGroupId getLocalGroupId();
+
+    /**
      * Returns the group associated with the local member.
      *
      * @return the group associated with the local member
      */
-    MembershipGroup getLocalGroup();
+    default MembershipGroup getLocalGroup() {
+        return getGroup(getLocalGroupId());
+    }
 
     /**
      * Returns the set of current cluster members in the local group.
@@ -59,7 +78,18 @@ public interface MembershipService {
      * @param version the version for which to return the membership group
      * @return the membership group for the given version
      */
-    MembershipGroup getGroup(Version version);
+    @Deprecated
+    default MembershipGroup getGroup(Version version) {
+        return getGroup(getGroupId(version));
+    }
+
+    /**
+     * Returns the membership group for the given version.
+     *
+     * @param groupId the identifier for which to return the membership group
+     * @return the membership group for the given version
+     */
+    MembershipGroup getGroup(MembershipGroupId groupId);
 
     /**
      * Returns the set of members in the given version.
@@ -67,7 +97,18 @@ public interface MembershipService {
      * @param version the version for which to return the set of members
      * @return the set of members for the given version
      */
-    Set<Member> getMembers(Version version);
+    @Deprecated
+    default Set<Member> getMembers(Version version) {
+        return getMembers(getGroupId(version));
+    }
+
+    /**
+     * Returns the set of members in the given version.
+     *
+     * @param groupId the identifier for which to return the set of members
+     * @return the set of members for the given version
+     */
+    Set<Member> getMembers(MembershipGroupId groupId);
 
     /**
      * Returns the specified controller node.

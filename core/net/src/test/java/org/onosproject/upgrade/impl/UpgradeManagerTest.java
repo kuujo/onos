@@ -33,6 +33,7 @@ import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.DefaultControllerNode;
 import org.onosproject.cluster.Member;
 import org.onosproject.cluster.MembershipGroup;
+import org.onosproject.cluster.MembershipGroupId;
 import org.onosproject.cluster.MembershipServiceAdapter;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.common.event.impl.TestEventDispatcher;
@@ -74,7 +75,7 @@ public class UpgradeManagerTest {
             public MembershipGroup getLocalGroup() {
                 return getGroups()
                         .stream()
-                        .filter(group -> group.version().equals(version))
+                        .filter(group -> group.groupId().id().equals(version))
                         .findFirst()
                         .get();
             }
@@ -82,10 +83,11 @@ public class UpgradeManagerTest {
             @Override
             public Collection<MembershipGroup> getGroups() {
                 AtomicInteger nodeCounter = new AtomicInteger();
-                Map<Version, Set<Member>> groups = Maps.newHashMap();
+                Map<MembershipGroupId, Set<Member>> groups = Maps.newHashMap();
                 versions.stream().forEach(version -> {
-                    groups.computeIfAbsent(version, k -> Sets.newHashSet())
-                            .add(new Member(NodeId.nodeId(String.valueOf(nodeCounter.getAndIncrement())), version));
+                    groups.computeIfAbsent(MembershipGroupId.from(version), k -> Sets.newHashSet())
+                            .add(new Member(NodeId.nodeId(String.valueOf(nodeCounter.getAndIncrement())),
+                                MembershipGroupId.from(version)));
                 });
                 return Maps.transformEntries(groups, MembershipGroup::new).values();
             }

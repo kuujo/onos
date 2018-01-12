@@ -16,6 +16,7 @@
 package org.onosproject.upgrade;
 
 import com.google.common.annotations.Beta;
+import org.onosproject.cluster.MembershipGroupId;
 import org.onosproject.core.Version;
 import org.onosproject.event.ListenerService;
 
@@ -53,7 +54,21 @@ public interface UpgradeService
      *
      * @return the software version
      */
-    Version getVersion();
+    default Version getVersion() {
+        return getActiveGroup().id();
+    }
+
+    /**
+     * Returns the active membership group.
+     * <p>
+     * The returned identifier is representative of the group currently in control of the network. When the upgrade
+     * transitions to the {@link Upgrade.Status#UPGRADING} state, control over the network is transferred from
+     * {@link Upgrade#source()} nodes to {@link Upgrade#target()} nodes, and the identifier returned by this method
+     * represents that change.
+     *
+     * @return the membership group identifier
+     */
+    MembershipGroupId getActiveGroup();
 
     /**
      * Returns whether the local node is active.

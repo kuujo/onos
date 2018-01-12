@@ -26,6 +26,8 @@ import org.onosproject.cluster.ClusterServiceAdapter;
 import org.onosproject.cluster.Leader;
 import org.onosproject.cluster.Leadership;
 import org.onosproject.cluster.LeadershipEvent;
+import org.onosproject.cluster.MembershipGroupId;
+import org.onosproject.core.Version;
 import org.onosproject.net.ConnectPoint;
 import org.onosproject.net.EncapsulationType;
 import org.onosproject.net.Host;
@@ -89,14 +91,20 @@ public class VplsOperationManagerTest extends VplsTest {
         // leader changed to self
         Leader leader = new Leader(NODE_ID_1, 0, 0);
         Leadership leadership = new Leadership(APP_NAME, leader, ImmutableList.of());
-        LeadershipEvent event = new LeadershipEvent(LeadershipEvent.Type.LEADER_CHANGED, leadership);
+        LeadershipEvent event = new LeadershipEvent(
+            LeadershipEvent.Type.LEADER_CHANGED,
+            leadership,
+            MembershipGroupId.from(Version.version("1.0.0")));
         ((TestLeadershipService) vplsOperationManager.leadershipService).sendEvent(event);
         assertTrue(vplsOperationManager.isLeader);
 
         // leader changed to other
         leader = new Leader(NODE_ID_2, 0, 0);
         leadership = new Leadership(APP_NAME, leader, ImmutableList.of());
-        event = new LeadershipEvent(LeadershipEvent.Type.LEADER_CHANGED, leadership);
+        event = new LeadershipEvent(
+            LeadershipEvent.Type.LEADER_CHANGED,
+            leadership,
+            MembershipGroupId.from(Version.version("1.0.0")));
         ((TestLeadershipService) vplsOperationManager.leadershipService).sendEvent(event);
         assertFalse(vplsOperationManager.isLeader);
     }

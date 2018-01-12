@@ -17,9 +17,9 @@ package org.onosproject.cluster;
 
 import java.util.Arrays;
 
-import org.junit.Test;
-
 import com.google.common.testing.EqualsTester;
+import org.junit.Test;
+import org.onosproject.core.Version;
 
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
@@ -30,22 +30,23 @@ import static org.junit.Assert.assertThat;
 public class LeadershipEventTest {
     private final NodeId node1 = new NodeId("1");
     private final NodeId node2 = new NodeId("2");
+    private final MembershipGroupId group1 = MembershipGroupId.from(Version.version("1.0.0"));
     private final Leadership lead1 = new Leadership("topic1", new Leader(node1, 1L, 2L), Arrays.asList(node1));
     private final Leadership lead2 = new Leadership("topic1", new Leader(node1, 1L, 2L), Arrays.asList(node1, node2));
     private final Leadership lead3 = new Leadership("topic1", new Leader(node2, 1L, 2L), Arrays.asList(node2));
     private final LeadershipEvent event1 =
-            new LeadershipEvent(LeadershipEvent.Type.LEADER_CHANGED, lead1);
+            new LeadershipEvent(LeadershipEvent.Type.LEADER_CHANGED, lead1, group1);
     private final long time = System.currentTimeMillis();
     private final LeadershipEvent event2 =
             new LeadershipEvent(LeadershipEvent.Type.CANDIDATES_CHANGED,
-                    lead2, time);
+                    lead2, group1, time);
     private final LeadershipEvent sameAsEvent2 =
             new LeadershipEvent(LeadershipEvent.Type.CANDIDATES_CHANGED,
-                    lead2, time);
+                    lead2, group1, time);
     private final LeadershipEvent event3 =
-            new LeadershipEvent(LeadershipEvent.Type.LEADER_CHANGED, lead2);
+            new LeadershipEvent(LeadershipEvent.Type.LEADER_CHANGED, lead2, group1);
     private final LeadershipEvent event4 =
-            new LeadershipEvent(LeadershipEvent.Type.LEADER_AND_CANDIDATES_CHANGED, lead3);
+            new LeadershipEvent(LeadershipEvent.Type.LEADER_AND_CANDIDATES_CHANGED, lead3, group1);
 
     /**
      * Tests for proper operation of equals(), hashCode() and toString() methods.

@@ -28,8 +28,10 @@ import org.onosproject.cluster.LeadershipEvent;
 import org.onosproject.cluster.LeadershipEventListener;
 import org.onosproject.cluster.LeadershipService;
 import org.onosproject.cluster.LeadershipServiceAdapter;
+import org.onosproject.cluster.MembershipGroupId;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.common.event.impl.TestEventDispatcher;
+import org.onosproject.core.Version;
 import org.onosproject.net.intent.Key;
 
 import java.util.Arrays;
@@ -58,7 +60,8 @@ public class WorkPartitionManagerTest {
             = new LeadershipEvent(LeadershipEvent.Type.CANDIDATES_CHANGED,
                                   new Leadership(ELECTION_PREFIX + "0",
                                                  new Leader(MY_NODE_ID, 0, 0),
-                                                 Arrays.asList(MY_NODE_ID, OTHER_NODE_ID)));
+                                                 Arrays.asList(MY_NODE_ID, OTHER_NODE_ID)),
+                                  MembershipGroupId.from(Version.version("1.0.0")));
 
     private static final NodeId MY_NODE_ID = new NodeId("local");
     private static final NodeId OTHER_NODE_ID = new NodeId("other");

@@ -15,8 +15,6 @@
  */
 package org.onosproject.store.trivial;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +36,10 @@ import org.onosproject.cluster.LeadershipEvent;
 import org.onosproject.cluster.LeadershipEvent.Type;
 import org.onosproject.cluster.LeadershipEventListener;
 import org.onosproject.cluster.LeadershipService;
+import org.onosproject.cluster.MembershipService;
 import org.onosproject.cluster.NodeId;
+
+import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * A trivial implementation of the leadership service.
@@ -54,6 +55,9 @@ public class SimpleLeadershipManager implements LeadershipService {
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     private ClusterService clusterService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    private MembershipService membershipService;
 
     private NodeId localNodeId;
 
@@ -91,7 +95,8 @@ public class SimpleLeadershipManager implements LeadershipService {
         elections.put(path, true);
         Leadership leadership = new Leadership(path, new Leader(localNodeId, 0, 0), Arrays.asList(localNodeId));
         for (LeadershipEventListener listener : listeners) {
-            listener.event(new LeadershipEvent(Type.LEADER_AND_CANDIDATES_CHANGED, leadership));
+            listener.event(new LeadershipEvent(
+                Type.LEADER_AND_CANDIDATES_CHANGED, leadership, membershipService.getLocalGroupId()));
         }
         return leadership;
     }
@@ -101,7 +106,8 @@ public class SimpleLeadershipManager implements LeadershipService {
         elections.remove(path);
         for (LeadershipEventListener listener : listeners) {
             listener.event(new LeadershipEvent(Type.LEADER_AND_CANDIDATES_CHANGED,
-                    new Leadership(path, null, Arrays.asList())));
+                new Leadership(path, null, Arrays.asList()),
+                membershipService.getLocalGroupId()));
         }
     }
 

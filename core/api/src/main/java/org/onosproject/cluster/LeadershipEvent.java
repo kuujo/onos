@@ -17,9 +17,8 @@ package org.onosproject.cluster;
 
 import java.util.Objects;
 
-import org.onosproject.event.AbstractEvent;
-
 import com.google.common.base.MoreObjects;
+import org.onosproject.event.AbstractEvent;
 
 /**
  * Describes leadership-related event.
@@ -60,26 +59,41 @@ public class LeadershipEvent extends AbstractEvent<LeadershipEvent.Type, Leaders
         SERVICE_RESTORED
     }
 
+    private final MembershipGroupId groupId;
+
     /**
      * Creates an event of a given type and for the specified instance and the
      * current time.
      *
      * @param type       leadership event type
      * @param leadership event subject
+     * @param groupId    the event group identifier
      */
-    public LeadershipEvent(Type type, Leadership leadership) {
+    public LeadershipEvent(Type type, Leadership leadership, MembershipGroupId groupId) {
         super(type, leadership);
+        this.groupId = groupId;
     }
 
     /**
      * Creates an event of a given type and for the specified subject and time.
      *
-     * @param type     leadership event type
+     * @param type       leadership event type
      * @param leadership event subject
-     * @param time     occurrence time
+     * @param groupId    the event group identifier
+     * @param time       occurrence time
      */
-    public LeadershipEvent(Type type, Leadership leadership, long time) {
+    public LeadershipEvent(Type type, Leadership leadership, MembershipGroupId groupId, long time) {
         super(type, leadership, time);
+        this.groupId = groupId;
+    }
+
+    /**
+     * Returns the event group identifier.
+     *
+     * @return the event group identifier
+     */
+    public MembershipGroupId groupId() {
+        return groupId;
     }
 
     @Override
@@ -94,9 +108,10 @@ public class LeadershipEvent extends AbstractEvent<LeadershipEvent.Type, Leaders
         }
         if (obj instanceof LeadershipEvent) {
             final LeadershipEvent other = (LeadershipEvent) obj;
-            return Objects.equals(this.type(), other.type()) &&
-                    Objects.equals(this.subject(), other.subject()) &&
-                    Objects.equals(this.time(), other.time());
+            return Objects.equals(this.type(), other.type())
+                && Objects.equals(this.subject(), other.subject())
+                && Objects.equals(this.groupId(), other.groupId())
+                && Objects.equals(this.time(), other.time());
         }
         return false;
     }
