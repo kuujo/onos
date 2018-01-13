@@ -15,6 +15,12 @@
  */
 package org.onosproject.store.intent.impl;
 
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+
 import org.junit.Before;
 import org.junit.Test;
 import org.onlab.junit.NullScheduledExecutor;
@@ -22,21 +28,17 @@ import org.onlab.packet.IpAddress;
 import org.onosproject.cluster.ClusterServiceAdapter;
 import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.DefaultControllerNode;
+import org.onosproject.cluster.GroupLeadershipEvent;
+import org.onosproject.cluster.GroupLeadershipEventListener;
+import org.onosproject.cluster.GroupLeadershipService;
+import org.onosproject.cluster.GroupLeadershipServiceAdapter;
 import org.onosproject.cluster.Leader;
 import org.onosproject.cluster.Leadership;
-import org.onosproject.cluster.LeadershipEvent;
-import org.onosproject.cluster.LeadershipEventListener;
-import org.onosproject.cluster.LeadershipService;
-import org.onosproject.cluster.LeadershipServiceAdapter;
+import org.onosproject.cluster.MembershipGroupId;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.common.event.impl.TestEventDispatcher;
+import org.onosproject.core.Version;
 import org.onosproject.net.intent.Key;
-
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
 
 import static junit.framework.TestCase.assertFalse;
 import static org.easymock.EasyMock.anyObject;
@@ -54,11 +56,12 @@ import static org.junit.Assert.assertTrue;
  */
 public class WorkPartitionManagerTest {
 
-    private final LeadershipEvent event
-            = new LeadershipEvent(LeadershipEvent.Type.CANDIDATES_CHANGED,
-                                  new Leadership(ELECTION_PREFIX + "0",
-                                                 new Leader(MY_NODE_ID, 0, 0),
-                                                 Arrays.asList(MY_NODE_ID, OTHER_NODE_ID)));
+    private final GroupLeadershipEvent event = new GroupLeadershipEvent(
+        GroupLeadershipEvent.Type.CANDIDATES_CHANGED,
+        new Leadership(ELECTION_PREFIX + "0",
+            new Leader(MY_NODE_ID, 0, 0),
+            Arrays.asList(MY_NODE_ID, OTHER_NODE_ID)),
+        MembershipGroupId.from(Version.version("1.0.0")));
 
     private static final NodeId MY_NODE_ID = new NodeId("local");
     private static final NodeId OTHER_NODE_ID = new NodeId("other");
@@ -66,16 +69,16 @@ public class WorkPartitionManagerTest {
 
     private static final String ELECTION_PREFIX = "work-partition-";
 
-        private LeadershipService leadershipService;
-    private LeadershipEventListener leaderListener;
+    private GroupLeadershipService leadershipService;
+    private GroupLeadershipEventListener leaderListener;
 
     private WorkPartitionManager partitionManager;
 
     @Before
     public void setUp() {
-        leadershipService = createMock(LeadershipService.class);
+        leadershipService = createMock(GroupLeadershipService.class);
 
-        leadershipService.addListener(anyObject(LeadershipEventListener.class));
+        leadershipService.addListener(anyObject(GroupLeadershipEventListener.class));
         expectLastCall().andDelegateTo(new TestLeadershipService());
         for (int i = 0; i < WorkPartitionManager.NUM_PARTITIONS; i++) {
             expect(leadershipService.runForLeadership(ELECTION_PREFIX + i))
@@ -131,7 +134,7 @@ public class WorkPartitionManagerTest {
     public void testActivate() {
         reset(leadershipService);
 
-        leadershipService.addListener(anyObject(LeadershipEventListener.class));
+        leadershipService.addListener(anyObject(GroupLeadershipEventListener.class));
 
         for (int i = 0; i < WorkPartitionManager.NUM_PARTITIONS; i++) {
             expect(leadershipService.runForLeadership(ELECTION_PREFIX + i))
@@ -249,9 +252,9 @@ public class WorkPartitionManagerTest {
      * LeadershipService that allows us to grab a reference to
      * PartitionManager's LeadershipEventListener.
      */
-    public class TestLeadershipService extends LeadershipServiceAdapter {
+    public class TestLeadershipService extends GroupLeadershipServiceAdapter {
         @Override
-        public void addListener(LeadershipEventListener listener) {
+        public void addListener(GroupLeadershipEventListener listener) {
             leaderListener = listener;
         }
     }
