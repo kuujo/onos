@@ -19,7 +19,6 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.function.Consumer;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -27,22 +26,18 @@ import com.google.common.collect.Sets;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.onosproject.cluster.GroupLeadershipServiceAdapter;
 import org.onosproject.cluster.Leader;
 import org.onosproject.cluster.Leadership;
+import org.onosproject.cluster.LeadershipEvent;
+import org.onosproject.cluster.LeadershipEventListener;
+import org.onosproject.cluster.MembershipGroupId;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.common.event.impl.TestEventDispatcher;
 import org.onosproject.core.Version;
-import org.onosproject.event.Change;
 import org.onosproject.net.DeviceId;
 import org.onosproject.store.flow.ReplicaInfoEvent;
-import org.onosproject.store.service.AsyncLeaderElector;
-import org.onosproject.store.service.CoordinationService;
-import org.onosproject.store.service.LeaderElector;
-import org.onosproject.store.service.LeaderElectorBuilder;
 
-import static org.easymock.EasyMock.expect;
-import static org.easymock.EasyMock.mock;
-import static org.easymock.EasyMock.replay;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -54,26 +49,14 @@ public class ReplicaInfoManagerTest {
     private static final NodeId NID1 = new NodeId("foo");
     private static final NodeId NID2 = new NodeId("bar");
 
-    private TestLeaderElector leaderElector;
+    private TestLeadershipService leadershipService;
     private ReplicaInfoManager manager;
 
     @Before
     public void setUp() throws Exception {
-        leaderElector = new TestLeaderElector();
+        leadershipService = new TestLeadershipService();
         manager = new TestReplicaInfoManager();
-        manager.versionService = () -> Version.version("1.0.0");
-        CoordinationService coordinationService = mock(CoordinationService.class);
-        AsyncLeaderElector leaderElector = mock(AsyncLeaderElector.class);
-        expect(leaderElector.asLeaderElector()).andReturn(this.leaderElector).anyTimes();
-        expect(coordinationService.leaderElectorBuilder()).andReturn(new LeaderElectorBuilder() {
-            @Override
-            public AsyncLeaderElector build() {
-                return leaderElector;
-            }
-        }).anyTimes();
-        replay(coordinationService, leaderElector);
-        manager.coordinationService = coordinationService;
-
+        manager.leadershipService = leadershipService;
         manager.activate();
     }
 
@@ -84,12 +67,12 @@ public class ReplicaInfoManagerTest {
 
     @Test
     public void testMastershipTopics() throws Exception {
-        assertEquals("device:of:1|1.0.0", manager.createDeviceMastershipTopic(DID1));
-        assertEquals(DID1, manager.extractDeviceIdFromTopic("device:of:1|1.0.0"));
-        assertTrue(manager.isDeviceMastershipTopic("device:of:1|1.0.0"));
-        assertFalse(manager.isDeviceMastershipTopic("foo:bar|1.0.0"));
-        assertFalse(manager.isDeviceMastershipTopic("foo:bar|baz"));
-        assertFalse(manager.isDeviceMastershipTopic("foobarbaz|1.0.0"));
+        assertEquals("device:of:1", manager.createDeviceMastershipTopic(DID1));
+        assertEquals(DID1, manager.extractDeviceIdFromTopic("device:of:1"));
+        assertTrue(manager.isDeviceMastershipTopic("device:of:1"));
+        assertFalse(manager.isDeviceMastershipTopic("foo:bar"));
+        assertFalse(manager.isDeviceMastershipTopic("foo:bar"));
+        assertFalse(manager.isDeviceMastershipTopic("foobarbaz"));
         assertFalse(manager.isDeviceMastershipTopic("foobarbaz"));
     }
 
@@ -98,17 +81,16 @@ public class ReplicaInfoManagerTest {
         Queue<ReplicaInfoEvent> events = new ArrayBlockingQueue<>(2);
         manager.addListener(events::add);
 
-        Leadership oldLeadership = new Leadership(
-                manager.createDeviceMastershipTopic(DID1),
-                new Leader(NID1, 1, 1),
-                Lists.newArrayList(NID1));
-        Leadership newLeadership = new Leadership(
-                manager.createDeviceMastershipTopic(DID1),
-                new Leader(NID2, 2, 1),
-                Lists.newArrayList(NID2, NID1));
+        Leadership leadership = new Leadership(
+            manager.createDeviceMastershipTopic(DID1),
+            new Leader(NID2, 2, 1),
+            Lists.newArrayList(NID2, NID1));
 
-        leaderElector.leaderships.put(manager.createDeviceMastershipTopic(DID1), newLeadership);
-        leaderElector.post(new Change<>(oldLeadership, newLeadership));
+        leadershipService.leaderships.put(manager.createDeviceMastershipTopic(DID1), leadership);
+        leadershipService.post(new LeadershipEvent(
+            LeadershipEvent.Type.LEADER_AND_CANDIDATES_CHANGED,
+            leadership,
+            MembershipGroupId.from(Version.version("1.0.0"))));
 
         ReplicaInfoEvent event = events.remove();
         assertEquals(ReplicaInfoEvent.Type.MASTER_CHANGED, event.type());
@@ -123,17 +105,16 @@ public class ReplicaInfoManagerTest {
         assertEquals(NID2, manager.getReplicaInfoFor(DID1).master().get());
         assertEquals(1, manager.getReplicaInfoFor(DID1).backups().size());
 
-        oldLeadership = new Leadership(
-                manager.createDeviceMastershipTopic(DID1),
-                new Leader(NID1, 1, 1),
-                Lists.newArrayList(NID1));
-        newLeadership = new Leadership(
-                manager.createDeviceMastershipTopic(DID1),
-                new Leader(NID1, 1, 1),
-                Lists.newArrayList(NID1, NID2));
+        leadership = new Leadership(
+            manager.createDeviceMastershipTopic(DID1),
+            new Leader(NID1, 1, 1),
+            Lists.newArrayList(NID1, NID2));
 
-        leaderElector.leaderships.put(manager.createDeviceMastershipTopic(DID1), newLeadership);
-        leaderElector.post(new Change<>(oldLeadership, newLeadership));
+        leadershipService.leaderships.put(manager.createDeviceMastershipTopic(DID1), leadership);
+        leadershipService.post(new LeadershipEvent(
+            LeadershipEvent.Type.CANDIDATES_CHANGED,
+            leadership,
+            MembershipGroupId.from(Version.version("1.0.0"))));
 
         event = events.remove();
         assertEquals(ReplicaInfoEvent.Type.BACKUPS_CHANGED, event.type());
@@ -150,39 +131,9 @@ public class ReplicaInfoManagerTest {
         }
     }
 
-    private class TestLeaderElector implements LeaderElector {
+    private class TestLeadershipService extends GroupLeadershipServiceAdapter {
         private final Map<String, Leadership> leaderships = Maps.newConcurrentMap();
-        private final Set<Consumer<Change<Leadership>>> listeners = Sets.newConcurrentHashSet();
-
-        @Override
-        public String name() {
-            return null;
-        }
-
-        @Override
-        public Leadership run(String topic, NodeId nodeId) {
-            return null;
-        }
-
-        @Override
-        public void withdraw(String topic) {
-
-        }
-
-        @Override
-        public boolean anoint(String topic, NodeId nodeId) {
-            return false;
-        }
-
-        @Override
-        public boolean promote(String topic, NodeId nodeId) {
-            return false;
-        }
-
-        @Override
-        public void evict(NodeId nodeId) {
-
-        }
+        private final Set<LeadershipEventListener> listeners = Sets.newConcurrentHashSet();
 
         @Override
         public Leadership getLeadership(String topic) {
@@ -190,22 +141,12 @@ public class ReplicaInfoManagerTest {
         }
 
         @Override
-        public Map<String, Leadership> getLeaderships() {
-            return leaderships;
+        public void addListener(LeadershipEventListener listener) {
+            listeners.add(listener);
         }
 
-        @Override
-        public void addChangeListener(Consumer<Change<Leadership>> consumer) {
-            listeners.add(consumer);
-        }
-
-        @Override
-        public void removeChangeListener(Consumer<Change<Leadership>> consumer) {
-            listeners.remove(consumer);
-        }
-
-        void post(Change<Leadership> change) {
-            listeners.forEach(l -> l.accept(change));
+        void post(LeadershipEvent event) {
+            listeners.forEach(l -> l.event(event));
         }
     }
 }
