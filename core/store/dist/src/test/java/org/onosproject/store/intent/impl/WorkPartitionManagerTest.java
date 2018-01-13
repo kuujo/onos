@@ -22,11 +22,11 @@ import org.onlab.packet.IpAddress;
 import org.onosproject.cluster.ClusterServiceAdapter;
 import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.DefaultControllerNode;
+import org.onosproject.cluster.GroupLeadershipService;
 import org.onosproject.cluster.Leader;
 import org.onosproject.cluster.Leadership;
 import org.onosproject.cluster.LeadershipEvent;
 import org.onosproject.cluster.LeadershipEventListener;
-import org.onosproject.cluster.LeadershipService;
 import org.onosproject.cluster.LeadershipServiceAdapter;
 import org.onosproject.cluster.MembershipGroupId;
 import org.onosproject.cluster.NodeId;
@@ -69,14 +69,14 @@ public class WorkPartitionManagerTest {
 
     private static final String ELECTION_PREFIX = "work-partition-";
 
-        private LeadershipService leadershipService;
+    private GroupLeadershipService leadershipService;
     private LeadershipEventListener leaderListener;
 
     private WorkPartitionManager partitionManager;
 
     @Before
     public void setUp() {
-        leadershipService = createMock(LeadershipService.class);
+        leadershipService = createMock(GroupLeadershipService.class);
 
         leadershipService.addListener(anyObject(LeadershipEventListener.class));
         expectLastCall().andDelegateTo(new TestLeadershipService());
