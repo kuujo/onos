@@ -18,8 +18,6 @@ package org.onosproject.cluster;
 import java.util.Collection;
 import java.util.Set;
 
-import org.onosproject.core.Version;
-
 /**
  * Membership service adapter.
  */
@@ -30,7 +28,7 @@ public class MembershipServiceAdapter implements MembershipService {
     }
 
     @Override
-    public MembershipGroup getLocalGroup() {
+    public MembershipGroupId getLocalGroupId() {
         return null;
     }
 
@@ -45,12 +43,12 @@ public class MembershipServiceAdapter implements MembershipService {
     }
 
     @Override
-    public MembershipGroup getGroup(Version version) {
+    public MembershipGroup getGroup(MembershipGroupId groupId) {
         return null;
     }
 
     @Override
-    public Set<Member> getMembers(Version version) {
+    public Set<Member> getMembers(MembershipGroupId groupId) {
         return null;
     }
 

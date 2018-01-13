@@ -50,7 +50,7 @@ public class MembershipsListCommand extends AbstractShellCommand {
             service.getGroups().forEach(group -> {
                 List<Member> members = newArrayList(group.members());
                 print("-------------------------------------------------------------------");
-                print("Version: %s, Members: %d", group.version(), members.size());
+                print("Version: %s, Members: %d", group.groupId().id(), members.size());
                 members.sort(MEMBERSHIP_COMPARATOR);
                 members.forEach(
                         member -> {
@@ -92,7 +92,7 @@ public class MembershipsListCommand extends AbstractShellCommand {
             ObjectNode groupNode = mapper.createObjectNode();
 
             ArrayNode membersNode = mapper.createArrayNode();
-            groupNode.put("version", group.version().toString());
+            groupNode.put("version", group.groupId().id().toString());
             groupNode.put("members", membersNode);
 
             group.members().forEach(member -> membersNode.add(member.nodeId().toString()));

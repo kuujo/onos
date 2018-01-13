@@ -15,8 +15,6 @@
  */
 package org.onosproject.cluster.impl;
 
-import static org.slf4j.LoggerFactory.getLogger;
-
 import java.util.Map;
 
 import org.apache.felix.scr.annotations.Activate;
@@ -25,19 +23,23 @@ import org.apache.felix.scr.annotations.Deactivate;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
-import org.onosproject.cluster.ClusterService;
+import org.onosproject.cluster.GroupLeadershipAdminService;
+import org.onosproject.cluster.GroupLeadershipEventListener;
+import org.onosproject.cluster.GroupLeadershipService;
 import org.onosproject.cluster.Leadership;
 import org.onosproject.cluster.LeadershipAdminService;
 import org.onosproject.cluster.LeadershipEvent;
 import org.onosproject.cluster.LeadershipEventListener;
 import org.onosproject.cluster.LeadershipService;
-import org.onosproject.cluster.LeadershipStore;
-import org.onosproject.cluster.LeadershipStoreDelegate;
+import org.onosproject.cluster.MembershipService;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.event.AbstractListenerManager;
+import org.onosproject.upgrade.UpgradeEvent;
+import org.onosproject.upgrade.UpgradeEventListener;
+import org.onosproject.upgrade.UpgradeService;
 import org.slf4j.Logger;
 
-import com.google.common.collect.Maps;
+import static org.slf4j.LoggerFactory.getLogger;
 
 /**
  * Implementation of {@link LeadershipService} and {@link LeadershipAdminService}.
@@ -50,66 +52,87 @@ public class LeadershipManager
 
     private final Logger log = getLogger(getClass());
 
-    private LeadershipStoreDelegate delegate = this::post;
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected GroupLeadershipService groupLeadershipService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected ClusterService clusterService;
+    protected GroupLeadershipAdminService groupLeadershipAdminService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected LeadershipStore store;
+    protected MembershipService membershipService;
 
-    private NodeId localNodeId;
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected UpgradeService upgradeService;
+
+    private final GroupLeadershipEventListener groupLeadershipEventListener = event -> {
+        // Only post the event if it matches the local node's version.
+        if (event.groupId().equals(membershipService.getLocalGroupId())) {
+            post(new LeadershipEvent(LeadershipEvent.Type.valueOf(event.type().name()), event.subject(), event.time()));
+        }
+    };
+
+    private final UpgradeEventListener upgradeEventListener = event -> {
+        // If the cluster version was changed by an upgrade event, trigger leadership events for the new version.
+        if (event.type() == UpgradeEvent.Type.UPGRADED || event.type() == UpgradeEvent.Type.ROLLED_BACK) {
+            // Iterate through all current leaderships for the new version and trigger events.
+            for (Leadership leadership : getLeaderBoard().values()) {
+                post(new LeadershipEvent(
+                    LeadershipEvent.Type.LEADER_AND_CANDIDATES_CHANGED,
+                    leadership,
+                    event.time()));
+            }
+        }
+    };
 
     @Activate
     public void activate() {
-        localNodeId = clusterService.getLocalNode().id();
-        store.setDelegate(delegate);
         eventDispatcher.addSink(LeadershipEvent.class, listenerRegistry);
+        groupLeadershipService.addListener(groupLeadershipEventListener);
+        upgradeService.addListener(upgradeEventListener);
         log.info("Started");
     }
 
     @Deactivate
     public void deactivate() {
-        Maps.filterValues(store.getLeaderships(), v -> v.candidates().contains(localNodeId))
-            .keySet()
-            .forEach(this::withdraw);
-        store.unsetDelegate(delegate);
         eventDispatcher.removeSink(LeadershipEvent.class);
+        groupLeadershipService.removeListener(groupLeadershipEventListener);
+        upgradeService.removeListener(upgradeEventListener);
         log.info("Stopped");
     }
 
     @Override
     public Leadership getLeadership(String topic) {
-        return store.getLeadership(topic);
+        return groupLeadershipService.getLeadership(topic, upgradeService.getActiveGroup());
     }
 
     @Override
     public Leadership runForLeadership(String topic) {
-        return store.addRegistration(topic);
+        groupLeadershipService.runForLeadership(topic);
+        return getLeadership(topic);
     }
 
     @Override
     public void withdraw(String topic) {
-        store.removeRegistration(topic);
+        groupLeadershipService.withdraw(topic);
     }
 
     @Override
     public Map<String, Leadership> getLeaderBoard() {
-        return store.getLeaderships();
+        return groupLeadershipService.getLeaderBoard(upgradeService.getActiveGroup());
     }
 
     @Override
     public boolean transferLeadership(String topic, NodeId to) {
-        return store.moveLeadership(topic, to);
-    }
-
-    @Override
-    public void unregister(NodeId nodeId) {
-        store.removeRegistration(nodeId);
+        return groupLeadershipAdminService.transferLeadership(topic, to);
     }
 
     @Override
     public boolean promoteToTopOfCandidateList(String topic, NodeId nodeId) {
-        return store.makeTopCandidate(topic, nodeId);
+        return groupLeadershipAdminService.promoteToTopOfCandidateList(topic, nodeId);
+    }
+
+    @Override
+    public void unregister(NodeId nodeId) {
+        groupLeadershipAdminService.unregister(nodeId);
     }
 }

@@ -34,9 +34,10 @@ import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.Member;
 import org.onosproject.cluster.MembershipGroup;
+import org.onosproject.cluster.MembershipGroupId;
 import org.onosproject.cluster.MembershipService;
 import org.onosproject.cluster.NodeId;
-import org.onosproject.core.Version;
+import org.onosproject.core.VersionService;
 import org.slf4j.Logger;
 
 import static org.slf4j.LoggerFactory.getLogger;
@@ -53,14 +54,16 @@ public class MembershipManager implements MembershipService {
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected ClusterService clusterService;
 
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected VersionService versionService;
+
     private Member localMember;
 
     @Activate
     public void activate() {
-        NodeId localId = clusterService.getLocalNode().id();
         localMember = new Member(
-                localId,
-                clusterService.getVersion(localId));
+            clusterService.getLocalNode().id(),
+            getLocalGroupId());
         log.info("Started");
     }
 
@@ -70,7 +73,12 @@ public class MembershipManager implements MembershipService {
     }
 
     private Member toMemberId(ControllerNode node) {
-        return new Member(node.id(), clusterService.getVersion(node.id()));
+        return new Member(node.id(), getGroupId(clusterService.getVersion(node.id())));
+    }
+
+    @Override
+    public MembershipGroupId getLocalGroupId() {
+        return getGroupId(versionService.version());
     }
 
     @Override
@@ -94,24 +102,24 @@ public class MembershipManager implements MembershipService {
 
     @Override
     public Collection<MembershipGroup> getGroups() {
-        Map<Version, Set<Member>> groups = Maps.newHashMap();
+        Map<MembershipGroupId, Set<Member>> groups = Maps.newHashMap();
         clusterService.getNodes().stream()
                 .map(this::toMemberId)
                 .forEach(member ->
-                        groups.computeIfAbsent(member.version(), k -> Sets.newHashSet()).add(member));
+                        groups.computeIfAbsent(member.groupId(), k -> Sets.newHashSet()).add(member));
         return Maps.transformEntries(groups, MembershipGroup::new).values();
     }
 
     @Override
-    public MembershipGroup getGroup(Version version) {
-        return new MembershipGroup(version, getMembers(version));
+    public MembershipGroup getGroup(MembershipGroupId groupId) {
+        return new MembershipGroup(groupId, getMembers(groupId));
     }
 
     @Override
-    public Set<Member> getMembers(Version version) {
+    public Set<Member> getMembers(MembershipGroupId groupId) {
         return getMembers()
                 .stream()
-                .filter(m -> Objects.equals(m.version(), version))
+                .filter(m -> Objects.equals(m.groupId(), groupId))
                 .collect(Collectors.toSet());
     }
 

@@ -17,29 +17,27 @@ package org.onosproject.cluster;
 
 import java.util.Set;
 
-import org.onosproject.core.Version;
-
 import static com.google.common.base.MoreObjects.toStringHelper;
 
 /**
  * Membership group.
  */
 public class MembershipGroup {
-    private final Version version;
+    private final MembershipGroupId groupId;
     private final Set<Member> members;
 
-    public MembershipGroup(Version version, Set<Member> members) {
-        this.version = version;
+    public MembershipGroup(MembershipGroupId groupId, Set<Member> members) {
+        this.groupId = groupId;
         this.members = members;
     }
 
     /**
-     * Returns the group version.
+     * Returns the membership group identifier.
      *
-     * @return the group version
+     * @return the membership group identifier
      */
-    public Version version() {
-        return version;
+    public MembershipGroupId groupId() {
+        return groupId;
     }
 
     /**
@@ -54,8 +52,8 @@ public class MembershipGroup {
     @Override
     public String toString() {
         return toStringHelper(this)
-                .add("version", version)
-                .add("members", members)
-                .toString();
+            .add("groupId", groupId)
+            .add("members", members)
+            .toString();
     }
 }

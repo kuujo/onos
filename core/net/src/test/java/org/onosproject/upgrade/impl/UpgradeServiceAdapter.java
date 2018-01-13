@@ -15,7 +15,7 @@
  */
 package org.onosproject.upgrade.impl;
 
-import org.onosproject.core.Version;
+import org.onosproject.cluster.MembershipGroupId;
 import org.onosproject.upgrade.Upgrade;
 import org.onosproject.upgrade.UpgradeEventListener;
 import org.onosproject.upgrade.UpgradeService;
@@ -25,17 +25,17 @@ import org.onosproject.upgrade.UpgradeService;
  */
 public class UpgradeServiceAdapter implements UpgradeService {
     @Override
-    public boolean isUpgrading() {
-        return false;
-    }
-
-    @Override
     public Upgrade getState() {
         return null;
     }
 
     @Override
-    public Version getVersion() {
+    public boolean isUpgrading() {
+        return false;
+    }
+
+    @Override
+    public MembershipGroupId getActiveGroup() {
         return null;
     }
 

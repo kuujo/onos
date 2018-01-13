@@ -28,17 +28,17 @@ import static com.google.common.base.Preconditions.checkNotNull;
 public final class Member {
 
     private final NodeId nodeId;
-    private final Version version;
+    private final MembershipGroupId groupId;
 
     /**
      * Creates a new cluster member identifier from the specified string.
      *
-     * @param nodeId node identifier
-     * @param version node version
+     * @param nodeId  node identifier
+     * @param groupId node group identifier
      */
-    public Member(NodeId nodeId, Version version) {
+    public Member(NodeId nodeId, MembershipGroupId groupId) {
         this.nodeId = checkNotNull(nodeId);
-        this.version = version;
+        this.groupId = groupId;
     }
 
     /**
@@ -51,24 +51,33 @@ public final class Member {
     }
 
     /**
+     * Returns the group identifier for the group to which the member belongs.
+     *
+     * @return the identifier for the group to which the member belongs
+     */
+    public MembershipGroupId groupId() {
+        return groupId;
+    }
+
+    /**
      * Returns the node version.
      *
      * @return the node version
      */
     public Version version() {
-        return version;
+        return groupId.id();
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(nodeId, version);
+        return Objects.hash(nodeId, groupId);
     }
 
     @Override
     public boolean equals(Object object) {
         if (object instanceof Member) {
             Member member = (Member) object;
-            return member.nodeId.equals(nodeId) && Objects.equals(member.version, version);
+            return member.nodeId.equals(nodeId) && Objects.equals(member.groupId, groupId);
         }
         return false;
     }
@@ -76,8 +85,8 @@ public final class Member {
     @Override
     public String toString() {
         return toStringHelper(this)
-                .add("nodeId", nodeId)
-                .add("version", version)
-                .toString();
+            .add("nodeId", nodeId)
+            .add("groupId", groupId)
+            .toString();
     }
 }
