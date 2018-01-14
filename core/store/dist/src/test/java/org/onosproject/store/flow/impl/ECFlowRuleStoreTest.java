@@ -133,7 +133,7 @@ public class ECFlowRuleStoreTest {
     public void setUp() throws Exception {
         flowStoreImpl = new ECFlowRuleStore();
         flowStoreImpl.storageService = new TestStorageService();
-        flowStoreImpl.replicaInfoManager = new ReplicaInfoManager();
+        flowStoreImpl.replicaInfoService = new ReplicaInfoManager();
         mockClusterService = createMock(ClusterService.class);
         flowStoreImpl.clusterService = mockClusterService;
         nodeId = new NodeId("1");

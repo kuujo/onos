@@ -15,6 +15,7 @@
  */
 package org.onosproject.store.flow;
 
+import org.onosproject.cluster.NodeId;
 import org.onosproject.net.DeviceId;
 
 /**
@@ -22,7 +23,6 @@ import org.onosproject.net.DeviceId;
  */
 public interface ReplicaInfoService {
 
-    // returns where it should be.
     /**
      * Returns the placement information for given Device.
      *
@@ -30,6 +30,25 @@ public interface ReplicaInfoService {
      * @return placement information
      */
     ReplicaInfo getReplicaInfoFor(DeviceId deviceId);
+
+    /**
+     * Returns the master for the given device.
+     *
+     * @param deviceId the device identifier
+     * @return the master for the given device
+     */
+    default NodeId getMasterFor(DeviceId deviceId) {
+        ReplicaInfo replicaInfo = getReplicaInfoFor(deviceId);
+        return replicaInfo != null ? replicaInfo.master().orElse(null) : null;
+    }
+
+    /**
+     * Returns a boolean indicating whether the local node is the master for the given device.
+     *
+     * @param deviceId the identifier of the device
+     * @return indicates whether the local node is the master for the given device
+     */
+    boolean isLocalMaster(DeviceId deviceId);
 
     /**
      * Adds the specified replica placement info change listener.

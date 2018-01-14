@@ -26,10 +26,12 @@ import org.apache.felix.scr.annotations.Deactivate;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
+import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.GroupLeadershipEvent;
 import org.onosproject.cluster.GroupLeadershipEventListener;
 import org.onosproject.cluster.GroupLeadershipService;
 import org.onosproject.cluster.Leadership;
+import org.onosproject.cluster.NodeId;
 import org.onosproject.event.AbstractListenerManager;
 import org.onosproject.net.DeviceId;
 import org.onosproject.store.flow.ReplicaInfo;
@@ -57,6 +59,9 @@ public class ReplicaInfoManager
     private final Logger log = getLogger(getClass());
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected ClusterService clusterService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected GroupLeadershipService leadershipService;
 
     private final GroupLeadershipEventListener leadershipChangeListener = event -> {
@@ -78,9 +83,12 @@ public class ReplicaInfoManager
         }
     };
 
+    private NodeId localNodeId;
+
     @Activate
     public void activate() {
         eventDispatcher.addSink(ReplicaInfoEvent.class, listenerRegistry);
+        localNodeId = clusterService.getLocalNode().id();
         leadershipService.addListener(leadershipChangeListener);
         log.info("Started");
     }
@@ -95,6 +103,14 @@ public class ReplicaInfoManager
     @Override
     public ReplicaInfo getReplicaInfoFor(DeviceId deviceId) {
         return buildFromLeadership(leadershipService.getLeadership(createDeviceMastershipTopic(deviceId)));
+    }
+
+    @Override
+    public boolean isLocalMaster(DeviceId deviceId) {
+        ReplicaInfo replicaInfo = getReplicaInfoFor(deviceId);
+        return replicaInfo != null
+            && replicaInfo.master().isPresent()
+            && replicaInfo.master().get().equals(localNodeId);
     }
 
     @Override
