@@ -22,10 +22,10 @@ import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
 import org.onosproject.cluster.ClusterService;
+import org.onosproject.cluster.GroupLeadershipEvent;
+import org.onosproject.cluster.GroupLeadershipEventListener;
+import org.onosproject.cluster.GroupLeadershipService;
 import org.onosproject.cluster.Leadership;
-import org.onosproject.cluster.LeadershipEvent;
-import org.onosproject.cluster.LeadershipEventListener;
-import org.onosproject.cluster.LeadershipService;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.event.EventDeliveryService;
 import org.onosproject.event.ListenerRegistry;
@@ -57,7 +57,7 @@ public class WorkPartitionManager implements WorkPartitionService {
     private static final Logger log = LoggerFactory.getLogger(WorkPartitionManager.class);
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected LeadershipService leadershipService;
+    protected GroupLeadershipService leadershipService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected ClusterService clusterService;
@@ -76,7 +76,7 @@ public class WorkPartitionManager implements WorkPartitionService {
 
     protected NodeId localNodeId;
     private ListenerRegistry<WorkPartitionEvent, WorkPartitionEventListener> listenerRegistry;
-    private LeadershipEventListener leaderListener = new InternalLeadershipListener();
+    private GroupLeadershipEventListener leaderListener = new InternalGroupLeadershipListener();
 
     private ScheduledExecutorService executor = Executors
             .newScheduledThreadPool(1, groupedThreads("work-parition", "balancer-%d", log));
@@ -214,10 +214,10 @@ public class WorkPartitionManager implements WorkPartitionService {
         leadershipService.runForLeadership(path);
     }
 
-    private final class InternalLeadershipListener implements LeadershipEventListener {
+    private final class InternalGroupLeadershipListener implements GroupLeadershipEventListener {
 
         @Override
-        public void event(LeadershipEvent event) {
+        public void event(GroupLeadershipEvent event) {
             Leadership leadership = event.subject();
 
             if (Objects.equals(leadership.leaderNodeId(), localNodeId) &&
@@ -227,7 +227,7 @@ public class WorkPartitionManager implements WorkPartitionService {
                                                         leadership.topic()));
             }
 
-            if (event.type() == LeadershipEvent.Type.CANDIDATES_CHANGED) {
+            if (event.type() == GroupLeadershipEvent.Type.CANDIDATES_CHANGED) {
                 scheduleRebalance(0);
             }
         }
