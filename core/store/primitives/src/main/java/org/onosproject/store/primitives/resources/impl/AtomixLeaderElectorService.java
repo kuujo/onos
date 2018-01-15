@@ -454,7 +454,7 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
                                 .collect(Collectors.toList());
                 if (leader.sessionId() == session.sessionId().id()) {
                     if (!updatedRegistrations.isEmpty()) {
-                        sortRegistrations(topic, updatedRegistrations);
+                        //sortRegistrations(topic, updatedRegistrations);
                         return new ElectionState(updatedRegistrations,
                                 updatedRegistrations.get(0),
                                 termCounter.get(),
@@ -518,7 +518,7 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
             if (!registrations.stream().anyMatch(r -> r.sessionId() == registration.sessionId())) {
                 List<Registration> updatedRegistrations = new LinkedList<>(registrations);
                 updatedRegistrations.add(registration);
-                sortRegistrations(topic, updatedRegistrations);
+                //sortRegistrations(topic, updatedRegistrations);
                 Registration firstRegistration = updatedRegistrations.get(0);
                 Registration leader = this.leader;
                 long term = this.term;

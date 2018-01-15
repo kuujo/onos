@@ -43,4 +43,7 @@ public final class ECFlowRuleStoreMessageSubjects {
 
     public static final MessageSubject FLOW_TABLE_BOOTSTRAP
         = new MessageSubject("peer-flow-table-bootstrap");
+
+    public static final MessageSubject FLOW_TABLE_INITIALIZE
+        = new MessageSubject("peer-flow-table-initialize");
 }

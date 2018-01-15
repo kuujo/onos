@@ -47,6 +47,7 @@ import org.onlab.util.KryoNamespace;
 import org.onlab.util.Tools;
 import org.onosproject.cfg.ComponentConfigService;
 import org.onosproject.cluster.ClusterService;
+import org.onosproject.cluster.Member;
 import org.onosproject.cluster.MembershipService;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.core.CoreService;
@@ -109,6 +110,7 @@ import static org.onosproject.store.flow.ReplicaInfoEvent.Type.MASTER_CHANGED;
 import static org.onosproject.store.flow.impl.ECFlowRuleStoreMessageSubjects.APPLY_BATCH_FLOWS;
 import static org.onosproject.store.flow.impl.ECFlowRuleStoreMessageSubjects.FLOW_TABLE_BOOTSTRAP;
 import static org.onosproject.store.flow.impl.ECFlowRuleStoreMessageSubjects.FLOW_TABLE_BACKUP;
+import static org.onosproject.store.flow.impl.ECFlowRuleStoreMessageSubjects.FLOW_TABLE_INITIALIZE;
 import static org.onosproject.store.flow.impl.ECFlowRuleStoreMessageSubjects.GET_DEVICE_FLOW_ENTRIES;
 import static org.onosproject.store.flow.impl.ECFlowRuleStoreMessageSubjects.GET_FLOW_ENTRY;
 import static org.onosproject.store.flow.impl.ECFlowRuleStoreMessageSubjects.REMOTE_APPLY_COMPLETED;
@@ -196,8 +198,6 @@ public class ECFlowRuleStore
     private final EventuallyConsistentMapListener<DeviceId, List<TableStatisticsEntry>> tableStatsListener =
             new InternalTableStatsListener();
 
-    private final DeviceListener deviceListener = new InternalDeviceListener();
-
     protected final Serializer serializer = Serializer.using(KryoNamespaces.API);
 
     protected final KryoNamespace.Builder serializerBuilder = KryoNamespace.newBuilder()
@@ -223,7 +223,6 @@ public class ECFlowRuleStore
 
         registerMessageHandlers(messageHandlingExecutor);
 
-        deviceService.addListener(deviceListener);
         replicaInfoService.addListener(flowTable);
 
         backupTask = backupSenderExecutor.scheduleWithFixedDelay(
@@ -248,7 +247,6 @@ public class ECFlowRuleStore
 
     @Deactivate
     public void deactivate(ComponentContext context) {
-        deviceService.removeListener(deviceListener);
         replicaInfoService.removeListener(flowTable);
         backupTask.cancel(true);
         configService.unregisterProperties(getClass(), false);
@@ -336,6 +334,8 @@ public class ECFlowRuleStore
                 FLOW_TABLE_BACKUP, serializer::decode, flowTable::onBackupReceipt, serializer::encode, executor);
         clusterCommunicator.addSubscriber(
                 FLOW_TABLE_BOOTSTRAP, serializer::decode, flowTable::onBootstrap, serializer::encode, executor);
+        clusterCommunicator.addSubscriber(
+                FLOW_TABLE_INITIALIZE, serializer::decode, flowTable::onInitialize, serializer::encode, executor);
     }
 
     private void unregisterMessageHandlers() {
@@ -346,6 +346,7 @@ public class ECFlowRuleStore
         clusterCommunicator.removeSubscriber(REMOTE_APPLY_COMPLETED);
         clusterCommunicator.removeSubscriber(FLOW_TABLE_BACKUP);
         clusterCommunicator.removeSubscriber(FLOW_TABLE_BOOTSTRAP);
+        clusterCommunicator.removeSubscriber(FLOW_TABLE_INITIALIZE);
     }
 
     private void logConfig(String prefix) {
@@ -699,61 +700,7 @@ public class ECFlowRuleStore
 
         private final Map<BackupOperation, Long> lastBackupTimes = Maps.newConcurrentMap();
         private final Map<DeviceId, Long> lastUpdateTimes = Maps.newConcurrentMap();
-
-        @Override
-        public void event(ReplicaInfoEvent event) {
-            eventHandler.execute(() -> handleEvent(event));
-        }
-
-        private void handleEvent(ReplicaInfoEvent event) {
-            DeviceId deviceId = event.subject();
-            if (!replicaInfoService.isLocalMaster(deviceId)) {
-                return;
-            }
-            if (event.type() == MASTER_CHANGED) {
-                lastUpdateTimes.put(deviceId, System.currentTimeMillis());
-            }
-            backupSenderExecutor.schedule(this::backup, 0, TimeUnit.SECONDS);
-        }
-
-        private void sendBackups(NodeId nodeId, Set<DeviceId> deviceIds) {
-            // split up the devices into smaller batches and send them separately.
-            Iterables.partition(deviceIds, FLOW_TABLE_BACKUP_BATCH_SIZE)
-                     .forEach(ids -> backupFlowEntries(nodeId, Sets.newHashSet(ids)));
-        }
-
-        private void backupFlowEntries(NodeId nodeId, Set<DeviceId> deviceIds) {
-            if (deviceIds.isEmpty()) {
-                return;
-            }
-            log.debug("Sending flowEntries for devices {} to {} for backup.", deviceIds, nodeId);
-            Map<DeviceId, Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>>>
-                    deviceFlowEntries = Maps.newConcurrentMap();
-            deviceIds.forEach(id -> deviceFlowEntries.put(id, getFlowTableCopy(id)));
-            clusterCommunicator.<Map<DeviceId,
-                                 Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>>>,
-                                 Set<DeviceId>>
-                    sendAndReceive(deviceFlowEntries,
-                                   FLOW_TABLE_BACKUP,
-                                   serializer::encode,
-                                   serializer::decode,
-                                   nodeId)
-                    .whenComplete((backedupDevices, error) -> {
-                        Set<DeviceId> devicesNotBackedup = error != null ?
-                            deviceFlowEntries.keySet() :
-                            Sets.difference(deviceFlowEntries.keySet(), backedupDevices);
-                        if (devicesNotBackedup.size() > 0) {
-                            log.warn("Failed to backup devices: {}. Reason: {}, Node: {}",
-                                     devicesNotBackedup, error != null ? error.getMessage() : "none",
-                                     nodeId);
-                        }
-                        if (backedupDevices != null) {
-                            backedupDevices.forEach(id -> {
-                                lastBackupTimes.put(new BackupOperation(nodeId, id), System.currentTimeMillis());
-                            });
-                        }
-                    });
-        }
+        private final Map<DeviceId, NodeId> masters = Maps.newConcurrentMap();
 
         /**
          * Returns the flow table for specified device.
@@ -887,6 +834,33 @@ public class ECFlowRuleStore
             flowEntries.clear();
         }
 
+        @Override
+        public void event(ReplicaInfoEvent event) {
+            eventHandler.execute(() -> handleEvent(event));
+        }
+
+        private void handleEvent(ReplicaInfoEvent event) {
+            DeviceId deviceId = event.subject();
+            if (event.type() == MASTER_CHANGED) {
+                NodeId oldMaster = masters.get(deviceId);
+                NodeId newMaster = event.replicaInfo().master().orElse(null);
+                if (newMaster != null) {
+                    masters.put(deviceId, newMaster);
+                } else {
+                    masters.remove(deviceId);
+                }
+
+                if (Objects.equals(oldMaster, local) && newMaster != null) {
+                    initialize(newMaster, Sets.newHashSet(deviceId));
+                }
+                lastUpdateTimes.put(deviceId, System.currentTimeMillis());
+            }
+
+            if (replicaInfoService.isLocalMaster(deviceId)) {
+                backupSenderExecutor.execute(this::backup);
+            }
+        }
+
         private List<NodeId> getBackupNodes(DeviceId deviceId) {
             // The returned backup node list is in the order of preference i.e. next likely master first.
             List<NodeId> allPossibleBackupNodes = replicaInfoService.getReplicaInfoFor(deviceId).backups();
@@ -915,6 +889,49 @@ public class ECFlowRuleStore
             }
         }
 
+        private void sendBackups(NodeId nodeId, Set<DeviceId> deviceIds) {
+            // split up the devices into smaller batches and send them separately.
+            Iterables.partition(deviceIds, FLOW_TABLE_BACKUP_BATCH_SIZE)
+                .forEach(ids -> backupFlowEntries(nodeId, Sets.newHashSet(ids)));
+        }
+
+        private void backupFlowEntries(NodeId nodeId, Set<DeviceId> deviceIds) {
+            if (deviceIds.isEmpty()) {
+                return;
+            }
+            log.debug("Sending flowEntries for devices {} to {} for backup.", deviceIds, nodeId);
+            Map<DeviceId, Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>>>
+                deviceFlowEntries = Maps.newConcurrentMap();
+            deviceIds.forEach(deviceId -> {
+                Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>> deviceFlowTable = getFlowTableCopy(deviceId);
+                log.debug("Backing up {} flows for device {}", deviceFlowTable.size(), deviceId);
+                deviceFlowEntries.put(deviceId, deviceFlowTable);
+            });
+            clusterCommunicator.<Map<DeviceId,
+                Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>>>,
+                Set<DeviceId>>
+                sendAndReceive(deviceFlowEntries,
+                FLOW_TABLE_BACKUP,
+                serializer::encode,
+                serializer::decode,
+                nodeId)
+                .whenComplete((backedupDevices, error) -> {
+                    Set<DeviceId> devicesNotBackedup = error != null ?
+                        deviceFlowEntries.keySet() :
+                        Sets.difference(deviceFlowEntries.keySet(), backedupDevices);
+                    if (devicesNotBackedup.size() > 0) {
+                        log.warn("Failed to backup devices: {}. Reason: {}, Node: {}",
+                            devicesNotBackedup, error != null ? error.getMessage() : "none",
+                            nodeId);
+                    }
+                    if (backedupDevices != null) {
+                        backedupDevices.forEach(id -> {
+                            lastBackupTimes.put(new BackupOperation(nodeId, id), System.currentTimeMillis());
+                        });
+                    }
+                });
+        }
+
         private Set<DeviceId> onBackupReceipt(Map<DeviceId,
                 Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>>> flowTables) {
             log.debug("Received flowEntries for {} to backup", flowTables.keySet());
@@ -923,8 +940,77 @@ public class ECFlowRuleStore
                 flowTables.forEach((deviceId, deviceFlowTable) -> {
                     // Only process those devices are that not managed by the local node.
                     if (!Objects.equals(local, replicaInfoService.getMasterFor(deviceId))) {
+                        log.debug("Backed up {} flows for device {}", deviceFlowTable.size(), deviceId);
                         Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>> backupFlowTable =
                                 getFlowTable(deviceId);
+                        backupFlowTable.clear();
+                        backupFlowTable.putAll(deviceFlowTable);
+                        backedupDevices.add(deviceId);
+                    }
+                });
+            } catch (Exception e) {
+                log.warn("Failure processing backup request", e);
+            }
+            return backedupDevices;
+        }
+
+        /**
+         * Initializes the given node with the given devices.
+         *
+         * @param nodeId the node to initialize
+         * @param deviceIds the devices with which to initialize the node
+         */
+        private void initialize(NodeId nodeId, Set<DeviceId> deviceIds) {
+            Iterables.partition(deviceIds, FLOW_TABLE_BACKUP_BATCH_SIZE)
+                .forEach(ids -> initializeFlowEntries(nodeId, Sets.newHashSet(ids)));
+        }
+
+        private void initializeFlowEntries(NodeId nodeId, Set<DeviceId> deviceIds) {
+            if (deviceIds.isEmpty()) {
+                return;
+            }
+            log.debug("Sending flowEntries for devices {} to {} for initialization", deviceIds, nodeId);
+            Map<DeviceId, Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>>>
+                deviceFlowEntries = Maps.newConcurrentMap();
+            deviceIds.forEach(deviceId -> {
+                Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>> deviceFlowTable = getFlowTableCopy(deviceId);
+                log.debug("Initializing {} flows for device {}", deviceFlowTable.size(), deviceId);
+                deviceFlowEntries.put(deviceId, deviceFlowTable);
+            });
+            clusterCommunicator.
+                <Map<DeviceId, Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>>>, Set<DeviceId>>sendAndReceive(
+                    deviceFlowEntries,
+                    FLOW_TABLE_INITIALIZE,
+                    serializer::encode,
+                    serializer::decode,
+                    nodeId)
+                .whenComplete((initializedDevices, error) -> {
+                    Set<DeviceId> devicesNotBackedup = error != null ?
+                        deviceFlowEntries.keySet() :
+                        Sets.difference(deviceFlowEntries.keySet(), initializedDevices);
+                    if (devicesNotBackedup.size() > 0) {
+                        log.warn("Failed to initialize devices: {}. Reason: {}, Node: {}",
+                            devicesNotBackedup, error != null ? error.getMessage() : "none", nodeId);
+                    }
+                    if (initializedDevices != null) {
+                        initializedDevices.forEach(id -> {
+                            lastBackupTimes.put(new BackupOperation(nodeId, id), System.currentTimeMillis());
+                        });
+                    }
+                });
+        }
+
+        private Set<DeviceId> onInitialize(
+            Map<DeviceId, Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>>> flowTables) {
+            log.debug("Received flowEntries for {} to initialize", flowTables.keySet());
+            Set<DeviceId> backedupDevices = Sets.newHashSet();
+            try {
+                flowTables.forEach((deviceId, deviceFlowTable) -> {
+                    // Only process those devices are that not managed by the local node.
+                    if (Objects.equals(local, replicaInfoService.getMasterFor(deviceId))) {
+                        log.debug("Initialized {} flows for device {}", deviceFlowTable.size(), deviceId);
+                        Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>> backupFlowTable =
+                            getFlowTable(deviceId);
                         backupFlowTable.clear();
                         backupFlowTable.putAll(deviceFlowTable);
                         backedupDevices.add(deviceId);
@@ -950,26 +1036,20 @@ public class ECFlowRuleStore
                 && upgradeService.isLocalUpgraded()
                 && membershipService.getMembers().size() == 1;
 
+            if (!isFork) {
+                return;
+            }
+
             Map<NodeId, Set<DeviceId>> devicesToBootstrapByNode = Maps.newHashMap();
             Set<DeviceId> devicesNotBootstrapped = Sets.newHashSet();
             deviceService.getDevices().forEach(device -> {
                 // If state is being forked during an upgrade, bootstrap the flow entries from the current master.
                 // Otherwise, bootstrap the local (isolated) replica.
-                if (isFork) {
-                    NodeId master = mastershipService.getMasterFor(device.id());
-                    if (master != null) {
-                        devicesToBootstrapByNode.computeIfAbsent(master, n -> Sets.newHashSet()).add(device.id());
-                    } else {
-                        devicesNotBootstrapped.add(device.id());
-                    }
+                NodeId master = mastershipService.getMasterFor(device.id());
+                if (master != null) {
+                    devicesToBootstrapByNode.computeIfAbsent(master, n -> Sets.newHashSet()).add(device.id());
                 } else {
-                    ReplicaInfo replicaInfo = replicaInfoService.getReplicaInfoFor(device.id());
-                    if (replicaInfo.master().isPresent()) {
-                        NodeId master = replicaInfo.master().get();
-                        devicesToBootstrapByNode.computeIfAbsent(master, n -> Sets.newHashSet()).add(device.id());
-                    } else {
-                        devicesNotBootstrapped.add(device.id());
-                    }
+                    devicesNotBootstrapped.add(device.id());
                 }
             });
 
@@ -1011,16 +1091,25 @@ public class ECFlowRuleStore
                 serializer::encode,
                 serializer::decode,
                 nodeId)
-                .whenComplete((bootstrapFlowEntries, error) -> {
+                .whenComplete((bootstrapFlowTables, error) -> {
                     Set<DeviceId> devicesNotBootstrapped = error != null
                         ? deviceIds
-                        : Sets.difference(bootstrapFlowEntries.keySet(), deviceIds);
+                        : Sets.difference(bootstrapFlowTables.keySet(), deviceIds);
                     if (devicesNotBootstrapped.size() > 0) {
                         log.warn("Failed to bootstrap devices: {}. Reason: {}, Node: {}",
                             devicesNotBootstrapped, error != null ? error.getMessage() : "none", nodeId);
                     }
-                    if (bootstrapFlowEntries != null) {
-                        flowEntries.putAll(bootstrapFlowEntries);
+                    if (bootstrapFlowTables != null) {
+                        bootstrapFlowTables.forEach((deviceId, deviceFlowTable) -> {
+                            // Only process those devices are that not managed by the local node.
+                            if (replicaInfoService.isLocalMaster(deviceId) && !deviceFlowTable.isEmpty()) {
+                                log.debug("Bootstrapped {} flows for device {}", deviceFlowTable.size(), deviceId);
+                                Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>> bootstrapFlowTable =
+                                    getFlowTable(deviceId);
+                                bootstrapFlowTable.clear();
+                                bootstrapFlowTable.putAll(deviceFlowTable);
+                            }
+                        });
                     }
                 }).thenApply(v -> null);
         }
@@ -1030,9 +1119,9 @@ public class ECFlowRuleStore
             Map<DeviceId, Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>>> deviceFlowEntries = Maps.newHashMap();
             try {
                 deviceIds.forEach(deviceId -> {
-                    if (replicaInfoService.isLocalMaster(deviceId)) {
-                        deviceFlowEntries.put(deviceId, getFlowTableCopy(deviceId));
-                    }
+                    Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>> deviceFlowTable = getFlowTableCopy(deviceId);
+                    log.debug("Bootstrapping {} flows for device {}", deviceFlowTable.size(), deviceId);
+                    deviceFlowEntries.put(deviceId, deviceFlowTable);
                 });
             } catch (Exception e) {
                 log.warn("Failed to process bootstrap request", e);
@@ -1069,25 +1158,6 @@ public class ECFlowRuleStore
         return Streams.stream(getTableStatistics(deviceId))
                 .mapToLong(TableStatisticsEntry::activeFlowEntries)
                 .sum();
-    }
-
-    private class InternalDeviceListener implements DeviceListener {
-        @Override
-        public void event(DeviceEvent event) {
-            if (event.type() == DeviceEvent.Type.DEVICE_ADDED) {
-                DeviceId deviceId = event.subject().id();
-                if (upgradeService.isUpgrading()
-                    && upgradeService.isLocalUpgraded()
-                    && replicaInfoService.isLocalMaster(deviceId)) {
-                    NodeId master = mastershipService.getMasterFor(deviceId);
-                    if (master != null) {
-                        flowTable.bootstrap(master, Sets.newHashSet(deviceId));
-                    } else {
-                        log.warn("Failed to bootstrap device {}: No master found for device", deviceId);
-                    }
-                }
-            }
-        }
     }
 
     private class InternalTableStatsListener
