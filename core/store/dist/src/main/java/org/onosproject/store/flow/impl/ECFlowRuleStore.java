@@ -470,13 +470,12 @@ public class ECFlowRuleStore
                     StoredFlowEntry entry;
                     switch (op.operator()) {
                         case ADD:
+                            entry = new DefaultFlowEntry(op.target());
+                            flowTable.add(entry);
+                            return op;
                         case MODIFY:
                             entry = new DefaultFlowEntry(op.target());
-                            // always add requested FlowRule
-                            // Note: 2 equal FlowEntry may have different treatment
-                            flowTable.remove(entry.deviceId(), entry);
-                            flowTable.add(entry);
-
+                            flowTable.update(entry);
                             return op;
                         case REMOVE:
                             entry = flowTable.getFlowEntry(op.target());
@@ -542,6 +541,8 @@ public class ECFlowRuleStore
             stored.setLastSeen();
             if (stored.state() == FlowEntryState.PENDING_ADD) {
                 stored.setState(FlowEntryState.ADDED);
+                // Update the flow table to ensure the changes are replicated
+                flowTable.update(stored);
                 return new FlowRuleEvent(Type.RULE_ADDED, rule);
             }
             return new FlowRuleEvent(Type.RULE_UPDATED, rule);
@@ -581,9 +582,8 @@ public class ECFlowRuleStore
     }
 
     private FlowRuleEvent removeFlowRuleInternal(FlowEntry rule) {
-        final DeviceId deviceId = rule.deviceId();
         // This is where one could mark a rule as removed and still keep it in the store.
-        final FlowEntry removed = flowTable.remove(deviceId, rule);
+        final FlowEntry removed = flowTable.remove(rule);
         // rule may be partial rule that is missing treatment, we should use rule from store instead
         return removed != null ? new FlowRuleEvent(RULE_REMOVED, removed) : null;
     }
@@ -816,16 +816,34 @@ public class ECFlowRuleStore
         }
 
         public void add(FlowEntry rule) {
-            getFlowEntriesInternal(rule.deviceId(), rule.id())
-                    .compute((StoredFlowEntry) rule, (k, stored) -> {
-                        //TODO compare stored and rule timestamps
-                        //TODO the key is not updated
-                        return (StoredFlowEntry) rule;
-                    });
-            lastUpdateTimes.put(rule.deviceId(), System.currentTimeMillis());
+            StoredFlowEntry stored = getFlowEntriesInternal(rule.deviceId(), rule.id())
+                .putIfAbsent((StoredFlowEntry) rule, (StoredFlowEntry) rule);
+            if (stored == null) {
+                lastUpdateTimes.put(rule.deviceId(), System.currentTimeMillis());
+            }
         }
 
-        public FlowEntry remove(DeviceId deviceId, FlowEntry rule) {
+        public void update(FlowEntry rule) {
+            getFlowEntriesInternal(rule.deviceId(), rule.id())
+                .computeIfPresent((StoredFlowEntry) rule, (k, stored) -> {
+                    if (rule instanceof DefaultFlowEntry) {
+                        DefaultFlowEntry updated = (DefaultFlowEntry) rule;
+                        if (stored instanceof DefaultFlowEntry) {
+                            DefaultFlowEntry storedEntry = (DefaultFlowEntry) stored;
+                            if (updated.created() > storedEntry.created()) {
+                                lastUpdateTimes.put(rule.deviceId(), System.currentTimeMillis());
+                                return updated;
+                            } else {
+                                log.debug("Trying to update more recent flow entry {} (stored: {})", updated, stored);
+                                return stored;
+                            }
+                        }
+                    }
+                    return stored;
+                });
+        }
+
+        public FlowEntry remove(FlowEntry rule) {
             final AtomicReference<FlowEntry> removedRule = new AtomicReference<>();
             getFlowEntriesInternal(rule.deviceId(), rule.id())
                 .computeIfPresent((StoredFlowEntry) rule, (k, stored) -> {
@@ -834,8 +852,7 @@ public class ECFlowRuleStore
                         if (stored instanceof DefaultFlowEntry) {
                             DefaultFlowEntry storedEntry = (DefaultFlowEntry) stored;
                             if (toRemove.created() < storedEntry.created()) {
-                                log.debug("Trying to remove more recent flow entry {} (stored: {})",
-                                          toRemove, stored);
+                                log.debug("Trying to remove more recent flow entry {} (stored: {})", toRemove, stored);
                                 // the key is not updated, removedRule remains null
                                 return stored;
                             }
@@ -846,7 +863,7 @@ public class ECFlowRuleStore
                 });
 
             if (removedRule.get() != null) {
-                lastUpdateTimes.put(deviceId, System.currentTimeMillis());
+                lastUpdateTimes.put(rule.deviceId(), System.currentTimeMillis());
                 return removedRule.get();
             } else {
                 return null;
