@@ -261,7 +261,7 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
 
     @Override
     public AsyncLeaderElector newAsyncLeaderElector(String name) {
-        AtomixLeaderElector leaderElector = new AtomixLeaderElector(client.newProxyBuilder()
+        return new AtomixLeaderElector(client.newProxyBuilder()
                 .withName(name)
                 .withServiceType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
                 .withReadConsistency(ReadConsistency.LINEARIZABLE)
@@ -272,8 +272,6 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                 .build()
                 .open()
                 .join());
-        leaderElector.setupCache().join();
-        return leaderElector;
     }
 
     @Override
