@@ -16,6 +16,7 @@
 package org.onosproject.store.primitives.resources.impl;
 
 import java.time.Duration;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -24,7 +25,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
 
 import com.google.common.collect.Maps;
 import io.atomix.protocols.raft.proxy.RaftProxy;
@@ -59,7 +59,7 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
 
     private final ScheduledExecutorService scheduledExecutor;
     private final Executor orderedExecutor;
-    private final Map<Integer, LockAttempt> attempts = Maps.newConcurrentMap();
+    private final Map<Integer, AbstractLockAttempt> attempts = Maps.newConcurrentMap();
     private final AtomicInteger id = new AtomicInteger();
     private final AtomicInteger lock = new AtomicInteger();
 
@@ -69,6 +69,24 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
         this.orderedExecutor = new OrderedExecutor(scheduledExecutor);
         proxy.addEventListener(LOCKED, SERIALIZER::decode, this::handleLocked);
         proxy.addEventListener(FAILED, SERIALIZER::decode, this::handleFailed);
+        proxy.addStateChangeListener(this::handleStateChange);
+    }
+
+    /**
+     * Handles a proxy state change.
+     *
+     * @param state the updated proxy state
+     */
+    private void handleStateChange(RaftProxy.State state) {
+        if (state != RaftProxy.State.CONNECTED) {
+            Iterator<Map.Entry<Integer, AbstractLockAttempt>> iterator = attempts.entrySet().iterator();
+            while (iterator.hasNext()) {
+                AbstractLockAttempt attempt = iterator.next().getValue();
+                if (attempt.timeout()) {
+                    iterator.remove();
+                }
+            }
+        }
     }
 
     /**
@@ -79,7 +97,7 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
     private void handleLocked(LockEvent event) {
         // Remove the LockAttempt from the attempts map and complete it with the lock version if it exists.
         // If the attempt no longer exists, it likely was expired by a client-side timer.
-        LockAttempt attempt = attempts.remove(event.id());
+        AbstractLockAttempt attempt = attempts.remove(event.id());
         if (attempt != null) {
             attempt.complete(new Version(event.version()));
         }
@@ -93,7 +111,7 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
     private void handleFailed(LockEvent event) {
         // Remove the LockAttempt from the attempts map and complete it with a null value if it exists.
         // If the attempt no longer exists, it likely was expired by a client-side timer.
-        LockAttempt attempt = attempts.remove(event.id());
+        AbstractLockAttempt attempt = attempts.remove(event.id());
         if (attempt != null) {
             attempt.complete(null);
         }
@@ -124,7 +142,7 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
         // Create and register a new attempt and invoke the LOCK operation on teh replicated state machine with
         // a 0 timeout. The timeout will cause the state machine to immediately reject the request if the lock is
         // already owned by another process.
-        LockAttempt attempt = new LockAttempt();
+        TryLockAttempt attempt = new TryLockAttempt();
         proxy.invoke(LOCK, SERIALIZER::encode, new Lock(attempt.id(), 0)).whenComplete((result, error) -> {
             if (error != null) {
                 attempt.completeExceptionally(error);
@@ -138,23 +156,11 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
 
     @Override
     public CompletableFuture<Optional<Version>> tryLock(Duration timeout) {
-        // Create a lock attempt with a client-side timeout and fail the lock if the timer expires.
-        // Because time does not progress at the same rate on different nodes, we can't guarantee that
-        // the lock won't be granted to this process after it's expired here. Thus, if this timer expires and
-        // we fail the lock on the client, we also still need to send an UNLOCK command to the cluster in case it's
-        // later granted by the cluster. Note that the semantics of the Raft client will guarantee this operation
-        // occurs after any prior LOCK attempt, and the Raft client will retry the UNLOCK request until successful.
-        // Additionally, sending the unique lock ID with the command ensures we won't accidentally unlock a different
-        // lock call also granted to this process.
-        LockAttempt attempt = new LockAttempt(timeout, a -> {
-            a.complete(null);
-            proxy.invoke(UNLOCK, SERIALIZER::encode, new Unlock(a.id()));
-        });
-
         // Invoke the LOCK operation on the replicated state machine with the given timeout. If the lock is currently
         // held by another process, the state machine will add the attempt to a queue and publish a FAILED event if
         // the timer expires before this process can be granted the lock. If the client cannot reach the Raft cluster,
         // the client-side timer will expire the attempt.
+        TryLockWithTimeoutAttempt attempt = new TryLockWithTimeoutAttempt(timeout);
         proxy.invoke(LOCK, SERIALIZER::encode, new Lock(attempt.id(), timeout.toMillis()))
             .whenComplete((result, error) -> {
                 if (error != null) {
@@ -192,19 +198,11 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
     /**
      * Lock attempt.
      */
-    private class LockAttempt extends CompletableFuture<Version> {
+    abstract class AbstractLockAttempt extends CompletableFuture<Version> {
         private final int id;
-        private final ScheduledFuture<?> scheduledFuture;
 
-        LockAttempt() {
-            this(null, null);
-        }
-
-        LockAttempt(Duration duration, Consumer<LockAttempt> callback) {
+        AbstractLockAttempt() {
             this.id = AtomixDistributedLock.this.id.incrementAndGet();
-            this.scheduledFuture = duration != null && callback != null
-                ? scheduledExecutor.schedule(() -> callback.accept(this), duration.toMillis(), TimeUnit.MILLISECONDS)
-                : null;
             attempts.put(id, this);
         }
 
@@ -216,6 +214,11 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
         int id() {
             return id;
         }
+
+        /**
+         * Times out the lock attempt.
+         */
+        abstract boolean timeout();
 
         @Override
         public boolean complete(Version version) {
@@ -237,11 +240,59 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
             return super.completeExceptionally(ex);
         }
 
-        private void cancel() {
-            if (scheduledFuture != null) {
-                scheduledFuture.cancel(false);
-            }
+        void cancel() {
             attempts.remove(id);
+        }
+    }
+
+    class LockAttempt extends AbstractLockAttempt {
+        @Override
+        boolean timeout() {
+            return false;
+        }
+    }
+
+    class TryLockAttempt extends AbstractLockAttempt {
+        @Override
+        boolean timeout() {
+            // The client is disconnected from the cluster when this method is called, but that doesn't mean the cluster
+            // won't still grant the lock to the client. We need to ensure any locks granted to this attempt are
+            // unlocked when the client reconnects to the partition.
+            complete(null);
+            proxy.invoke(UNLOCK, SERIALIZER::encode, new Unlock(id()));
+            return true;
+        }
+    }
+
+    class TryLockWithTimeoutAttempt extends AbstractLockAttempt {
+        private final ScheduledFuture<?> scheduledFuture;
+
+        TryLockWithTimeoutAttempt(Duration duration) {
+            this.scheduledFuture = scheduledExecutor.schedule(
+                this::expire, duration.toMillis(), TimeUnit.MILLISECONDS);
+        }
+
+        @Override
+        boolean timeout() {
+            return false;
+        }
+
+        private void expire() {
+            // Because time does not progress at the same rate on different nodes, we can't guarantee that
+            // the lock won't be granted to this process after it's expired here. Thus, if this timer expires and
+            // we fail the lock on the client, we also still need to send an UNLOCK command to the cluster in case it's
+            // later granted by the cluster. Note that the semantics of the Raft client will guarantee this operation
+            // occurs after any prior LOCK attempt, and the Raft client will retry the UNLOCK request until successful.
+            // Additionally, sending the unique lock ID with the command ensures we won't accidentally unlock a different
+            // lock call also granted to this process.
+            complete(null);
+            proxy.invoke(UNLOCK, SERIALIZER::encode, new Unlock(id()));
+        }
+
+        @Override
+        void cancel() {
+            scheduledFuture.cancel(false);
+            super.cancel();
         }
     }
 }
