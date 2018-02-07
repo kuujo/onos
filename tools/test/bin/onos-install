@@ -59,6 +59,8 @@ $(dirname $0)/onos-push-bits $node
 
 [ ! -z "$mvn_settings" ] && scp -q $mvn_settings $remote:/tmp/settings.xml
 
+[ ! -z "$YOURKIT_AGENT" ] && scp -q $YOURKIT_AGENT $remote:/tmp/libyjpagent.so
+
 ssh -tt $remote "
     [ -d $ONOS_INSTALL_DIR/bin ] && echo \"ONOS is already installed\" && exit 1
 
@@ -76,7 +78,12 @@ ssh -tt $remote "
     [ -n $noupstart ] && sudo cp $ONOS_INSTALL_DIR/init/onos.conf /etc/init/onos.conf
     [ -n $noinitd ] && sudo cp $ONOS_INSTALL_DIR/init/onos.initd /etc/init.d/onos
     [ -n $nosysd ] && sudo cp $ONOS_INSTALL_DIR/init/onos.service /etc/systemd/system/onos.service
-    echo 'export ONOS_OPTS=debug' > $ONOS_INSTALL_DIR/options
+    if [ ! -z "$YOURKIT_AGENT" ]; then
+        cp /tmp/libyjpagent.so $ONOS_INSTALL_DIR/bin/libyjpagent.so
+        echo 'export JAVA_OPTS="${JAVA_OPTS:--agentpath:$ONOS_INSTALL_DIR/bin/libyjpagent.so}"' >> $ONOS_INSTALL_DIR/options
+    else
+        echo 'export ONOS_OPTS=debug' > $ONOS_INSTALL_DIR/options
+    fi
 
     # Set up correct user to run onos-service
     echo 'export ONOS_USER=$ONOS_USER' >> $ONOS_INSTALL_DIR/options
