@@ -22,7 +22,9 @@ import com.codahale.metrics.Meter;
 import com.codahale.metrics.Metric;
 import com.codahale.metrics.MetricFilter;
 import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.SlidingWindowReservoir;
 import com.codahale.metrics.Timer;
+import com.codahale.metrics.UniformReservoir;
 import com.google.common.collect.Sets;
 
 import java.util.Map;
@@ -180,7 +182,17 @@ public class MetricsManager implements MetricsService {
                              final MetricsFeature feature,
                              final String metricName) {
         final String name = generateName(component, feature, metricName);
-        return metricsRegistry.timer(name);
+        Timer timer = metricsRegistry.getTimers().get(name);
+        if (timer != null) {
+            return timer;
+        }
+
+        timer = new Timer(new SlidingWindowReservoir(1028));
+        try {
+            return metricsRegistry.register(name, timer);
+        } catch (IllegalArgumentException e) {
+            return metricsRegistry.timer(name);
+        }
     }
 
     /**
