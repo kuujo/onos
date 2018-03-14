@@ -78,12 +78,12 @@ import org.onosproject.store.impl.MastershipBasedTimestamp;
 import org.onosproject.store.impl.Timestamped;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.serializers.custom.DistributedStoreSerializers;
+import org.onosproject.store.service.CoordinationService;
 import org.onosproject.store.service.EventuallyConsistentMap;
 import org.onosproject.store.service.EventuallyConsistentMapEvent;
 import org.onosproject.store.service.EventuallyConsistentMapListener;
 import org.onosproject.store.service.MultiValuedTimestamp;
 import org.onosproject.store.service.Serializer;
-import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.WallClockTimestamp;
 import org.slf4j.Logger;
 
@@ -156,7 +156,7 @@ public class GossipDeviceStore
     protected DeviceClockService deviceClockService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected StorageService storageService;
+    protected CoordinationService coordinationService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected ClusterCommunicationService clusterCommunicator;
@@ -218,14 +218,14 @@ public class GossipDeviceStore
                 .nextId(KryoNamespaces.BEGIN_USER_CUSTOM_ID)
                 .register(MultiValuedTimestamp.class);
 
-        devicePortStats = storageService.<DeviceId, Map<PortNumber, PortStatistics>>eventuallyConsistentMapBuilder()
+        devicePortStats = coordinationService.<DeviceId, Map<PortNumber, PortStatistics>>eventuallyConsistentMapBuilder()
                 .withName("port-stats")
                 .withSerializer(deviceDataSerializer)
                 .withAntiEntropyPeriod(5, TimeUnit.SECONDS)
                 .withTimestampProvider((k, v) -> new WallClockTimestamp())
                 .withTombstonesDisabled()
                 .build();
-        devicePortDeltaStats = storageService.<DeviceId, Map<PortNumber, PortStatistics>>
+        devicePortDeltaStats = coordinationService.<DeviceId, Map<PortNumber, PortStatistics>>
                 eventuallyConsistentMapBuilder()
                 .withName("port-stats-delta")
                 .withSerializer(deviceDataSerializer)

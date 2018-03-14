@@ -193,7 +193,7 @@ public class GossipDeviceStoreTest {
 
         replay(testStorageService, ecMapBuilder, ecMap);
 
-        testGossipDeviceStore.storageService = testStorageService;
+        testGossipDeviceStore.coordinationService = testStorageService;
         testGossipDeviceStore.deviceClockService = deviceClockService;
 
         gossipDeviceStore = testGossipDeviceStore;
