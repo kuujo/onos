@@ -15,10 +15,14 @@
  */
 package org.onosproject.store.primitives.impl;
 
+import org.onlab.util.HexString;
+import org.onosproject.core.Version;
 import org.onosproject.store.primitives.DistributedPrimitiveCreator;
+import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.ConsistentMapBuilder;
+import org.onosproject.store.service.Serializer;
 
 /**
  * Default {@link AsyncConsistentMap} builder.
@@ -29,9 +33,11 @@ import org.onosproject.store.service.ConsistentMapBuilder;
 public class DefaultConsistentMapBuilder<K, V> extends ConsistentMapBuilder<K, V> {
 
     private final DistributedPrimitiveCreator primitiveCreator;
+    private final Version version;
 
-    public DefaultConsistentMapBuilder(DistributedPrimitiveCreator primitiveCreator) {
+    public DefaultConsistentMapBuilder(DistributedPrimitiveCreator primitiveCreator, Version version) {
         this.primitiveCreator = primitiveCreator;
+        this.version = version;
     }
 
     @Override
@@ -41,7 +47,41 @@ public class DefaultConsistentMapBuilder<K, V> extends ConsistentMapBuilder<K, V
 
     @Override
     public AsyncConsistentMap<K, V> buildAsyncMap() {
-        AsyncConsistentMap<K, V> map = primitiveCreator.newAsyncConsistentMap(name(), serializer());
+        AsyncConsistentMap<K, V> map;
+
+        // If a compatibility function is defined, we don't assume CompatibleValue and Version is registered in
+        // the user-provided serializer since it's an implementation detail. Instead, we use the user-provided
+        // serializer to convert the CompatibleValue value to a raw byte[] and use a separate serializer to encode
+        // the CompatibleValue to binary.
+        if (compatibilityFunction != null) {
+            // Create a raw <String, byte[]> map.
+            AsyncConsistentMap<String, byte[]> rawMap =
+                primitiveCreator.newAsyncConsistentMap(name(), null);
+
+            // Convert the byte[] value to CompatibleValue<byte[]>
+            Serializer compatibleSerializer = Serializer.using(KryoNamespaces.API);
+            AsyncConsistentMap<K, CompatibleValue<byte[]>> rawCompatibleMap = DistributedPrimitives.newTranscodingMap(
+                rawMap,
+                key -> HexString.toHexString(compatibleSerializer.encode(key)),
+                string -> compatibleSerializer.decode(HexString.fromHexString(string)),
+                value -> value == null ? null : compatibleSerializer.encode(value),
+                bytes -> compatibleSerializer.decode(bytes));
+
+            // Convert the CompatibleValue<byte[]> value to CompatibleValue<V> using the user-provided serializer.
+            Serializer serializer = serializer();
+            AsyncConsistentMap<K, CompatibleValue<V>> compatibleMap =
+                DistributedPrimitives.newTranscodingMap(rawCompatibleMap,
+                    key -> key,
+                    key -> key,
+                    value -> value == null ? null :
+                        new CompatibleValue<byte[]>(serializer.encode(value.value()), value.version()),
+                    value -> value == null ? null :
+                        new CompatibleValue<V>(serializer.decode(value.value()), value.version()));
+            map = DistributedPrimitives.newCompatibleMap(compatibleMap, compatibilityFunction, version);
+        } else {
+            map = primitiveCreator.newAsyncConsistentMap(name(), serializer());
+        }
+
         map = nullValues() ? map : DistributedPrimitives.newNotNullMap(map);
         map = relaxedReadConsistency() ? DistributedPrimitives.newCachingMap(map) : map;
         map = readOnly() ? DistributedPrimitives.newUnmodifiableMap(map) : map;
