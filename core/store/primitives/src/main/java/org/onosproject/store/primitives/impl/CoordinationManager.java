@@ -65,6 +65,7 @@ import static org.slf4j.LoggerFactory.getLogger;
  * Implementation of {@code CoordinationService} that uses a {@link StoragePartition} that spans all the nodes
  * in the cluster regardless of version.
  */
+@Deprecated
 @Service
 @Component(immediate = true)
 public class CoordinationManager implements CoordinationService {

@@ -36,8 +36,8 @@ import org.onosproject.store.flow.ReplicaInfo;
 import org.onosproject.store.flow.ReplicaInfoEvent;
 import org.onosproject.store.flow.ReplicaInfoEventListener;
 import org.onosproject.store.flow.ReplicaInfoService;
-import org.onosproject.store.service.CoordinationService;
 import org.onosproject.store.service.LeaderElector;
+import org.onosproject.store.service.StorageService;
 import org.slf4j.Logger;
 
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -59,7 +59,7 @@ public class ReplicaInfoManager
     private final Logger log = getLogger(getClass());
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected CoordinationService coordinationService;
+    protected StorageService storageService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected VersionService versionService;
@@ -92,7 +92,7 @@ public class ReplicaInfoManager
     @Activate
     public void activate() {
         eventDispatcher.addSink(ReplicaInfoEvent.class, listenerRegistry);
-        leaderElector = coordinationService.leaderElectorBuilder()
+        leaderElector = storageService.leaderElectorBuilder()
                 .withName("onos-leadership-elections")
                 .build()
                 .asLeaderElector();

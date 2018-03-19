@@ -31,5 +31,6 @@ import com.google.common.annotations.Beta;
  * @see StorageService
  */
 @Beta
+@Deprecated
 public interface CoordinationService extends PrimitiveService {
 }

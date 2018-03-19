@@ -36,9 +36,9 @@ import org.onosproject.event.Change;
 import org.onosproject.net.DeviceId;
 import org.onosproject.store.flow.ReplicaInfoEvent;
 import org.onosproject.store.service.AsyncLeaderElector;
-import org.onosproject.store.service.CoordinationService;
 import org.onosproject.store.service.LeaderElector;
 import org.onosproject.store.service.LeaderElectorBuilder;
+import org.onosproject.store.service.StorageService;
 
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.mock;
@@ -62,17 +62,17 @@ public class ReplicaInfoManagerTest {
         leaderElector = new TestLeaderElector();
         manager = new TestReplicaInfoManager();
         manager.versionService = () -> Version.version("1.0.0");
-        CoordinationService coordinationService = mock(CoordinationService.class);
+        StorageService storageService = mock(StorageService.class);
         AsyncLeaderElector leaderElector = mock(AsyncLeaderElector.class);
         expect(leaderElector.asLeaderElector()).andReturn(this.leaderElector).anyTimes();
-        expect(coordinationService.leaderElectorBuilder()).andReturn(new LeaderElectorBuilder() {
+        expect(storageService.leaderElectorBuilder()).andReturn(new LeaderElectorBuilder() {
             @Override
             public AsyncLeaderElector build() {
                 return leaderElector;
             }
         }).anyTimes();
-        replay(coordinationService, leaderElector);
-        manager.coordinationService = coordinationService;
+        replay(storageService, leaderElector);
+        manager.storageService = storageService;
 
         manager.activate();
     }
