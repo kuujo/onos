@@ -126,8 +126,11 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                         .withCommunicationStrategy(CommunicationStrategy.ANY)
                         .withTimeout(Duration.ofSeconds(30))
                         .withMaxRetries(MAX_RETRIES)
-                        .withRevision(options.revision())
-                        .withPropagationStrategy(PropagationStrategy.valueOf(options.revisionType().name()))
+                        .withRevision(options.version() != null && options.revisionType() != null
+                            ? options.version().toInt() : 1)
+                        .withPropagationStrategy(options.revisionType() != null
+                            ? PropagationStrategy.valueOf(options.revisionType().name())
+                            : PropagationStrategy.NONE)
                         .build()
                         .open()
                         .join());
@@ -153,8 +156,11 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                         .withCommunicationStrategy(CommunicationStrategy.ANY)
                         .withTimeout(Duration.ofSeconds(30))
                         .withMaxRetries(MAX_RETRIES)
-                        .withRevision(options.revision())
-                        .withPropagationStrategy(PropagationStrategy.valueOf(options.revisionType().name()))
+                        .withRevision(options.version() != null && options.revisionType() != null
+                            ? options.version().toInt() : 1)
+                        .withPropagationStrategy(options.revisionType() != null
+                            ? PropagationStrategy.valueOf(options.revisionType().name())
+                            : PropagationStrategy.NONE)
                         .build()
                         .open()
                         .join());
@@ -179,8 +185,11 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                         .withCommunicationStrategy(CommunicationStrategy.ANY)
                         .withTimeout(Duration.ofSeconds(30))
                         .withMaxRetries(MAX_RETRIES)
-                        .withRevision(options.revision())
-                        .withPropagationStrategy(PropagationStrategy.valueOf(options.revisionType().name()))
+                        .withRevision(options.version() != null && options.revisionType() != null
+                            ? options.version().toInt() : 1)
+                        .withPropagationStrategy(options.revisionType() != null
+                            ? PropagationStrategy.valueOf(options.revisionType().name())
+                            : PropagationStrategy.NONE)
                         .build()
                         .open()
                         .join());
@@ -211,8 +220,11 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                 .withCommunicationStrategy(CommunicationStrategy.LEADER)
                 .withTimeout(Duration.ofSeconds(30))
                 .withMaxRetries(MAX_RETRIES)
-                .withRevision(options.revision())
-                .withPropagationStrategy(PropagationStrategy.valueOf(options.revisionType().name()))
+                .withRevision(options.version() != null && options.revisionType() != null
+                    ? options.version().toInt() : 1)
+                .withPropagationStrategy(options.revisionType() != null
+                    ? PropagationStrategy.valueOf(options.revisionType().name())
+                    : PropagationStrategy.NONE)
                 .build()
                 .open()
                 .join());
@@ -235,8 +247,11 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                 .withCommunicationStrategy(CommunicationStrategy.LEADER)
                 .withTimeout(Duration.ofSeconds(30))
                 .withMaxRetries(MAX_RETRIES)
-                .withRevision(options.revision())
-                .withPropagationStrategy(PropagationStrategy.valueOf(options.revisionType().name()))
+                .withRevision(options.version() != null && options.revisionType() != null
+                    ? options.version().toInt() : 1)
+                .withPropagationStrategy(options.revisionType() != null
+                    ? PropagationStrategy.valueOf(options.revisionType().name())
+                    : PropagationStrategy.NONE)
                 .build()
                 .open()
                 .join());
@@ -261,8 +276,11 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                 .withCommunicationStrategy(CommunicationStrategy.LEADER)
                 .withTimeout(Duration.ofSeconds(5))
                 .withMaxRetries(MAX_RETRIES)
-                .withRevision(options.revision())
-                .withPropagationStrategy(PropagationStrategy.valueOf(options.revisionType().name()))
+                .withRevision(options.version() != null && options.revisionType() != null
+                    ? options.version().toInt() : 1)
+                .withPropagationStrategy(options.revisionType() != null
+                    ? PropagationStrategy.valueOf(options.revisionType().name())
+                    : PropagationStrategy.NONE)
                 .build()
                 .open()
                 .join());
@@ -279,8 +297,11 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                 .withCommunicationStrategy(CommunicationStrategy.ANY)
                 .withTimeout(Duration.ofSeconds(30))
                 .withMaxRetries(MAX_RETRIES)
-                .withRevision(options.revision())
-                .withPropagationStrategy(PropagationStrategy.valueOf(options.revisionType().name()))
+                .withRevision(options.version() != null && options.revisionType() != null
+                    ? options.version().toInt() : 1)
+                .withPropagationStrategy(options.revisionType() != null
+                    ? PropagationStrategy.valueOf(options.revisionType().name())
+                    : PropagationStrategy.NONE)
                 .build()
                 .open()
                 .join());
@@ -297,8 +318,11 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                 .withMinTimeout(Duration.ofSeconds(1))
                 .withMaxTimeout(Duration.ofSeconds(5))
                 .withMaxRetries(MAX_RETRIES)
-                .withRevision(options.revision())
-                .withPropagationStrategy(PropagationStrategy.valueOf(options.revisionType().name()))
+                .withRevision(options.version() != null && options.revisionType() != null
+                    ? options.version().toInt() : 1)
+                .withPropagationStrategy(options.revisionType() != null
+                    ? PropagationStrategy.valueOf(options.revisionType().name())
+                    : PropagationStrategy.NONE)
                 .build()
                 .open()
                 .join());
@@ -314,8 +338,11 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
                 .withMinTimeout(Duration.ofMillis(options.electionTimeoutMillis()))
                 .withMaxTimeout(Duration.ofSeconds(5))
                 .withMaxRetries(MAX_RETRIES)
-                .withRevision(options.revision())
-                .withPropagationStrategy(PropagationStrategy.valueOf(options.revisionType().name()))
+                .withRevision(options.version() != null && options.revisionType() != null
+                    ? options.version().toInt() : 1)
+                .withPropagationStrategy(options.revisionType() != null
+                    ? PropagationStrategy.valueOf(options.revisionType().name())
+                    : PropagationStrategy.NONE)
                 .build()
                 .open()
                 .join());
