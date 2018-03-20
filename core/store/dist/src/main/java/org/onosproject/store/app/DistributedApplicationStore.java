@@ -44,6 +44,7 @@ import org.onosproject.core.ApplicationId;
 import org.onosproject.app.ApplicationIdStore;
 import org.onosproject.core.CoreService;
 import org.onosproject.core.DefaultApplication;
+import org.onosproject.core.Version;
 import org.onosproject.security.Permission;
 import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
 import org.onosproject.store.cluster.messaging.MessageSubject;
@@ -57,7 +58,6 @@ import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.Topic;
 import org.onosproject.store.service.Versioned;
 import org.onosproject.store.service.DistributedPrimitive.Status;
-import org.onosproject.upgrade.UpgradeService;
 import org.slf4j.Logger;
 
 import java.io.ByteArrayInputStream;
@@ -131,9 +131,6 @@ public class DistributedApplicationStore extends ApplicationArchive
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected ApplicationIdStore idStore;
 
-    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected UpgradeService upgradeService;
-
     private final InternalAppsListener appsListener = new InternalAppsListener();
     private final Consumer<Application> appActivator = new AppActivator();
 
@@ -167,6 +164,7 @@ public class DistributedApplicationStore extends ApplicationArchive
         apps = storageService.<ApplicationId, InternalApplicationHolder>consistentMapBuilder()
                 .withName("onos-apps")
                 .withRelaxedReadConsistency()
+                .withCompatibilityFunction(this::convertApplication)
                 .withSerializer(Serializer.using(KryoNamespaces.API,
                         InternalApplicationHolder.class,
                         InternalState.class))
@@ -189,44 +187,47 @@ public class DistributedApplicationStore extends ApplicationArchive
         apps.addStatusChangeListener(statusChangeListener);
         coreAppId = getId(CoreService.CORE_APP_NAME);
 
-        upgradeExistingApplications();
+        activateExistingApplications();
         log.info("Started");
     }
 
     /**
      * Upgrades application versions for existing applications that are stored on disk after an upgrade.
      */
-    private void upgradeExistingApplications() {
-        if (upgradeService.isUpgrading() && (upgradeService.isLocalActive() || upgradeService.isLocalUpgraded())) {
-            getApplicationNames().forEach(appName -> {
-                // Only update the application version if the application has already been installed.
-                ApplicationId appId = getId(appName);
-                if (appId != null) {
-                    Application application = getApplication(appId);
-                    if (application != null) {
-                        InternalApplicationHolder appHolder = Versioned.valueOrNull(apps.get(application.id()));
-
-                        // Load the application description from disk. If the version doesn't match the persisted
-                        // version, update the stored application with the new version.
-                        ApplicationDescription appDesc = getApplicationDescription(appName);
-                        if (!appDesc.version().equals(application.version())) {
-                            Application newApplication = DefaultApplication.builder(application)
-                                    .withVersion(appDesc.version())
-                                    .build();
-                            InternalApplicationHolder newHolder = new InternalApplicationHolder(
-                                    newApplication, appHolder.state, appHolder.permissions);
-                            apps.put(newApplication.id(), newHolder);
-                        }
-
-                        // If the application was activated in the previous version, set the local state to active.
-                        if (appHolder.state == ACTIVATED) {
-                            setActive(appName);
-                            updateTime(appName);
-                        }
-                    }
-                }
-            });
+    private InternalApplicationHolder convertApplication(InternalApplicationHolder appHolder, Version version) {
+        // Load the application description from disk. If the version doesn't match the persisted
+        // version, update the stored application with the new version.
+        ApplicationDescription appDesc = getApplicationDescription(appHolder.app.id().name());
+        if (!appDesc.version().equals(appHolder.app().version())) {
+            Application newApplication = DefaultApplication.builder(appHolder.app())
+                .withVersion(appDesc.version())
+                .build();
+            return new InternalApplicationHolder(
+                newApplication, appHolder.state, appHolder.permissions);
         }
+        return appHolder;
+    }
+
+    /**
+     * Activates any applications on the local node that have already been activated in the cluster.
+     */
+    private void activateExistingApplications() {
+        getApplicationNames().forEach(appName -> {
+            // Only update the application version if the application has already been installed.
+            ApplicationId appId = getId(appName);
+            if (appId != null) {
+                ApplicationDescription appDesc = getApplicationDescription(appName);
+                InternalApplicationHolder appHolder = Versioned.valueOrNull(apps.get(appId));
+
+                // If the application has already been activated, set the local state to active.
+                if (appHolder != null
+                    && appDesc.version().equals(appHolder.app().version())
+                    && appHolder.state == ACTIVATED) {
+                    setActive(appName);
+                    updateTime(appName);
+                }
+            }
+        });
     }
 
     /**
