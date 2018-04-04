@@ -15,7 +15,6 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import org.onlab.util.HexString;
 import org.onosproject.core.Version;
 import org.onosproject.store.primitives.DistributedPrimitiveCreator;
 import org.onosproject.store.serializers.KryoNamespaces;
@@ -23,7 +22,6 @@ import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.ConsistentMapBuilder;
 import org.onosproject.store.service.Serializer;
-import org.slf4j.LoggerFactory;
 
 /**
  * Default {@link AsyncConsistentMap} builder.
