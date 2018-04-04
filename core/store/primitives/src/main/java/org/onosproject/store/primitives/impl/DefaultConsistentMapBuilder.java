@@ -15,7 +15,6 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import org.onlab.util.HexString;
 import org.onosproject.core.Version;
 import org.onosproject.store.primitives.DistributedPrimitiveCreator;
 import org.onosproject.store.serializers.KryoNamespaces;
