@@ -25,6 +25,7 @@ import java.util.stream.Collectors;
 import org.onlab.util.Tools;
 import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.AsyncDistributedSet;
+import org.onosproject.store.service.CloseableIterator;
 import org.onosproject.store.service.MapEvent;
 import org.onosproject.store.service.MapEventListener;
 import org.onosproject.store.service.SetEvent;
@@ -33,6 +34,7 @@ import org.onosproject.store.service.SetEventListener;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import org.onosproject.store.service.Versioned;
 import org.onosproject.utils.MeteringAgent;
 
 /**
@@ -137,6 +139,11 @@ public class DefaultAsyncDistributedSet<E> implements AsyncDistributedSet<E> {
     }
 
     @Override
+    public CompletableFuture<CloseableIterator<E>> iterator() {
+        return backingMap.iterator().thenApply(SetIterator::new);
+    }
+
+    @Override
     public CompletableFuture<? extends Set<E>> getAsImmutableSet() {
         final MeteringAgent.Context timer = monitor.startTimer(GET_AS_IMMUTABLE_SET);
         return backingMap.keySet().thenApply(s -> ImmutableSet.copyOf(s)).whenComplete((r, e) -> timer.stop(null));
@@ -164,5 +171,28 @@ public class DefaultAsyncDistributedSet<E> implements AsyncDistributedSet<E> {
             return backingMap.removeListener(mapEventListener);
         }
         return CompletableFuture.completedFuture(null);
+    }
+
+    private static class SetIterator<E> implements CloseableIterator<E> {
+        private final CloseableIterator<Map.Entry<E, Versioned<Boolean>>> iterator;
+
+        public SetIterator(CloseableIterator<Map.Entry<E, Versioned<Boolean>>> iterator) {
+            this.iterator = iterator;
+        }
+
+        @Override
+        public void close() {
+            iterator.close();
+        }
+
+        @Override
+        public boolean hasNext() {
+            return iterator.hasNext();
+        }
+
+        @Override
+        public E next() {
+            return iterator.next().getKey();
+        }
     }
 }

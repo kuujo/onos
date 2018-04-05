@@ -21,6 +21,7 @@ import org.onlab.util.Tools;
 import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.service.AsyncConsistentTreeMap;
+import org.onosproject.store.service.CloseableIterator;
 import org.onosproject.store.service.MapEvent;
 import org.onosproject.store.service.MapEventListener;
 import org.onosproject.store.service.TransactionLog;
@@ -340,6 +341,11 @@ public class TranscodingAsyncConsistentTreeMap<V1, V2>
     }
 
     @Override
+    public CompletableFuture<CloseableIterator<Map.Entry<String, Versioned<V1>>>> iterator() {
+        return backingMap.iterator().thenApply(TranscodingIterator::new);
+    }
+
+    @Override
     public CompletableFuture<Void> addListener(
             MapEventListener<String, V1> listener,
             Executor executor) {
@@ -407,6 +413,30 @@ public class TranscodingAsyncConsistentTreeMap<V1, V2>
                             event.newValue().map(valueDecoder) : null,
                     event.oldValue() != null ?
                             event.oldValue().map(valueDecoder) : null));
+        }
+    }
+
+    private class TranscodingIterator implements CloseableIterator<Map.Entry<String, Versioned<V1>>> {
+        private final CloseableIterator<Map.Entry<String, Versioned<V2>>> iterator;
+
+        TranscodingIterator(CloseableIterator<Map.Entry<String, Versioned<V2>>> iterator) {
+            this.iterator = iterator;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return iterator.hasNext();
+        }
+
+        @Override
+        public Map.Entry<String, Versioned<V1>> next() {
+            Map.Entry<String, Versioned<V2>> entry = iterator.next();
+            return Maps.immutableEntry(entry.getKey(), entry.getValue().map(valueDecoder));
+        }
+
+        @Override
+        public void close() {
+            iterator.close();
         }
     }
 }

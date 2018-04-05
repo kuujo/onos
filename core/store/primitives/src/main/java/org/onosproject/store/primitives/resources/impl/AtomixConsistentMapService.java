@@ -15,6 +15,7 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -23,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -66,6 +68,7 @@ import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMa
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.ADD_LISTENER;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.BEGIN;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.CLEAR;
+import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.CLOSE;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.COMMIT;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.CONTAINS_KEY;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.CONTAINS_VALUE;
@@ -73,7 +76,9 @@ import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMa
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.GET;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.GET_OR_DEFAULT;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.IS_EMPTY;
+import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.ITERATE;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.KEY_SET;
+import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.NEXT;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.PREPARE;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.PREPARE_AND_COMMIT;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.PUT;
@@ -95,6 +100,7 @@ import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMa
  */
 public class AtomixConsistentMapService extends AbstractRaftService {
 
+    private static final int ITERATOR_BATCH_SIZE = 1024 * 32;
     private static final Serializer SERIALIZER = Serializer.using(KryoNamespace.newBuilder()
             .register(KryoNamespaces.BASIC)
             .register(AtomixConsistentMapOperations.NAMESPACE)
@@ -105,21 +111,24 @@ public class AtomixConsistentMapService extends AbstractRaftService {
             .register(TransactionId.class)
             .register(MapEntryValue.class)
             .register(MapEntryValue.Type.class)
+            .register(LinkedHashMap.class)
             .register(new HashMap().keySet().getClass())
+            .register(IteratorContext.class)
             .build());
 
     protected Map<Long, RaftSession> listeners = new LinkedHashMap<>();
-    private Map<String, MapEntryValue> map;
+    protected Map<String, MapEntryValue> map;
     protected Set<String> preparedKeys = Sets.newHashSet();
     protected Map<TransactionId, TransactionScope> activeTransactions = Maps.newHashMap();
     protected long currentVersion;
+    protected Map<Long, IteratorContext> iterators = Maps.newHashMap();
 
     public AtomixConsistentMapService() {
         map = createMap();
     }
 
     protected Map<String, MapEntryValue> createMap() {
-        return Maps.newHashMap();
+        return Maps.newLinkedHashMap();
     }
 
     protected Map<String, MapEntryValue> entries() {
@@ -137,6 +146,7 @@ public class AtomixConsistentMapService extends AbstractRaftService {
         writer.writeObject(entries(), serializer()::encode);
         writer.writeObject(activeTransactions, serializer()::encode);
         writer.writeLong(currentVersion);
+        writer.writeObject(iterators, serializer()::encode);
     }
 
     @Override
@@ -149,6 +159,7 @@ public class AtomixConsistentMapService extends AbstractRaftService {
         map = reader.readObject(serializer()::decode);
         activeTransactions = reader.readObject(serializer()::decode);
         currentVersion = reader.readLong();
+        iterators = reader.readObject(serializer()::decode);
     }
 
     @Override
@@ -182,6 +193,9 @@ public class AtomixConsistentMapService extends AbstractRaftService {
         executor.register(PREPARE_AND_COMMIT, serializer()::decode, this::prepareAndCommit, serializer()::encode);
         executor.register(COMMIT, serializer()::decode, this::commit, serializer()::encode);
         executor.register(ROLLBACK, serializer()::decode, this::rollback, serializer()::encode);
+        executor.register(ITERATE, this::iterate, serializer()::encode);
+        executor.register(NEXT, serializer()::decode, this::next, serializer()::encode);
+        executor.register(CLOSE, serializer()::decode, (Consumer<Commit<Long>>) this::close);
     }
 
     /**
@@ -364,6 +378,7 @@ public class AtomixConsistentMapService extends AbstractRaftService {
             }
             entries().put(commit.value().key(),
                     new MapEntryValue(MapEntryValue.Type.VALUE, newValue.version(), newValue.value()));
+            snapshotValue(commit.value().key(), oldValue);
             Versioned<byte[]> result = toVersioned(oldValue);
             publish(new MapEvent<>(MapEvent.Type.UPDATE, "", key, toVersioned(newValue), result));
             return new MapEntryUpdateResult<>(MapEntryUpdateResult.Status.OK, commit.index(), key, result);
@@ -473,7 +488,7 @@ public class AtomixConsistentMapService extends AbstractRaftService {
         }
 
         // If no transactions are active, remove the key. Otherwise, replace it with a tombstone.
-        if (activeTransactions.isEmpty()) {
+        if (activeTransactions.isEmpty() && iterators.isEmpty()) {
             entries().remove(key);
         } else {
             entries().put(key, new MapEntryValue(MapEntryValue.Type.TOMBSTONE, index, null));
@@ -607,6 +622,78 @@ public class AtomixConsistentMapService extends AbstractRaftService {
         }
         entries().putAll(entriesToAdd);
         return MapEntryUpdateResult.Status.OK;
+    }
+
+    /**
+     * Handles an iterate commit.
+     *
+     * @param commit the iterate commit
+     * @return an iterator ID
+     */
+    protected long iterate(Commit<Void> commit) {
+        iterators.put(commit.index(), new IteratorContext());
+        return commit.index();
+    }
+
+    /**
+     * Handles a next commit.
+     *
+     * @param commit the next commit
+     * @return a collection of entries to iterate
+     */
+    protected Collection<Map.Entry<String, Versioned<byte[]>>> next(Commit<Long> commit) {
+        long index = commit.value();
+        IteratorContext context = iterators.get(commit.value());
+        if (context == null) {
+            return null;
+        }
+
+        Collection<Map.Entry<String, Versioned<byte[]>>> entries = new ArrayList<>();
+        int position = 0;
+        int size = 0;
+        for (Map.Entry<String, MapEntryValue> entry : entries().entrySet()) {
+            if ((entry.getValue().version() < index
+                || context.snapshot.containsKey(entry.getKey()))
+                && ++position > context.position) {
+                MapEntryValue value;
+                if (context.snapshot.containsKey(entry.getKey())) {
+                    value = context.snapshot.get(entry.getKey());
+                } else {
+                    value = entry.getValue();
+                }
+
+                entries.add(Maps.immutableEntry(entry.getKey(), toVersioned(value)));
+                size += value.value().length;
+
+                if (size >= ITERATOR_BATCH_SIZE) {
+                    break;
+                }
+            }
+        }
+        context.position = position;
+
+        if (entries.isEmpty()) {
+            iterators.remove(commit.value());
+            return null;
+        }
+        return entries;
+    }
+
+    /**
+     * Handles an iterator close commit.
+     *
+     * @param commit the commit to handle
+     */
+    protected void close(Commit<Long> commit) {
+        iterators.remove(commit.value());
+    }
+
+    private void snapshotValue(String key, MapEntryValue value) {
+        for (IteratorContext iterator : iterators.values()) {
+            if (!iterator.snapshot.containsKey(key)) {
+                iterator.snapshot.put(key, value);
+            }
+        }
     }
 
     /**
@@ -763,7 +850,7 @@ public class AtomixConsistentMapService extends AbstractRaftService {
      */
     private CommitResult commitTransaction(TransactionScope transactionScope) {
         TransactionLog<MapUpdate<String, byte[]>> transactionLog = transactionScope.transactionLog();
-        boolean retainTombstones = !activeTransactions.isEmpty();
+        boolean retainTombstones = !activeTransactions.isEmpty() || !iterators.isEmpty();
 
         List<MapEvent<String, byte[]>> eventsToPublish = Lists.newArrayList();
         for (MapUpdate<String, byte[]> record : transactionLog.records()) {
@@ -864,7 +951,7 @@ public class AtomixConsistentMapService extends AbstractRaftService {
      * Discards tombstones no longer needed by active transactions.
      */
     private void discardTombstones() {
-        if (activeTransactions.isEmpty()) {
+        if (activeTransactions.isEmpty() && iterators.isEmpty()) {
             Iterator<Map.Entry<String, MapEntryValue>> iterator = entries().entrySet().iterator();
             while (iterator.hasNext()) {
                 MapEntryValue value = iterator.next().getValue();
@@ -873,9 +960,17 @@ public class AtomixConsistentMapService extends AbstractRaftService {
                 }
             }
         } else {
-            long lowWaterMark = activeTransactions.values().stream()
-                    .mapToLong(TransactionScope::version)
-                    .min().getAsLong();
+            long lowestTransaction = activeTransactions.values()
+                .stream()
+                .mapToLong(TransactionScope::version)
+                .min()
+                .orElse(currentIndex());
+            long lowestIterator = iterators.keySet()
+                .stream()
+                .mapToLong(i -> i)
+                .min()
+                .orElse(currentIndex());
+            long lowWaterMark = Math.min(lowestTransaction, lowestIterator);
             Iterator<Map.Entry<String, MapEntryValue>> iterator = entries().entrySet().iterator();
             while (iterator.hasNext()) {
                 MapEntryValue value = iterator.next().getValue();
@@ -928,6 +1023,14 @@ public class AtomixConsistentMapService extends AbstractRaftService {
 
     private void closeListener(Long sessionId) {
         listeners.remove(sessionId);
+    }
+
+    /**
+     * Iterator context.
+     */
+    protected static class IteratorContext {
+        private int position;
+        private Map<String, MapEntryValue> snapshot = new HashMap<>();
     }
 
     /**

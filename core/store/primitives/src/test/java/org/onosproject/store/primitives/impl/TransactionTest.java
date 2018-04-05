@@ -20,6 +20,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,6 +39,7 @@ import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.AsyncConsistentMap;
+import org.onosproject.store.service.CloseableIterator;
 import org.onosproject.store.service.CommitStatus;
 import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.MapEventListener;
@@ -377,6 +379,27 @@ public class TransactionTest {
                 return true;
             }
             return false;
+        }
+
+        @Override
+        public CloseableIterator<Map.Entry<K, Versioned<V>>> iterator() {
+            Iterator<Map.Entry<K, Versioned<V>>> iterator = map.entrySet().iterator();
+            return new CloseableIterator<Map.Entry<K, Versioned<V>>>() {
+                @Override
+                public boolean hasNext() {
+                    return iterator.hasNext();
+                }
+
+                @Override
+                public Map.Entry<K, Versioned<V>> next() {
+                    return iterator.next();
+                }
+
+                @Override
+                public void close() {
+
+                }
+            };
         }
 
         @Override

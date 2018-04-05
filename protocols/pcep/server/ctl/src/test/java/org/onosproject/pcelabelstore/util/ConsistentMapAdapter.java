@@ -23,6 +23,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
+import org.onosproject.store.service.CloseableIterator;
 import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.DistributedPrimitive;
 import org.onosproject.store.service.MapEventListener;
@@ -157,6 +158,11 @@ public class ConsistentMapAdapter<K, V> implements ConsistentMap<K, V> {
     @Override
     public boolean replace(K key, long oldVersion, V newValue) {
         return false;
+    }
+
+    @Override
+    public CloseableIterator<Map.Entry<K, Versioned<V>>> iterator() {
+        return null;
     }
 
     @Override

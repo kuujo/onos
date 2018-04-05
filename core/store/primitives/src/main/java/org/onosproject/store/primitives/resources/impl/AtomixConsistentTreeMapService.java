@@ -76,6 +76,7 @@ public class AtomixConsistentTreeMapService extends AtomixConsistentMapService {
             .register(MapEntryValue.Type.class)
             .register(new HashMap().keySet().getClass())
             .register(TreeMap.class)
+            .register(IteratorContext.class)
             .build());
 
     @Override

@@ -34,7 +34,7 @@ import com.google.common.util.concurrent.MoreExecutors;
  * @param <K> type of key
  * @param <V> type of value
  */
-public interface ConsistentMap<K, V> extends DistributedPrimitive {
+public interface ConsistentMap<K, V> extends DistributedPrimitive, CloseableIterable<Entry<K, Versioned<V>>> {
 
     /**
      * Returns the number of entries in the map.

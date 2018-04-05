@@ -58,7 +58,10 @@ public enum AtomixConsistentMapOperations implements OperationId {
     PREPARE(OperationType.COMMAND),
     PREPARE_AND_COMMIT(OperationType.COMMAND),
     COMMIT(OperationType.COMMAND),
-    ROLLBACK(OperationType.COMMAND);
+    ROLLBACK(OperationType.COMMAND),
+    ITERATE(OperationType.COMMAND),
+    NEXT(OperationType.COMMAND),
+    CLOSE(OperationType.COMMAND);
 
     private final OperationType type;
 

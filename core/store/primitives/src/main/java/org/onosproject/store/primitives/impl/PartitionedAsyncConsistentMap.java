@@ -18,8 +18,10 @@ package org.onosproject.store.primitives.impl;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
@@ -35,6 +37,7 @@ import org.onosproject.cluster.PartitionId;
 import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.service.AsyncConsistentMap;
+import org.onosproject.store.service.CloseableIterator;
 import org.onosproject.store.service.MapEventListener;
 import org.onosproject.store.service.TransactionLog;
 import org.onosproject.store.service.Version;
@@ -185,6 +188,12 @@ public class PartitionedAsyncConsistentMap<K, V> implements AsyncConsistentMap<K
     }
 
     @Override
+    public CompletableFuture<CloseableIterator<Entry<K, Versioned<V>>>> iterator() {
+        return Tools.allOf(getMaps().stream().map(AsyncConsistentMap::iterator).collect(Collectors.toList()))
+            .thenApply(iterators -> new PartitionedConsistentMapIterator(iterators.iterator()));
+    }
+
+    @Override
     public CompletableFuture<Void> addListener(MapEventListener<K, V> listener, Executor executor) {
         return CompletableFuture.allOf(getMaps().stream()
                                                 .map(map -> map.addListener(listener, executor))
@@ -253,5 +262,50 @@ public class PartitionedAsyncConsistentMap<K, V> implements AsyncConsistentMap<K
      */
     private Collection<AsyncConsistentMap<K, V>> getMaps() {
         return partitions.values();
+    }
+
+    /**
+     * Partitioned consistent map iterator.
+     */
+    private class PartitionedConsistentMapIterator implements CloseableIterator<Map.Entry<K, Versioned<V>>> {
+        private final Iterator<CloseableIterator<Entry<K, Versioned<V>>>> iterators;
+        private CloseableIterator<Entry<K, Versioned<V>>> iterator;
+
+        PartitionedConsistentMapIterator(Iterator<CloseableIterator<Entry<K, Versioned<V>>>> iterators) {
+            this.iterators = iterators;
+            this.iterator = iterators.next();
+        }
+
+        @Override
+        public boolean hasNext() {
+            while (!iterator.hasNext()) {
+                if (iterators.hasNext()) {
+                    iterator = iterators.next();
+                } else {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        @Override
+        public Entry<K, Versioned<V>> next() {
+            while (!iterator.hasNext()) {
+                if (iterators.hasNext()) {
+                    iterator = iterators.next();
+                } else {
+                    throw new NoSuchElementException();
+                }
+            }
+            return iterator.next();
+        }
+
+        @Override
+        public void close() {
+            iterator.close();
+            while (iterators.hasNext()) {
+                iterator.close();
+            }
+        }
     }
 }

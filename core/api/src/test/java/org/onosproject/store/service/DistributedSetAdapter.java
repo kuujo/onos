@@ -85,6 +85,11 @@ public class DistributedSetAdapter<E> implements AsyncDistributedSet<E> {
     }
 
     @Override
+    public CompletableFuture<CloseableIterator<E>> iterator() {
+        return null;
+    }
+
+    @Override
     public CompletableFuture<? extends Set<E>> getAsImmutableSet() {
         return null;
     }

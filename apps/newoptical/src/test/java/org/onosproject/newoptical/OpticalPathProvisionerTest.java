@@ -85,6 +85,7 @@ import org.onosproject.newoptical.api.OpticalPathListener;
 import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.AsyncDistributedSet;
 import org.onosproject.store.service.AtomicCounter;
+import org.onosproject.store.service.CloseableIterator;
 import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.ConsistentMapAdapter;
 import org.onosproject.store.service.ConsistentMapBuilder;
@@ -745,6 +746,10 @@ public class OpticalPathProvisionerTest {
 
         // Mock DistributedSet that behaves as a HashSet
         class TestDistributedSet<E> extends HashSet<E> implements DistributedSet<E> {
+            @Override
+            public CloseableIterator<E> iterator() {
+                return null;
+            }
 
             @Override
             public void addListener(SetEventListener<E> listener) {

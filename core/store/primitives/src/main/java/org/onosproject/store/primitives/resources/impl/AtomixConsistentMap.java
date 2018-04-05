@@ -17,16 +17,21 @@ package org.onosproject.store.primitives.resources.impl;
 
 import java.util.Collection;
 import java.util.ConcurrentModificationException;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 
+import com.google.common.base.Throwables;
 import io.atomix.protocols.raft.proxy.RaftProxy;
 import org.onlab.util.KryoNamespace;
 import org.onlab.util.Tools;
@@ -50,7 +55,9 @@ import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperat
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.TransactionRollback;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.AsyncConsistentMap;
+import org.onosproject.store.service.CloseableIterator;
 import org.onosproject.store.service.ConsistentMapException;
+import org.onosproject.store.service.DistributedPrimitive;
 import org.onosproject.store.service.MapEvent;
 import org.onosproject.store.service.MapEventListener;
 import org.onosproject.store.service.Serializer;
@@ -62,6 +69,7 @@ import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMa
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.ADD_LISTENER;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.BEGIN;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.CLEAR;
+import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.CLOSE;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.COMMIT;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.CONTAINS_KEY;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.CONTAINS_VALUE;
@@ -69,7 +77,9 @@ import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMa
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.GET;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.GET_OR_DEFAULT;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.IS_EMPTY;
+import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.ITERATE;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.KEY_SET;
+import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.NEXT;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.PREPARE;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.PREPARE_AND_COMMIT;
 import static org.onosproject.store.primitives.resources.impl.AtomixConsistentMapOperations.PUT;
@@ -273,6 +283,74 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
                 serializer()::decode)
                 .whenComplete((r, e) -> throwIfLocked(r))
                 .thenApply(v -> v.updated());
+    }
+
+    @Override
+    public CompletableFuture<CloseableIterator<Entry<String, Versioned<byte[]>>>> iterator() {
+        return proxy.<Long>invoke(ITERATE, serializer()::decode)
+            .thenApply(ConsistentMapIterator::new);
+    }
+
+    /**
+     * Consistent map iterator.
+     */
+    private class ConsistentMapIterator implements CloseableIterator<Entry<String, Versioned<byte[]>>> {
+        private final long id;
+        private Iterator<Entry<String, Versioned<byte[]>>> batchIterator;
+
+        ConsistentMapIterator(long id) {
+            this.id = id;
+        }
+
+        /**
+         * Fetches the next batch of entries from the cluster.
+         *
+         * @return the next batch of entries from the cluster
+         */
+        private Collection<Map.Entry<String, Versioned<byte[]>>> fetch() {
+            try {
+                return proxy.<Long, Collection<Entry<String, Versioned<byte[]>>>>invoke(
+                    NEXT,
+                    serializer()::encode,
+                    id,
+                    serializer()::decode)
+                    .get(DistributedPrimitive.DEFAULT_OPERATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new ConsistentMapException.Interrupted();
+            } catch (TimeoutException e) {
+                throw new ConsistentMapException.Timeout(name());
+            } catch (ExecutionException e) {
+                Throwables.throwIfUnchecked(e.getCause());
+                throw new ConsistentMapException(e.getCause());
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (batchIterator == null) {
+                Collection<Map.Entry<String, Versioned<byte[]>>> batch = fetch();
+                if (batch == null) {
+                    return false;
+                }
+                batchIterator = batch.iterator();
+            }
+            return batchIterator.hasNext();
+        }
+
+        @Override
+        public Entry<String, Versioned<byte[]>> next() {
+            Entry<String, Versioned<byte[]>> entry = batchIterator.next();
+            if (!batchIterator.hasNext()) {
+                batchIterator = null;
+            }
+            return entry;
+        }
+
+        @Override
+        public void close() {
+            proxy.invoke(CLOSE, serializer()::encode, id).join();
+        }
     }
 
     @Override

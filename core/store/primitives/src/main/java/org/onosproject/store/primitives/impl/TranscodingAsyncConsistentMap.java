@@ -21,6 +21,7 @@ import org.onlab.util.Tools;
 import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.service.AsyncConsistentMap;
+import org.onosproject.store.service.CloseableIterator;
 import org.onosproject.store.service.MapEvent;
 import org.onosproject.store.service.MapEventListener;
 import org.onosproject.store.service.TransactionLog;
@@ -248,6 +249,11 @@ public class TranscodingAsyncConsistentMap<K1, V1, K2, V2> implements AsyncConsi
     }
 
     @Override
+    public CompletableFuture<CloseableIterator<Entry<K1, Versioned<V1>>>> iterator() {
+        return backingMap.iterator().thenApply(TranscodingIterator::new);
+    }
+
+    @Override
     public CompletableFuture<Void> addListener(MapEventListener<K1, V1> listener, Executor executor) {
         synchronized (listeners) {
             InternalBackingMapEventListener backingMapListener =
@@ -344,6 +350,30 @@ public class TranscodingAsyncConsistentMap<K1, V1, K2, V2> implements AsyncConsi
                     keyDecoder.apply(event.key()),
                     event.newValue() != null ? event.newValue().map(valueDecoder) : null,
                     event.oldValue() != null ? event.oldValue().map(valueDecoder) : null));
+        }
+    }
+
+    private class TranscodingIterator implements CloseableIterator<Entry<K1, Versioned<V1>>> {
+        private final CloseableIterator<Entry<K2, Versioned<V2>>> iterator;
+
+        TranscodingIterator(CloseableIterator<Entry<K2, Versioned<V2>>> iterator) {
+            this.iterator = iterator;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return iterator.hasNext();
+        }
+
+        @Override
+        public Entry<K1, Versioned<V1>> next() {
+            Entry<K2, Versioned<V2>> entry = iterator.next();
+            return Maps.immutableEntry(keyDecoder.apply(entry.getKey()), entry.getValue().map(valueDecoder));
+        }
+
+        @Override
+        public void close() {
+            iterator.close();
         }
     }
 }

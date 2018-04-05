@@ -17,13 +17,13 @@ package org.onosproject.store.primitives;
 
 import java.lang.reflect.Array;
 import java.util.Collection;
-import java.util.Iterator;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.onosproject.store.service.AsyncDistributedSet;
+import org.onosproject.store.service.CloseableIterator;
 import org.onosproject.store.service.DistributedSet;
 import org.onosproject.store.service.SetEventListener;
 import org.onosproject.store.service.StorageException;
@@ -64,8 +64,8 @@ public class DefaultDistributedSet<E> extends Synchronous<AsyncDistributedSet<E>
     }
 
     @Override
-    public Iterator<E> iterator() {
-        return complete(asyncSet.getAsImmutableSet()).iterator();
+    public CloseableIterator<E> iterator() {
+        return complete(asyncSet.iterator());
     }
 
     @Override

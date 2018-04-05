@@ -18,6 +18,7 @@ package org.onosproject.store.primitives;
 
 import com.google.common.base.Throwables;
 import org.onosproject.store.service.AsyncConsistentTreeMap;
+import org.onosproject.store.service.CloseableIterator;
 import org.onosproject.store.service.ConsistentMapException;
 import org.onosproject.store.service.ConsistentTreeMap;
 import org.onosproject.store.service.MapEventListener;
@@ -274,6 +275,11 @@ public class DefaultConsistentTreeMap<V>
     @Override
     public boolean replace(String key, long oldVersion, V newValue) {
         return complete(treeMap.replace(key, oldVersion, newValue));
+    }
+
+    @Override
+    public CloseableIterator<Map.Entry<String, Versioned<V>>> iterator() {
+        return complete(treeMap.iterator());
     }
 
     @Override

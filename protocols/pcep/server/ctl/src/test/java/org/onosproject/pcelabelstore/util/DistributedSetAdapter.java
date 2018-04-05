@@ -21,6 +21,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import org.onosproject.store.service.AsyncDistributedSet;
+import org.onosproject.store.service.CloseableIterator;
 import org.onosproject.store.service.SetEventListener;
 
 /**
@@ -84,6 +85,11 @@ public class DistributedSetAdapter<E> implements AsyncDistributedSet<E> {
 
     @Override
     public CompletableFuture<Boolean> removeAll(Collection<? extends E> c) {
+        return null;
+    }
+
+    @Override
+    public CompletableFuture<CloseableIterator<E>> iterator() {
         return null;
     }
 

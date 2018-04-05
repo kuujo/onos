@@ -155,6 +155,11 @@ public class ConsistentMapAdapter<K, V> implements ConsistentMap<K, V> {
     }
 
     @Override
+    public CloseableIterator<Map.Entry<K, Versioned<V>>> iterator() {
+        return null;
+    }
+
+    @Override
     public void addListener(MapEventListener<K, V> listener, Executor executor) {
 
     }

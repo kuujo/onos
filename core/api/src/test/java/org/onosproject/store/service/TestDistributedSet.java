@@ -21,6 +21,7 @@ import com.google.common.collect.Sets;
 import org.onosproject.store.primitives.DefaultDistributedSet;
 
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
@@ -139,6 +140,27 @@ public final class TestDistributedSet<E> extends DistributedSetAdapter<E> {
                 .map(this::remove)
                 .reduce(CompletableFuture.completedFuture(false),
                         (l, r) -> l.thenCombine(r, Boolean::logicalOr));
+    }
+
+    @Override
+    public CompletableFuture<CloseableIterator<E>> iterator() {
+        Iterator<E> iterator = set.iterator();
+        return CompletableFuture.completedFuture(new CloseableIterator<E>() {
+            @Override
+            public void close() {
+
+            }
+
+            @Override
+            public boolean hasNext() {
+                return iterator.hasNext();
+            }
+
+            @Override
+            public E next() {
+                return iterator.next();
+            }
+        });
     }
 
     @Override

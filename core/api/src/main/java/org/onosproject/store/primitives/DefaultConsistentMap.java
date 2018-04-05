@@ -32,6 +32,7 @@ import java.util.function.Predicate;
 
 import org.onlab.util.Tools;
 import org.onosproject.store.service.AsyncConsistentMap;
+import org.onosproject.store.service.CloseableIterator;
 import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.ConsistentMapException;
 import org.onosproject.store.service.ConsistentMapException.ConcurrentModification;
@@ -181,6 +182,11 @@ public class DefaultConsistentMap<K, V> extends Synchronous<AsyncConsistentMap<K
     @Override
     public boolean replace(K key, long oldVersion, V newValue) {
         return complete(asyncMap.replace(key, oldVersion, newValue));
+    }
+
+    @Override
+    public CloseableIterator<Entry<K, Versioned<V>>> iterator() {
+        return complete(asyncMap.iterator());
     }
 
     @Override

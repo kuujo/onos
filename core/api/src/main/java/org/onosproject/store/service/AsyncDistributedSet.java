@@ -124,6 +124,12 @@ public interface AsyncDistributedSet<E> extends DistributedPrimitive {
      */
     CompletableFuture<Boolean> removeAll(Collection<? extends E> c);
 
+    /**
+     * Loads a closeable iterator.
+     *
+     * @return a closeable iterator
+     */
+    CompletableFuture<CloseableIterator<E>> iterator();
 
     /**
      * Returns a new {@link DistributedSet} that is backed by this instance.

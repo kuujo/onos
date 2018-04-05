@@ -317,6 +317,13 @@ public interface AsyncConsistentMap<K, V> extends DistributedPrimitive, Transact
     CompletableFuture<Boolean> replace(K key, long oldVersion, V newValue);
 
     /**
+     * Loads a closeable iterator.
+     *
+     * @return a closeable iterator
+     */
+    CompletableFuture<CloseableIterator<Entry<K, Versioned<V>>>> iterator();
+
+    /**
      * Registers the specified listener to be notified whenever the map is updated.
      *
      * @param listener listener to notify about map events

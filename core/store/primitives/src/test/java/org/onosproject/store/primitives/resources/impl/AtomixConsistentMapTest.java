@@ -15,6 +15,19 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
+import java.util.Arrays;
+import java.util.ConcurrentModificationException;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletionException;
+import java.util.stream.Collectors;
+
 import com.google.common.collect.Sets;
 import io.atomix.protocols.raft.proxy.RaftProxy;
 import io.atomix.protocols.raft.service.RaftService;
@@ -27,14 +40,6 @@ import org.onosproject.store.service.MapEventListener;
 import org.onosproject.store.service.TransactionLog;
 import org.onosproject.store.service.Version;
 import org.onosproject.store.service.Versioned;
-
-import java.util.Arrays;
-import java.util.ConcurrentModificationException;
-import java.util.List;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletionException;
-import java.util.stream.Collectors;
 
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertArrayEquals;
@@ -75,6 +80,27 @@ public class AtomixConsistentMapTest extends AtomixTestBase<AtomixConsistentMap>
     @Test
     public void testMapComputeOperations() throws Throwable {
         mapComputeOperationTests();
+    }
+
+    /**
+     * Tests a map iterator.
+     */
+    @Test
+    public void testMapIterator() throws Throwable {
+        AtomixConsistentMap map = newPrimitive("testMapIterator");
+
+        Set<String> keys = new HashSet<>();
+        for (int i = 0; i < 1000; i++) {
+            String key = UUID.randomUUID().toString();
+            byte[] value = UUID.randomUUID().toString().getBytes();
+            map.put(key, value).join();
+            keys.add(key);
+        }
+
+        Iterator<Map.Entry<String, Versioned<byte[]>>> iterator = map.iterator().join();
+        while (iterator.hasNext()) {
+            assertTrue(keys.remove(iterator.next().getKey()));
+        }
     }
 
     /**
