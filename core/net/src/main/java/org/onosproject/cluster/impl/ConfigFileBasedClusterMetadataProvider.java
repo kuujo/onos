@@ -15,9 +15,6 @@
  */
 package org.onosproject.cluster.impl;
 
-import static org.onlab.util.Tools.groupedThreads;
-import static org.slf4j.LoggerFactory.getLogger;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -28,6 +25,19 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.google.common.base.Throwables;
+import com.google.common.collect.Sets;
+import com.google.common.io.Files;
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Deactivate;
@@ -48,22 +58,10 @@ import org.onosproject.net.provider.ProviderId;
 import org.onosproject.store.service.Versioned;
 import org.slf4j.Logger;
 
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.JsonSerializer;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializerProvider;
-import com.fasterxml.jackson.databind.module.SimpleModule;
-import com.google.common.base.Throwables;
-import com.google.common.collect.Sets;
-import com.google.common.io.Files;
-
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
+import static org.onlab.util.Tools.groupedThreads;
+import static org.slf4j.LoggerFactory.getLogger;
 
 /**
  * Provider of {@link ClusterMetadata cluster metadata} sourced from a local config file.
@@ -88,7 +86,7 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
     private static final ProviderId PROVIDER_ID = new ProviderId("file", "none");
     private final AtomicReference<Versioned<ClusterMetadata>> cachedMetadata = new AtomicReference<>();
     private final ScheduledExecutorService configFileChangeDetector =
-            newSingleThreadScheduledExecutor(groupedThreads("onos/cluster/metadata/config-watcher", "", log));
+        newSingleThreadScheduledExecutor(groupedThreads("onos/cluster/metadata/config-watcher", "", log));
 
     private String metadataUrl;
     private ObjectMapper mapper;
@@ -143,7 +141,6 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
             Files.createParentDirs(configFile);
             mapper.writeValue(configFile, metadata);
             cachedMetadata.set(fetchMetadata(metadataUrl));
-            providerService.clusterMetadataChanged(new Versioned<>(metadata, configFile.lastModified()));
         } catch (IOException e) {
             Throwables.propagate(e);
         }
@@ -183,7 +180,7 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
 
     private Versioned<ClusterMetadata> blockForMetadata(String metadataUrl) {
         int iterations = 0;
-        for (;;) {
+        for (; ; ) {
             try {
                 Versioned<ClusterMetadata> metadata = fetchMetadata(metadataUrl);
                 if (metadata != null) {
@@ -236,16 +233,16 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
             // If the configured partitions are empty then return a null metadata to indicate that the configuration
             // needs to be polled until the partitions are populated.
             if (metadata.getPartitions().isEmpty() || metadata.getPartitions().stream()
-                    .map(partition -> partition.getMembers().size())
-                    .reduce(Math::min)
-                    .orElse(0) == 0) {
+                .map(partition -> partition.getMembers().size())
+                .reduce(Math::min)
+                .orElse(0) == 0) {
                 return null;
             }
             return new Versioned<>(new ClusterMetadata(PROVIDER_ID,
-                                                       metadata.getName(),
-                                                       Sets.newHashSet(metadata.getNodes()),
-                                                       Sets.newHashSet(metadata.getPartitions())),
-                                   version);
+                metadata.getName(),
+                Sets.newHashSet(metadata.getNodes()),
+                Sets.newHashSet(metadata.getPartitions())),
+                version);
         } catch (IOException e) {
             throw Throwables.propagate(e);
         }
@@ -254,7 +251,7 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
     private static class PartitionSerializer extends JsonSerializer<Partition> {
         @Override
         public void serialize(Partition partition, JsonGenerator jgen, SerializerProvider serializerProvider)
-                throws IOException, JsonProcessingException {
+            throws IOException, JsonProcessingException {
             jgen.writeStartObject();
             jgen.writeNumberField("id", partition.getId().asInt());
             jgen.writeArrayFieldStart("members");
@@ -269,7 +266,7 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
     private static class PartitionDeserializer extends JsonDeserializer<Partition> {
         @Override
         public Partition deserialize(JsonParser jp, DeserializationContext ctxt)
-                throws IOException, JsonProcessingException {
+            throws IOException, JsonProcessingException {
             return jp.readValueAs(DefaultPartition.class);
         }
     }
@@ -277,7 +274,7 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
     private static class PartitionIdSerializer extends JsonSerializer<PartitionId> {
         @Override
         public void serialize(PartitionId partitionId, JsonGenerator jgen, SerializerProvider provider)
-          throws IOException, JsonProcessingException {
+            throws IOException, JsonProcessingException {
             jgen.writeNumber(partitionId.asInt());
         }
     }
@@ -285,7 +282,7 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
     private class PartitionIdDeserializer extends JsonDeserializer<PartitionId> {
         @Override
         public PartitionId deserialize(JsonParser jp, DeserializationContext ctxt)
-          throws IOException, JsonProcessingException {
+            throws IOException, JsonProcessingException {
             JsonNode node = jp.getCodec().readTree(jp);
             return new PartitionId(node.asInt());
         }
@@ -294,7 +291,7 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
     private static class ControllerNodeSerializer extends JsonSerializer<ControllerNode> {
         @Override
         public void serialize(ControllerNode node, JsonGenerator jgen, SerializerProvider provider)
-          throws IOException, JsonProcessingException {
+            throws IOException, JsonProcessingException {
             jgen.writeStartObject();
             jgen.writeStringField(ID, node.id().toString());
             jgen.writeStringField(IP, node.ip().toString());
@@ -306,7 +303,7 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
     private static class ControllerNodeDeserializer extends JsonDeserializer<ControllerNode> {
         @Override
         public ControllerNode deserialize(JsonParser jp, DeserializationContext ctxt)
-                throws IOException, JsonProcessingException {
+            throws IOException, JsonProcessingException {
             JsonNode node = jp.getCodec().readTree(jp);
             NodeId nodeId = new NodeId(node.get(ID).textValue());
             IpAddress ip = IpAddress.valueOf(node.get(IP).textValue());
@@ -318,7 +315,7 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
     private static class NodeIdSerializer extends JsonSerializer<NodeId> {
         @Override
         public void serialize(NodeId nodeId, JsonGenerator jgen, SerializerProvider provider)
-          throws IOException, JsonProcessingException {
+            throws IOException, JsonProcessingException {
             jgen.writeString(nodeId.toString());
         }
     }
@@ -326,7 +323,7 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
     private class NodeIdDeserializer extends JsonDeserializer<NodeId> {
         @Override
         public NodeId deserialize(JsonParser jp, DeserializationContext ctxt)
-          throws IOException, JsonProcessingException {
+            throws IOException, JsonProcessingException {
             JsonNode node = jp.getCodec().readTree(jp);
             return new NodeId(node.asText());
         }
@@ -344,7 +341,7 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
         try {
             Versioned<ClusterMetadata> latestMetadata = fetchMetadata(metadataUrl);
             if (cachedMetadata.get() != null && latestMetadata != null
-                    && cachedMetadata.get().version() < latestMetadata.version()) {
+                && cachedMetadata.get().version() < latestMetadata.version()) {
                 cachedMetadata.set(latestMetadata);
                 providerService.clusterMetadataChanged(latestMetadata);
             }
