@@ -21,6 +21,7 @@ import com.google.common.util.concurrent.MoreExecutors;
 import org.onosproject.store.primitives.DefaultConsistentMultimap;
 
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -34,7 +35,7 @@ import java.util.concurrent.Executor;
  * Certain operations may be too expensive when backed by a distributed data
  * structure and have been labeled as such.
  */
-public interface AsyncConsistentMultimap<K, V> extends DistributedPrimitive {
+public interface AsyncConsistentMultimap<K, V> extends DistributedPrimitive, AsyncIterable<Map.Entry<K, V>> {
 
     @Override
     default DistributedPrimitive.Type primitiveType() {
