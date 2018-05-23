@@ -113,7 +113,9 @@ public final class ClusterMetadata implements Provided {
      * Returns the collection of {@link org.onosproject.cluster.Partition partitions} that make
      * up the cluster.
      * @return collection of partitions.
+     * @deprecated since 1.14
      */
+    @Deprecated
     public Collection<Partition> getPartitions() {
         return this.partitions;
     }

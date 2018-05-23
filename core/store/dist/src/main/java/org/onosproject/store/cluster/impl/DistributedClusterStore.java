@@ -70,7 +70,7 @@ import static org.onosproject.cluster.ClusterEvent.Type.INSTANCE_DEACTIVATED;
 import static org.onosproject.cluster.ClusterEvent.Type.INSTANCE_READY;
 import static org.slf4j.LoggerFactory.getLogger;
 
-@Component(immediate = true)
+@Component(enabled = false)
 @Service
 /**
  * Distributed cluster nodes store that employs an accrual failure
