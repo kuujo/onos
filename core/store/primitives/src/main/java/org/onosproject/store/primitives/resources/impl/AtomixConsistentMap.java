@@ -27,6 +27,7 @@ import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 
+import io.atomix.primitive.proxy.PartitionProxy;
 import io.atomix.protocols.raft.proxy.RaftProxy;
 import org.onlab.util.KryoNamespace;
 import org.onlab.util.Tools;
@@ -99,12 +100,12 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
 
     private final Map<MapEventListener<String, byte[]>, Executor> mapEventListeners = new ConcurrentHashMap<>();
 
-    public AtomixConsistentMap(RaftProxy proxy) {
+    public AtomixConsistentMap(PartitionProxy proxy) {
         super(proxy);
-        proxy.addEventListener(CHANGE, SERIALIZER::decode, this::handleEvent);
+        proxy.addEventListener(CHANGE, event -> handleEvent(SERIALIZER.decode(event.value())));
         proxy.addStateChangeListener(state -> {
             if (state == RaftProxy.State.CONNECTED && isListening()) {
-                proxy.invoke(ADD_LISTENER);
+                invoke(ADD_LISTENER);
             }
         });
     }
@@ -120,32 +121,32 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
 
     @Override
     public CompletableFuture<Boolean> isEmpty() {
-        return proxy.invoke(IS_EMPTY, serializer()::decode);
+        return invoke(IS_EMPTY, serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Integer> size() {
-        return proxy.invoke(SIZE, serializer()::decode);
+        return invoke(SIZE, serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Boolean> containsKey(String key) {
-        return proxy.invoke(CONTAINS_KEY, serializer()::encode, new ContainsKey(key), serializer()::decode);
+        return invoke(CONTAINS_KEY, serializer()::encode, new ContainsKey(key), serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Boolean> containsValue(byte[] value) {
-        return proxy.invoke(CONTAINS_VALUE, serializer()::encode, new ContainsValue(value), serializer()::decode);
+        return invoke(CONTAINS_VALUE, serializer()::encode, new ContainsValue(value), serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Versioned<byte[]>> get(String key) {
-        return proxy.invoke(GET, serializer()::encode, new Get(key), serializer()::decode);
+        return invoke(GET, serializer()::encode, new Get(key), serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Versioned<byte[]>> getOrDefault(String key, byte[] defaultValue) {
-        return proxy.invoke(
+        return invoke(
                 GET_OR_DEFAULT,
                 serializer()::encode,
                 new GetOrDefault(key, defaultValue),
@@ -154,23 +155,23 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
 
     @Override
     public CompletableFuture<Set<String>> keySet() {
-        return proxy.invoke(KEY_SET, serializer()::decode);
+        return invoke(KEY_SET, serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Collection<Versioned<byte[]>>> values() {
-        return proxy.invoke(VALUES, serializer()::decode);
+        return invoke(VALUES, serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Set<Entry<String, Versioned<byte[]>>>> entrySet() {
-        return proxy.invoke(ENTRY_SET, serializer()::decode);
+        return invoke(ENTRY_SET, serializer()::decode);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> put(String key, byte[] value) {
-        return proxy.<Put, MapEntryUpdateResult<String, byte[]>>invoke(
+        return this.<Put, MapEntryUpdateResult<String, byte[]>>invoke(
                 PUT,
                 serializer()::encode,
                 new Put(key, value),
@@ -182,7 +183,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> putAndGet(String key, byte[] value) {
-        return proxy.<Put, MapEntryUpdateResult<String, byte[]>>invoke(
+        return this.<Put, MapEntryUpdateResult<String, byte[]>>invoke(
                 PUT_AND_GET,
                 serializer()::encode,
                 new Put(key, value),
@@ -194,7 +195,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> putIfAbsent(String key, byte[] value) {
-        return proxy.<Put, MapEntryUpdateResult<String, byte[]>>invoke(
+        return this.<Put, MapEntryUpdateResult<String, byte[]>>invoke(
                 PUT_IF_ABSENT,
                 serializer()::encode,
                 new Put(key, value),
@@ -206,7 +207,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> remove(String key) {
-        return proxy.<Remove, MapEntryUpdateResult<String, byte[]>>invoke(
+        return this.<Remove, MapEntryUpdateResult<String, byte[]>>invoke(
                 REMOVE,
                 serializer()::encode,
                 new Remove(key),
@@ -218,7 +219,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Boolean> remove(String key, byte[] value) {
-        return proxy.<RemoveValue, MapEntryUpdateResult<String, byte[]>>invoke(
+        return this.<RemoveValue, MapEntryUpdateResult<String, byte[]>>invoke(
                 REMOVE_VALUE,
                 serializer()::encode,
                 new RemoveValue(key, value),
@@ -230,7 +231,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Boolean> remove(String key, long version) {
-        return proxy.<RemoveVersion, MapEntryUpdateResult<String, byte[]>>invoke(
+        return this.<RemoveVersion, MapEntryUpdateResult<String, byte[]>>invoke(
                 REMOVE_VERSION,
                 serializer()::encode,
                 new RemoveVersion(key, version),
@@ -242,7 +243,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Versioned<byte[]>> replace(String key, byte[] value) {
-        return proxy.<Replace, MapEntryUpdateResult<String, byte[]>>invoke(
+        return this.<Replace, MapEntryUpdateResult<String, byte[]>>invoke(
                 REPLACE,
                 serializer()::encode,
                 new Replace(key, value),
@@ -254,7 +255,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Boolean> replace(String key, byte[] oldValue, byte[] newValue) {
-        return proxy.<ReplaceValue, MapEntryUpdateResult<String, byte[]>>invoke(
+        return this.<ReplaceValue, MapEntryUpdateResult<String, byte[]>>invoke(
                 REPLACE_VALUE,
                 serializer()::encode,
                 new ReplaceValue(key, oldValue, newValue),
@@ -266,7 +267,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
     @Override
     @SuppressWarnings("unchecked")
     public CompletableFuture<Boolean> replace(String key, long oldVersion, byte[] newValue) {
-        return proxy.<ReplaceVersion, MapEntryUpdateResult<String, byte[]>>invoke(
+        return this.<ReplaceVersion, MapEntryUpdateResult<String, byte[]>>invoke(
                 REPLACE_VERSION,
                 serializer()::encode,
                 new ReplaceVersion(key, oldVersion, newValue),
@@ -277,7 +278,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
 
     @Override
     public CompletableFuture<Void> clear() {
-        return proxy.<MapEntryUpdateResult.Status>invoke(CLEAR, serializer()::decode)
+        return this.<MapEntryUpdateResult.Status>invoke(CLEAR, serializer()::decode)
                 .whenComplete((r, e) -> throwIfLocked(r))
                 .thenApply(v -> null);
     }
@@ -306,7 +307,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
             }
 
             if (r1 == null) {
-                return proxy.<Put, MapEntryUpdateResult<String, byte[]>>invoke(
+                return this.<Put, MapEntryUpdateResult<String, byte[]>>invoke(
                         PUT_IF_ABSENT,
                         serializer()::encode,
                         new Put(key, computedValue),
@@ -315,7 +316,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
                         .thenCompose(r -> checkLocked(r))
                         .thenApply(result -> new Versioned<>(computedValue, result.version()));
             } else if (computedValue == null) {
-                return proxy.<RemoveVersion, MapEntryUpdateResult<String, byte[]>>invoke(
+                return this.<RemoveVersion, MapEntryUpdateResult<String, byte[]>>invoke(
                         REMOVE_VERSION,
                         serializer()::encode,
                         new RemoveVersion(key, r1.version()),
@@ -324,7 +325,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
                         .thenCompose(r -> checkLocked(r))
                         .thenApply(v -> null);
             } else {
-                return proxy.<ReplaceVersion, MapEntryUpdateResult<String, byte[]>>invoke(
+                return this.<ReplaceVersion, MapEntryUpdateResult<String, byte[]>>invoke(
                         REPLACE_VERSION,
                         serializer()::encode,
                         new ReplaceVersion(key, r1.version(), computedValue),
@@ -350,7 +351,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
     public synchronized CompletableFuture<Void> addListener(MapEventListener<String, byte[]> listener,
             Executor executor) {
         if (mapEventListeners.isEmpty()) {
-            return proxy.invoke(ADD_LISTENER).thenRun(() -> mapEventListeners.put(listener, executor));
+            return invoke(ADD_LISTENER).thenRun(() -> mapEventListeners.put(listener, executor));
         } else {
             mapEventListeners.put(listener, executor);
             return CompletableFuture.completedFuture(null);
@@ -360,7 +361,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
     @Override
     public synchronized CompletableFuture<Void> removeListener(MapEventListener<String, byte[]> listener) {
         if (mapEventListeners.remove(listener) != null && mapEventListeners.isEmpty()) {
-            return proxy.invoke(REMOVE_LISTENER).thenApply(v -> null);
+            return invoke(REMOVE_LISTENER).thenApply(v -> null);
         }
         return CompletableFuture.completedFuture(null);
     }
@@ -379,7 +380,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
 
     @Override
     public CompletableFuture<Version> begin(TransactionId transactionId) {
-        return proxy.<TransactionBegin, Long>invoke(
+        return this.<TransactionBegin, Long>invoke(
                 BEGIN,
                 serializer()::encode,
                 new TransactionBegin(transactionId),
@@ -389,7 +390,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
 
     @Override
     public CompletableFuture<Boolean> prepare(TransactionLog<MapUpdate<String, byte[]>> transactionLog) {
-        return proxy.<TransactionPrepare, PrepareResult>invoke(
+        return this.<TransactionPrepare, PrepareResult>invoke(
                 PREPARE,
                 serializer()::encode,
                 new TransactionPrepare(transactionLog),
@@ -399,7 +400,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
 
     @Override
     public CompletableFuture<Boolean> prepareAndCommit(TransactionLog<MapUpdate<String, byte[]>> transactionLog) {
-        return proxy.<TransactionPrepareAndCommit, PrepareResult>invoke(
+        return this.<TransactionPrepareAndCommit, PrepareResult>invoke(
                 PREPARE_AND_COMMIT,
                 serializer()::encode,
                 new TransactionPrepareAndCommit(transactionLog),
@@ -409,7 +410,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
 
     @Override
     public CompletableFuture<Void> commit(TransactionId transactionId) {
-        return proxy.<TransactionCommit, CommitResult>invoke(
+        return this.<TransactionCommit, CommitResult>invoke(
                 COMMIT,
                 serializer()::encode,
                 new TransactionCommit(transactionId),
@@ -419,7 +420,7 @@ public class AtomixConsistentMap extends AbstractRaftPrimitive implements AsyncC
 
     @Override
     public CompletableFuture<Void> rollback(TransactionId transactionId) {
-        return proxy.invoke(
+        return invoke(
                 ROLLBACK,
                 serializer()::encode,
                 new TransactionRollback(transactionId),

@@ -25,8 +25,8 @@ import java.util.Map;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.TreeMultiset;
-import io.atomix.protocols.raft.proxy.RaftProxy;
-import io.atomix.protocols.raft.service.RaftService;
+import io.atomix.primitive.PrimitiveType;
+import io.atomix.primitive.proxy.PartitionProxy;
 import org.apache.commons.collections.keyvalue.DefaultMapEntry;
 import org.junit.Test;
 import org.onlab.util.Tools;
@@ -34,6 +34,7 @@ import org.onlab.util.Tools;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.CONSISTENT_MULTIMAP;
 
 /**
  * Tests the {@link AtomixConsistentSetMultimap}.
@@ -55,12 +56,12 @@ public class AtomixConsistentSetMultimapTest extends AtomixTestBase<AtomixConsis
                                                               valueFour);
 
     @Override
-    protected RaftService createService() {
-        return new AtomixConsistentSetMultimapService();
+    protected PrimitiveType primitiveType() {
+        return CONSISTENT_MULTIMAP;
     }
 
     @Override
-    protected AtomixConsistentSetMultimap createPrimitive(RaftProxy proxy) {
+    protected AtomixConsistentSetMultimap createPrimitive(PartitionProxy proxy) {
         return new AtomixConsistentSetMultimap(proxy);
     }
 

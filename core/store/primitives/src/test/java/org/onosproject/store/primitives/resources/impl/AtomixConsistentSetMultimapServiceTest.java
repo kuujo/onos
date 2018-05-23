@@ -18,15 +18,12 @@ package org.onosproject.store.primitives.resources.impl;
 import java.util.Collection;
 import java.util.Collections;
 
-import io.atomix.protocols.raft.service.impl.DefaultCommit;
-import io.atomix.protocols.raft.session.impl.RaftSessionContext;
-import io.atomix.protocols.raft.storage.RaftStorage;
-import io.atomix.protocols.raft.storage.snapshot.Snapshot;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotReader;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotStore;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotWriter;
-import io.atomix.storage.StorageLevel;
-import io.atomix.time.WallClockTimestamp;
+import io.atomix.primitive.service.impl.DefaultBackupInput;
+import io.atomix.primitive.service.impl.DefaultBackupOutput;
+import io.atomix.primitive.service.impl.DefaultCommit;
+import io.atomix.protocols.raft.session.RaftSession;
+import io.atomix.storage.buffer.Buffer;
+import io.atomix.storage.buffer.HeapBuffer;
 import org.junit.Test;
 import org.onlab.util.Match;
 import org.onosproject.store.service.Versioned;
@@ -45,37 +42,26 @@ public class AtomixConsistentSetMultimapServiceTest {
     @Test
     @SuppressWarnings("unchecked")
     public void testSnapshot() throws Exception {
-        SnapshotStore store = new SnapshotStore(RaftStorage.newBuilder()
-                .withPrefix("test")
-                .withStorageLevel(StorageLevel.MEMORY)
-                .build());
-        Snapshot snapshot = store.newSnapshot(2, new WallClockTimestamp());
-
         AtomixConsistentSetMultimapService service = new AtomixConsistentSetMultimapService();
         service.put(new DefaultCommit<>(
                 2,
                 PUT,
                 new AtomixConsistentSetMultimapOperations.Put(
                         "foo", Collections.singletonList("Hello world!".getBytes()), Match.ANY),
-                mock(RaftSessionContext.class),
+                mock(RaftSession.class),
                 System.currentTimeMillis()));
 
-        try (SnapshotWriter writer = snapshot.openWriter()) {
-            service.snapshot(writer);
-        }
-
-        snapshot.complete();
+        Buffer buffer = HeapBuffer.allocate();
+        service.backup(new DefaultBackupOutput(buffer, service.serializer()));
 
         service = new AtomixConsistentSetMultimapService();
-        try (SnapshotReader reader = snapshot.openReader()) {
-            service.install(reader);
-        }
+        service.restore(new DefaultBackupInput(buffer.flip(), service.serializer()));
 
         Versioned<Collection<? extends byte[]>> value = service.get(new DefaultCommit<>(
                 2,
                 GET,
                 new AtomixConsistentSetMultimapOperations.Get("foo"),
-                mock(RaftSessionContext.class),
+                mock(RaftSession.class),
                 System.currentTimeMillis()));
         assertNotNull(value);
         assertEquals(1, value.value().size());

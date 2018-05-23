@@ -22,9 +22,9 @@ import java.util.NavigableMap;
 import java.util.TreeMap;
 
 import com.google.common.collect.Maps;
-import io.atomix.protocols.raft.service.Commit;
-import io.atomix.protocols.raft.service.RaftServiceExecutor;
-import io.atomix.protocols.raft.session.RaftSession;
+import io.atomix.primitive.service.Commit;
+import io.atomix.primitive.service.ServiceExecutor;
+import io.atomix.primitive.session.PrimitiveSession;
 import org.onlab.util.KryoNamespace;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.serializers.KryoNamespaces;
@@ -63,7 +63,8 @@ import static org.onosproject.store.primitives.resources.impl.AtomixConsistentTr
  */
 public class AtomixConsistentTreeMapService extends AtomixConsistentMapService {
 
-    private static final Serializer SERIALIZER = Serializer.using(KryoNamespace.newBuilder()
+    private static final io.atomix.utils.serializer.Serializer SERIALIZER = new AtomixSerializerAdapter(
+        Serializer.using(KryoNamespace.newBuilder()
             .register(KryoNamespaces.BASIC)
             .register(AtomixConsistentMapOperations.NAMESPACE)
             .register(AtomixConsistentTreeMapOperations.NAMESPACE)
@@ -76,7 +77,7 @@ public class AtomixConsistentTreeMapService extends AtomixConsistentMapService {
             .register(MapEntryValue.Type.class)
             .register(new HashMap().keySet().getClass())
             .register(TreeMap.class)
-            .build());
+            .build()));
 
     @Override
     protected TreeMap<String, MapEntryValue> createMap() {
@@ -89,37 +90,37 @@ public class AtomixConsistentTreeMapService extends AtomixConsistentMapService {
     }
 
     @Override
-    protected Serializer serializer() {
+    public io.atomix.utils.serializer.Serializer serializer() {
         return SERIALIZER;
     }
 
     @Override
-    public void configure(RaftServiceExecutor executor) {
+    public void configure(ServiceExecutor executor) {
         super.configure(executor);
-        executor.register(SUB_MAP, serializer()::decode, this::subMap, serializer()::encode);
-        executor.register(FIRST_KEY, (Commit<Void> c) -> firstKey(), serializer()::encode);
-        executor.register(LAST_KEY, (Commit<Void> c) -> lastKey(), serializer()::encode);
-        executor.register(FIRST_ENTRY, (Commit<Void> c) -> firstEntry(), serializer()::encode);
-        executor.register(LAST_ENTRY, (Commit<Void> c) -> lastEntry(), serializer()::encode);
-        executor.register(POLL_FIRST_ENTRY, (Commit<Void> c) -> pollFirstEntry(), serializer()::encode);
-        executor.register(POLL_LAST_ENTRY, (Commit<Void> c) -> pollLastEntry(), serializer()::encode);
-        executor.register(LOWER_ENTRY, serializer()::decode, this::lowerEntry, serializer()::encode);
-        executor.register(LOWER_KEY, serializer()::decode, this::lowerKey, serializer()::encode);
-        executor.register(FLOOR_ENTRY, serializer()::decode, this::floorEntry, serializer()::encode);
-        executor.register(FLOOR_KEY, serializer()::decode, this::floorKey, serializer()::encode);
-        executor.register(CEILING_ENTRY, serializer()::decode, this::ceilingEntry, serializer()::encode);
-        executor.register(CEILING_KEY, serializer()::decode, this::ceilingKey, serializer()::encode);
-        executor.register(HIGHER_ENTRY, serializer()::decode, this::higherEntry, serializer()::encode);
-        executor.register(HIGHER_KEY, serializer()::decode, this::higherKey, serializer()::encode);
+        executor.register(SUB_MAP, this::subMap);
+        executor.register(FIRST_KEY, (Commit<Void> c) -> firstKey());
+        executor.register(LAST_KEY, (Commit<Void> c) -> lastKey());
+        executor.register(FIRST_ENTRY, (Commit<Void> c) -> firstEntry());
+        executor.register(LAST_ENTRY, (Commit<Void> c) -> lastEntry());
+        executor.register(POLL_FIRST_ENTRY, (Commit<Void> c) -> pollFirstEntry());
+        executor.register(POLL_LAST_ENTRY, (Commit<Void> c) -> pollLastEntry());
+        executor.register(LOWER_ENTRY, this::lowerEntry);
+        executor.register(LOWER_KEY, this::lowerKey);
+        executor.register(FLOOR_ENTRY, this::floorEntry);
+        executor.register(FLOOR_KEY, this::floorKey);
+        executor.register(CEILING_ENTRY, this::ceilingEntry);
+        executor.register(CEILING_KEY, this::ceilingKey);
+        executor.register(HIGHER_ENTRY, this::higherEntry);
+        executor.register(HIGHER_KEY, this::higherKey);
     }
 
     protected NavigableMap<String, MapEntryValue> subMap(
-            Commit<? extends SubMap> commit) {
+        Commit<? extends SubMap> commit) {
         // Do not support this until lazy communication is possible.  At present
         // it transmits up to the entire map.
         SubMap<String, MapEntryValue> subMap = commit.value();
         return entries().subMap(subMap.fromKey(), subMap.isInclusiveFrom(),
-                subMap.toKey(), subMap.isInclusiveTo());
+            subMap.toKey(), subMap.isInclusiveTo());
     }
 
     protected String firstKey() {
@@ -179,18 +180,18 @@ public class AtomixConsistentTreeMapService extends AtomixConsistentMapService {
     }
 
     private Map.Entry<String, Versioned<byte[]>> toVersionedEntry(
-            Map.Entry<String, MapEntryValue> entry) {
+        Map.Entry<String, MapEntryValue> entry) {
         return entry == null || valueIsNull(entry.getValue())
-                ? null : Maps.immutableEntry(entry.getKey(), toVersioned(entry.getValue()));
+            ? null : Maps.immutableEntry(entry.getKey(), toVersioned(entry.getValue()));
     }
 
     @Override
-    public void onExpire(RaftSession session) {
+    public void onExpire(PrimitiveSession session) {
         closeListener(session.sessionId().id());
     }
 
     @Override
-    public void onClose(RaftSession session) {
+    public void onClose(PrimitiveSession session) {
         closeListener(session.sessionId().id());
     }
 

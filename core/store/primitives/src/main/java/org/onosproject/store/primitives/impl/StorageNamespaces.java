@@ -21,16 +21,18 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedList;
 
+import io.atomix.cluster.MemberId;
+import io.atomix.primitive.event.PrimitiveEvent;
+import io.atomix.primitive.event.impl.DefaultEventType;
+import io.atomix.primitive.operation.OperationType;
+import io.atomix.primitive.operation.PrimitiveOperation;
+import io.atomix.primitive.operation.impl.DefaultOperationId;
+import io.atomix.primitive.session.SessionId;
+import io.atomix.primitive.session.SessionMetadata;
 import io.atomix.protocols.raft.RaftError;
 import io.atomix.protocols.raft.ReadConsistency;
-import io.atomix.protocols.raft.cluster.MemberId;
 import io.atomix.protocols.raft.cluster.RaftMember;
 import io.atomix.protocols.raft.cluster.impl.DefaultRaftMember;
-import io.atomix.protocols.raft.event.RaftEvent;
-import io.atomix.protocols.raft.event.impl.DefaultEventType;
-import io.atomix.protocols.raft.operation.OperationType;
-import io.atomix.protocols.raft.operation.RaftOperation;
-import io.atomix.protocols.raft.operation.impl.DefaultOperationId;
 import io.atomix.protocols.raft.protocol.AppendRequest;
 import io.atomix.protocols.raft.protocol.AppendResponse;
 import io.atomix.protocols.raft.protocol.CloseSessionRequest;
@@ -64,9 +66,6 @@ import io.atomix.protocols.raft.protocol.ReconfigureResponse;
 import io.atomix.protocols.raft.protocol.ResetRequest;
 import io.atomix.protocols.raft.protocol.VoteRequest;
 import io.atomix.protocols.raft.protocol.VoteResponse;
-import io.atomix.protocols.raft.service.PropagationStrategy;
-import io.atomix.protocols.raft.session.RaftSessionMetadata;
-import io.atomix.protocols.raft.session.SessionId;
 import io.atomix.protocols.raft.storage.log.entry.CloseSessionEntry;
 import io.atomix.protocols.raft.storage.log.entry.CommandEntry;
 import io.atomix.protocols.raft.storage.log.entry.ConfigurationEntry;
@@ -125,12 +124,12 @@ public final class StorageNamespaces {
             .register(RaftResponse.Status.class)
             .register(RaftError.class)
             .register(RaftError.Type.class)
-            .register(RaftOperation.class)
+            .register(PrimitiveOperation.class)
             .register(DefaultOperationId.class)
             .register(OperationType.class)
-            .register(RaftEvent.class)
+            .register(PrimitiveEvent.class)
             .register(DefaultEventType.class)
-            .register(RaftSessionMetadata.class)
+            .register(SessionMetadata.class)
             .register(CloseSessionEntry.class)
             .register(CommandEntry.class)
             .register(ConfigurationEntry.class)
@@ -146,11 +145,11 @@ public final class StorageNamespaces {
             .register(HashSet.class)
             .register(DefaultRaftMember.class)
             .register(MemberId.class)
+            .register(MemberId.Type.class)
             .register(SessionId.class)
             .register(RaftMember.Type.class)
             .register(Instant.class)
             .register(Configuration.class)
-            .register(PropagationStrategy.class)
             .build("RaftProtocol");
 
     /**
@@ -167,7 +166,7 @@ public final class StorageNamespaces {
             .register(MetadataEntry.class)
             .register(OpenSessionEntry.class)
             .register(QueryEntry.class)
-            .register(RaftOperation.class)
+            .register(PrimitiveOperation.class)
             .register(DefaultOperationId.class)
             .register(OperationType.class)
             .register(ReadConsistency.class)
@@ -175,10 +174,10 @@ public final class StorageNamespaces {
             .register(HashSet.class)
             .register(DefaultRaftMember.class)
             .register(MemberId.class)
+            .register(MemberId.Type.class)
             .register(RaftMember.Type.class)
             .register(Instant.class)
             .register(Configuration.class)
-            .register(PropagationStrategy.class)
             .build("RaftStorage");
 
     private StorageNamespaces() {

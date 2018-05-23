@@ -21,13 +21,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import com.google.common.base.Suppliers;
+import io.atomix.cluster.MemberId;
+import io.atomix.primitive.partition.PartitionId;
+import io.atomix.primitive.service.ServiceConfig;
+import io.atomix.primitive.session.SessionMetadata;
 import io.atomix.protocols.raft.RaftClient;
 import io.atomix.protocols.raft.ReadConsistency;
-import io.atomix.protocols.raft.cluster.MemberId;
 import io.atomix.protocols.raft.protocol.RaftClientProtocol;
 import io.atomix.protocols.raft.proxy.CommunicationStrategy;
-import io.atomix.protocols.raft.service.PropagationStrategy;
-import io.atomix.protocols.raft.session.RaftSessionMetadata;
 import org.onlab.util.HexString;
 import org.onosproject.store.primitives.DistributedPrimitiveCreator;
 import org.onosproject.store.primitives.resources.impl.AtomixAtomicCounterMap;
@@ -60,7 +61,6 @@ import org.onosproject.store.service.ConsistentMapOptions;
 import org.onosproject.store.service.ConsistentMultimapOptions;
 import org.onosproject.store.service.ConsistentTreeMapOptions;
 import org.onosproject.store.service.DistributedLockOptions;
-import org.onosproject.store.service.DistributedPrimitive;
 import org.onosproject.store.service.DistributedSetOptions;
 import org.onosproject.store.service.DocumentTreeOptions;
 import org.onosproject.store.service.LeaderElectorOptions;
@@ -70,6 +70,15 @@ import org.onosproject.store.service.WorkQueue;
 import org.onosproject.store.service.WorkQueueOptions;
 import org.slf4j.Logger;
 
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.ATOMIC_COUNTER;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.ATOMIC_COUNTER_MAP;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.CONSISTENT_MAP;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.CONSISTENT_MULTIMAP;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.CONSISTENT_TREEMAP;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.DOCUMENT_TREE;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.LEADER_ELECTOR;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.LOCK;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.WORK_QUEUE;
 import static org.slf4j.LoggerFactory.getLogger;
 
 /**
@@ -150,21 +159,15 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
     @SuppressWarnings("unchecked")
     public <K, V> AsyncConsistentMap<K, V> newAsyncConsistentMap(ConsistentMapOptions options) {
         AtomixConsistentMap rawMap =
-                new AtomixConsistentMap(client.newProxyBuilder()
-                        .withName(options.name())
-                        .withServiceType(DistributedPrimitive.Type.CONSISTENT_MAP.name())
+                new AtomixConsistentMap(
+                    client.proxyBuilder(options.name(), CONSISTENT_MAP, new ServiceConfig())
                         .withReadConsistency(ReadConsistency.SEQUENTIAL)
                         .withCommunicationStrategy(CommunicationStrategy.ANY)
                         .withMinTimeout(MIN_TIMEOUT)
                         .withMaxTimeout(MAX_TIMEOUT)
                         .withMaxRetries(MAX_RETRIES)
-                        .withRevision(options.version() != null && options.revisionType() != null
-                            ? options.version().toInt() : 1)
-                        .withPropagationStrategy(options.revisionType() != null
-                            ? PropagationStrategy.valueOf(options.revisionType().name())
-                            : PropagationStrategy.NONE)
                         .build()
-                        .open()
+                        .connect()
                         .join());
 
         if (options.serializer() != null) {
@@ -181,21 +184,15 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
     @SuppressWarnings("unchecked")
     public <V> AsyncConsistentTreeMap<V> newAsyncConsistentTreeMap(ConsistentTreeMapOptions options) {
         AtomixConsistentTreeMap rawMap =
-                new AtomixConsistentTreeMap(client.newProxyBuilder()
-                        .withName(options.name())
-                        .withServiceType(DistributedPrimitive.Type.CONSISTENT_TREEMAP.name())
+                new AtomixConsistentTreeMap(
+                    client.proxyBuilder(options.name(), CONSISTENT_TREEMAP, new ServiceConfig())
                         .withReadConsistency(ReadConsistency.SEQUENTIAL)
                         .withCommunicationStrategy(CommunicationStrategy.ANY)
                         .withMinTimeout(MIN_TIMEOUT)
                         .withMaxTimeout(MAX_TIMEOUT)
                         .withMaxRetries(MAX_RETRIES)
-                        .withRevision(options.version() != null && options.revisionType() != null
-                            ? options.version().toInt() : 1)
-                        .withPropagationStrategy(options.revisionType() != null
-                            ? PropagationStrategy.valueOf(options.revisionType().name())
-                            : PropagationStrategy.NONE)
                         .build()
-                        .open()
+                        .connect()
                         .join());
 
         if (options.serializer() != null) {
@@ -211,21 +208,15 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
     @SuppressWarnings("unchecked")
     public <K, V> AsyncConsistentMultimap<K, V> newAsyncConsistentSetMultimap(ConsistentMultimapOptions options) {
         AtomixConsistentSetMultimap rawMap =
-                new AtomixConsistentSetMultimap(client.newProxyBuilder()
-                        .withName(options.name())
-                        .withServiceType(DistributedPrimitive.Type.CONSISTENT_MULTIMAP.name())
+                new AtomixConsistentSetMultimap(
+                    client.proxyBuilder(options.name(), CONSISTENT_MULTIMAP, new ServiceConfig())
                         .withReadConsistency(ReadConsistency.SEQUENTIAL)
                         .withCommunicationStrategy(CommunicationStrategy.ANY)
                         .withMinTimeout(MIN_TIMEOUT)
                         .withMaxTimeout(MAX_TIMEOUT)
                         .withMaxRetries(MAX_RETRIES)
-                        .withRevision(options.version() != null && options.revisionType() != null
-                            ? options.version().toInt() : 1)
-                        .withPropagationStrategy(options.revisionType() != null
-                            ? PropagationStrategy.valueOf(options.revisionType().name())
-                            : PropagationStrategy.NONE)
                         .build()
-                        .open()
+                        .connect()
                         .join());
 
         if (options.serializer() != null) {
@@ -247,21 +238,15 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
     @Override
     @SuppressWarnings("unchecked")
     public <K> AsyncAtomicCounterMap<K> newAsyncAtomicCounterMap(AtomicCounterMapOptions options) {
-        AtomixAtomicCounterMap rawMap = new AtomixAtomicCounterMap(client.newProxyBuilder()
-                .withName(options.name())
-                .withServiceType(DistributedPrimitive.Type.COUNTER_MAP.name())
+        AtomixAtomicCounterMap rawMap = new AtomixAtomicCounterMap(
+            client.proxyBuilder(options.name(), ATOMIC_COUNTER_MAP, new ServiceConfig())
                 .withReadConsistency(ReadConsistency.LINEARIZABLE_LEASE)
                 .withCommunicationStrategy(CommunicationStrategy.LEADER)
                 .withMinTimeout(MIN_TIMEOUT)
                 .withMaxTimeout(MAX_TIMEOUT)
                 .withMaxRetries(MAX_RETRIES)
-                .withRevision(options.version() != null && options.revisionType() != null
-                    ? options.version().toInt() : 1)
-                .withPropagationStrategy(options.revisionType() != null
-                    ? PropagationStrategy.valueOf(options.revisionType().name())
-                    : PropagationStrategy.NONE)
                 .build()
-                .open()
+                .connect()
                 .join());
 
         if (options.serializer() != null) {
@@ -275,21 +260,15 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
 
     @Override
     public AsyncAtomicCounter newAsyncCounter(AtomicCounterOptions options) {
-        return new AtomixCounter(client.newProxyBuilder()
-                .withName(options.name())
-                .withServiceType(DistributedPrimitive.Type.COUNTER.name())
+        return new AtomixCounter(
+            client.proxyBuilder(options.name(), ATOMIC_COUNTER, new ServiceConfig())
                 .withReadConsistency(ReadConsistency.LINEARIZABLE_LEASE)
                 .withCommunicationStrategy(CommunicationStrategy.LEADER)
                 .withMinTimeout(MIN_TIMEOUT)
                 .withMaxTimeout(MAX_TIMEOUT)
                 .withMaxRetries(MAX_RETRIES)
-                .withRevision(options.version() != null && options.revisionType() != null
-                    ? options.version().toInt() : 1)
-                .withPropagationStrategy(options.revisionType() != null
-                    ? PropagationStrategy.valueOf(options.revisionType().name())
-                    : PropagationStrategy.NONE)
                 .build()
-                .open()
+                .connect()
                 .join());
     }
 
@@ -305,111 +284,86 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
 
     @Override
     public <E> WorkQueue<E> newWorkQueue(WorkQueueOptions options) {
-        AtomixWorkQueue atomixWorkQueue = new AtomixWorkQueue(client.newProxyBuilder()
-                .withName(options.name())
-                .withServiceType(DistributedPrimitive.Type.WORK_QUEUE.name())
+        AtomixWorkQueue atomixWorkQueue = new AtomixWorkQueue(
+            client.proxyBuilder(options.name(), WORK_QUEUE, new ServiceConfig())
                 .withReadConsistency(ReadConsistency.LINEARIZABLE_LEASE)
                 .withCommunicationStrategy(CommunicationStrategy.LEADER)
                 .withMinTimeout(MIN_TIMEOUT)
                 .withMaxTimeout(MAX_TIMEOUT)
                 .withMaxRetries(MAX_RETRIES)
-                .withRevision(options.version() != null && options.revisionType() != null
-                    ? options.version().toInt() : 1)
-                .withPropagationStrategy(options.revisionType() != null
-                    ? PropagationStrategy.valueOf(options.revisionType().name())
-                    : PropagationStrategy.NONE)
                 .build()
-                .open()
+                .connect()
                 .join());
         return new DefaultDistributedWorkQueue<>(atomixWorkQueue, options.serializer());
     }
 
     @Override
     public <V> AsyncDocumentTree<V> newAsyncDocumentTree(DocumentTreeOptions options) {
-        String serviceType = String.format("%s-%s", DistributedPrimitive.Type.DOCUMENT_TREE.name(), options.ordering());
-        AtomixDocumentTree atomixDocumentTree = new AtomixDocumentTree(client.newProxyBuilder()
-                .withName(options.name())
-                .withServiceType(serviceType)
+        AtomixDocumentTree atomixDocumentTree = new AtomixDocumentTree(
+            client.proxyBuilder(options.name(), DOCUMENT_TREE, new ServiceConfig())
                 .withReadConsistency(ReadConsistency.SEQUENTIAL)
                 .withCommunicationStrategy(CommunicationStrategy.ANY)
                 .withMinTimeout(MIN_TIMEOUT)
                 .withMaxTimeout(MAX_TIMEOUT)
                 .withMaxRetries(MAX_RETRIES)
-                .withRevision(options.version() != null && options.revisionType() != null
-                    ? options.version().toInt() : 1)
-                .withPropagationStrategy(options.revisionType() != null
-                    ? PropagationStrategy.valueOf(options.revisionType().name())
-                    : PropagationStrategy.NONE)
                 .build()
-                .open()
+                .connect()
                 .join());
         return new DefaultDistributedDocumentTree<>(options.name(), atomixDocumentTree, options.serializer());
     }
 
     @Override
     public AsyncDistributedLock newAsyncDistributedLock(DistributedLockOptions options) {
-        return new AtomixDistributedLock(client.newProxyBuilder()
-                .withName(options.name())
-                .withServiceType(DistributedPrimitive.Type.LOCK.name())
+        return new AtomixDistributedLock(
+            client.proxyBuilder(options.name(), LOCK, new ServiceConfig())
                 .withReadConsistency(ReadConsistency.LINEARIZABLE)
                 .withCommunicationStrategy(CommunicationStrategy.LEADER)
                 .withMinTimeout(MIN_TIMEOUT)
                 .withMaxTimeout(MIN_TIMEOUT)
                 .withMaxRetries(MAX_RETRIES)
-                .withRevision(options.version() != null && options.revisionType() != null
-                    ? options.version().toInt() : 1)
-                .withPropagationStrategy(options.revisionType() != null
-                    ? PropagationStrategy.valueOf(options.revisionType().name())
-                    : PropagationStrategy.NONE)
                 .build()
-                .open()
+                .connect()
                 .join());
     }
 
     @Override
     public AsyncLeaderElector newAsyncLeaderElector(LeaderElectorOptions options) {
-        return new AtomixLeaderElector(client.newProxyBuilder()
-                .withName(options.name())
-                .withServiceType(DistributedPrimitive.Type.LEADER_ELECTOR.name())
+        return new AtomixLeaderElector(
+            client.proxyBuilder(options.name(), LEADER_ELECTOR, new ServiceConfig())
                 .withReadConsistency(ReadConsistency.LINEARIZABLE)
                 .withCommunicationStrategy(CommunicationStrategy.LEADER)
                 .withMinTimeout(Duration.ofMillis(options.electionTimeoutMillis()))
                 .withMaxTimeout(MIN_TIMEOUT)
                 .withMaxRetries(MAX_RETRIES)
-                .withRevision(options.version() != null && options.revisionType() != null
-                    ? options.version().toInt() : 1)
-                .withPropagationStrategy(options.revisionType() != null
-                    ? PropagationStrategy.valueOf(options.revisionType().name())
-                    : PropagationStrategy.NONE)
                 .build()
-                .open()
+                .connect()
                 .join());
     }
 
     @Override
     public Set<String> getAsyncConsistentMapNames() {
-        return client.metadata().getSessions(DistributedPrimitive.Type.CONSISTENT_MAP.name())
+        return client.metadata().getSessions(CONSISTENT_MAP)
                 .join()
                 .stream()
-                .map(RaftSessionMetadata::serviceName)
+                .map(SessionMetadata::primitiveName)
                 .collect(Collectors.toSet());
     }
 
     @Override
     public Set<String> getAsyncAtomicCounterNames() {
-        return client.metadata().getSessions(DistributedPrimitive.Type.COUNTER.name())
+        return client.metadata().getSessions(ATOMIC_COUNTER)
                 .join()
                 .stream()
-                .map(RaftSessionMetadata::serviceName)
+                .map(SessionMetadata::primitiveName)
                 .collect(Collectors.toSet());
     }
 
     @Override
     public Set<String> getWorkQueueNames() {
-        return client.metadata().getSessions(DistributedPrimitive.Type.WORK_QUEUE.name())
+        return client.metadata().getSessions(WORK_QUEUE)
                 .join()
                 .stream()
-                .map(RaftSessionMetadata::serviceName)
+                .map(SessionMetadata::primitiveName)
                 .collect(Collectors.toSet());
     }
 
@@ -429,6 +383,7 @@ public class StoragePartitionClient implements DistributedPrimitiveCreator, Mana
     private RaftClient newRaftClient(RaftClientProtocol protocol) {
         return RaftClient.newBuilder()
                 .withClientId("partition-" + partition.getId())
+                .withPartitionId(PartitionId.from("onos", partition.getId().id()))
                 .withMemberId(localMemberId)
                 .withProtocol(protocol)
                 .build();

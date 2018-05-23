@@ -26,13 +26,16 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+import io.atomix.cluster.MemberId;
 import io.atomix.protocols.raft.RaftServer;
-import io.atomix.protocols.raft.cluster.MemberId;
 import io.atomix.protocols.raft.storage.RaftStorage;
 import io.atomix.storage.StorageLevel;
+import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.Partition;
 import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
+import org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes;
 import org.onosproject.store.primitives.resources.impl.AtomixSerializerAdapter;
 import org.onosproject.store.service.PartitionInfo;
 import org.onosproject.store.service.Serializer;
@@ -145,15 +148,18 @@ public class StoragePartitionServer implements Managed<StoragePartitionServer> {
 
     private final MemberId localMemberId;
     private final StoragePartition partition;
+    private final ClusterService clusterService;
     private final ClusterCommunicationService clusterCommunicator;
     private RaftServer server;
 
     public StoragePartitionServer(
-            StoragePartition partition,
-            MemberId localMemberId,
-            ClusterCommunicationService clusterCommunicator) {
+        StoragePartition partition,
+        MemberId localMemberId,
+        ClusterService clusterService,
+        ClusterCommunicationService clusterCommunicator) {
         this.partition = partition;
         this.localMemberId = localMemberId;
+        this.clusterService = clusterService;
         this.clusterCommunicator = clusterCommunicator;
     }
 
@@ -175,10 +181,10 @@ public class StoragePartitionServer implements Managed<StoragePartitionServer> {
         return serverOpenFuture.whenComplete((r, e) -> {
             if (e == null) {
                 log.info("Successfully started server for partition {} ({})",
-                        partition.getId(), partition.getVersion());
+                    partition.getId(), partition.getVersion());
             } else {
                 log.info("Failed to start server for partition {} ({})",
-                        partition.getId(), partition.getVersion(), e);
+                    partition.getId(), partition.getVersion(), e);
             }
         }).thenApply(v -> null);
     }
@@ -190,6 +196,7 @@ public class StoragePartitionServer implements Managed<StoragePartitionServer> {
 
     /**
      * Closes the server and exits the partition.
+     *
      * @return future that is completed when the operation is complete
      */
     public CompletableFuture<Void> closeAndExit() {
@@ -207,6 +214,7 @@ public class StoragePartitionServer implements Managed<StoragePartitionServer> {
                     Files.delete(file);
                     return FileVisitResult.CONTINUE;
                 }
+
                 @Override
                 public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
                     Files.delete(dir);
@@ -226,86 +234,84 @@ public class StoragePartitionServer implements Managed<StoragePartitionServer> {
      */
     public CompletableFuture<Void> fork(Partition fromPartition) {
         log.info("Forking server for partition {} ({}->{})",
-                partition.getId(), fromPartition.getVersion(), partition.getVersion());
-        RaftServer.Builder builder = RaftServer.newBuilder(localMemberId)
-                .withName(String.format("partition-%s", fromPartition.getId()))
-                .withProtocol(new RaftServerCommunicator(
-                        String.format("partition-%s-%s", fromPartition.getId(), fromPartition.getVersion()),
-                        Serializer.using(StorageNamespaces.RAFT_PROTOCOL),
-                        clusterCommunicator))
-                .withElectionTimeout(Duration.ofMillis(ELECTION_TIMEOUT_MILLIS))
-                .withHeartbeatInterval(Duration.ofMillis(HEARTBEAT_INTERVAL_MILLIS))
-                .withElectionThreshold(ELECTION_THRESHOLD)
-                .withSessionFailureThreshold(SESSION_THRESHOLD)
-                .withStorage(RaftStorage.newBuilder()
-                        .withPrefix(String.format("partition-%s", partition.getId()))
-                        .withStorageLevel(STORAGE_LEVEL)
-                        .withFlushOnCommit(FLUSH_ON_COMMIT)
-                        .withSerializer(new AtomixSerializerAdapter(Serializer.using(StorageNamespaces.RAFT_STORAGE)))
-                        .withDirectory(partition.getDataFolder())
-                        .withMaxSegmentSize(MAX_SEGMENT_SIZE)
-                        .build());
-        StoragePartition.RAFT_SERVICES.forEach(builder::addService);
+            partition.getId(), fromPartition.getVersion(), partition.getVersion());
+        RaftServer.Builder builder = RaftServer.builder(localMemberId)
+            .withName(String.format("partition-%s", fromPartition.getId()))
+            .withProtocol(new RaftServerCommunicator(
+                String.format("partition-%s-%s", fromPartition.getId(), fromPartition.getVersion()),
+                Serializer.using(StorageNamespaces.RAFT_PROTOCOL),
+                clusterCommunicator))
+            .withElectionTimeout(Duration.ofMillis(ELECTION_TIMEOUT_MILLIS))
+            .withHeartbeatInterval(Duration.ofMillis(HEARTBEAT_INTERVAL_MILLIS))
+            .withMembershipService(new AtomixClusterMembershipService(clusterService))
+            .withStorage(RaftStorage.builder()
+                .withPrefix(String.format("partition-%s", partition.getId()))
+                .withStorageLevel(STORAGE_LEVEL)
+                .withFlushOnCommit(FLUSH_ON_COMMIT)
+                .withSerializer(new AtomixSerializerAdapter(Serializer.using(StorageNamespaces.RAFT_STORAGE)))
+                .withDirectory(partition.getDataFolder())
+                .withMaxSegmentSize(MAX_SEGMENT_SIZE)
+                .build());
+        Stream.of(AtomixPrimitiveTypes.values()).forEach(builder::addPrimitiveType);
         RaftServer server = builder.build();
 
         // Create a collection of members currently in the source partition.
         Collection<MemberId> members = fromPartition.getMembers()
-                .stream()
-                .map(id -> MemberId.from(id.id()))
-                .collect(Collectors.toList());
+            .stream()
+            .map(id -> MemberId.from(id.id()))
+            .collect(Collectors.toList());
 
         // If this node is a member of the partition, join the partition. Otherwise, listen to the partition.
         CompletableFuture<RaftServer> future = members.contains(localMemberId)
-                ? server.bootstrap(members) : server.listen(members);
+            ? server.bootstrap(members) : server.listen(members);
 
         // TODO: We should leave the cluster for nodes that aren't normally members to ensure the source
         // cluster's configuration is kept consistent for rolling back upgrades, but Atomix deletes configuration
         // files when a node leaves the cluster so we can't do that here.
         return future.thenCompose(v -> server.shutdown())
-                .thenCompose(v -> {
-                    // Delete the cluster configuration file from the forked partition.
-                    try {
-                        Files.delete(new File(
-                                partition.getDataFolder(),
-                                String.format("partition-%s.conf", partition.getId())).toPath());
-                    } catch (IOException e) {
-                        log.error("Failed to delete partition configuration: {}", e);
-                    }
+            .thenCompose(v -> {
+                // Delete the cluster configuration file from the forked partition.
+                try {
+                    Files.delete(new File(
+                        partition.getDataFolder(),
+                        String.format("partition-%s.conf", partition.getId())).toPath());
+                } catch (IOException e) {
+                    log.error("Failed to delete partition configuration: {}", e);
+                }
 
-                    // Build and bootstrap a new server.
-                    this.server = buildServer();
-                    return this.server.bootstrap();
-                }).whenComplete((r, e) -> {
-                    if (e == null) {
-                        log.info("Successfully forked server for partition {} ({}->{})",
-                                partition.getId(), fromPartition.getVersion(), partition.getVersion());
-                    } else {
-                        log.info("Failed to fork server for partition {} ({}->{})",
-                                partition.getId(), fromPartition.getVersion(), partition.getVersion(), e);
-                    }
-                }).thenApply(v -> null);
+                // Build and bootstrap a new server.
+                this.server = buildServer();
+                return this.server.bootstrap();
+            }).whenComplete((r, e) -> {
+                if (e == null) {
+                    log.info("Successfully forked server for partition {} ({}->{})",
+                        partition.getId(), fromPartition.getVersion(), partition.getVersion());
+                } else {
+                    log.info("Failed to fork server for partition {} ({}->{})",
+                        partition.getId(), fromPartition.getVersion(), partition.getVersion(), e);
+                }
+            }).thenApply(v -> null);
     }
 
     private RaftServer buildServer() {
-        RaftServer.Builder builder = RaftServer.newBuilder(localMemberId)
-                .withName(String.format("partition-%s", partition.getId()))
-                .withProtocol(new RaftServerCommunicator(
-                        String.format("partition-%s-%s", partition.getId(), partition.getVersion()),
-                        Serializer.using(StorageNamespaces.RAFT_PROTOCOL),
-                        clusterCommunicator))
-                .withElectionTimeout(Duration.ofMillis(ELECTION_TIMEOUT_MILLIS))
-                .withHeartbeatInterval(Duration.ofMillis(HEARTBEAT_INTERVAL_MILLIS))
-                .withElectionThreshold(ELECTION_THRESHOLD)
-                .withSessionFailureThreshold(SESSION_THRESHOLD)
-                .withStorage(RaftStorage.newBuilder()
-                        .withPrefix(String.format("partition-%s", partition.getId()))
-                        .withStorageLevel(STORAGE_LEVEL)
-                        .withFlushOnCommit(FLUSH_ON_COMMIT)
-                        .withSerializer(new AtomixSerializerAdapter(Serializer.using(StorageNamespaces.RAFT_STORAGE)))
-                        .withDirectory(partition.getDataFolder())
-                        .withMaxSegmentSize(MAX_SEGMENT_SIZE)
-                        .build());
-        StoragePartition.RAFT_SERVICES.forEach(builder::addService);
+        RaftServer.Builder builder = RaftServer.builder(localMemberId)
+            .withName(String.format("partition-%s", partition.getId()))
+            .withProtocol(new RaftServerCommunicator(
+                String.format("partition-%s-%s", partition.getId(), partition.getVersion()),
+                Serializer.using(StorageNamespaces.RAFT_PROTOCOL),
+                clusterCommunicator))
+            .withElectionTimeout(Duration.ofMillis(ELECTION_TIMEOUT_MILLIS))
+            .withHeartbeatInterval(Duration.ofMillis(HEARTBEAT_INTERVAL_MILLIS))
+            .withMembershipService(new AtomixClusterMembershipService(clusterService))
+            .withStorage(RaftStorage.builder()
+                .withPrefix(String.format("partition-%s", partition.getId()))
+                .withStorageLevel(STORAGE_LEVEL)
+                .withFlushOnCommit(FLUSH_ON_COMMIT)
+                .withSerializer(new AtomixSerializerAdapter(Serializer.using(StorageNamespaces.RAFT_STORAGE)))
+                .withDirectory(partition.getDataFolder())
+                .withMaxSegmentSize(MAX_SEGMENT_SIZE)
+                .build());
+        Stream.of(AtomixPrimitiveTypes.values()).forEach(builder::addPrimitiveType);
         return builder.build();
     }
 
@@ -328,13 +334,14 @@ public class StoragePartitionServer implements Managed<StoragePartitionServer> {
 
     /**
      * Returns the partition information.
+     *
      * @return partition info
      */
     public PartitionInfo info() {
         return new StoragePartitionDetails(partition.getId(),
-                server.cluster().getMembers(),
-                server.cluster().getMembers(),
-                server.cluster().getLeader(),
-                server.cluster().getTerm()).toPartitionInfo();
+            server.cluster().getMembers(),
+            server.cluster().getMembers(),
+            server.cluster().getLeader(),
+            server.cluster().getTerm()).toPartitionInfo();
     }
 }

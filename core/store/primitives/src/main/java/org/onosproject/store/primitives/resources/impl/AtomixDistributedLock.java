@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import com.google.common.collect.Maps;
+import io.atomix.primitive.proxy.PartitionProxy;
 import io.atomix.protocols.raft.proxy.RaftProxy;
 import org.onlab.util.KryoNamespace;
 import org.onlab.util.OrderedExecutor;
@@ -63,12 +64,12 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
     private final AtomicInteger id = new AtomicInteger();
     private final AtomicInteger lock = new AtomicInteger();
 
-    public AtomixDistributedLock(RaftProxy proxy) {
+    public AtomixDistributedLock(PartitionProxy proxy) {
         super(proxy);
         this.scheduledExecutor = SharedScheduledExecutors.getPoolThreadExecutor();
         this.orderedExecutor = new OrderedExecutor(scheduledExecutor);
-        proxy.addEventListener(LOCKED, SERIALIZER::decode, this::handleLocked);
-        proxy.addEventListener(FAILED, SERIALIZER::decode, this::handleFailed);
+        proxy.addEventListener(LOCKED, event -> handleLocked(SERIALIZER.decode(event.value())));
+        proxy.addEventListener(FAILED, event -> handleFailed(SERIALIZER.decode(event.value())));
     }
 
     /**
@@ -103,7 +104,7 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
     public CompletableFuture<Version> lock() {
         // Create and register a new attempt and invoke the LOCK operation on the replicated state machine.
         LockAttempt attempt = new LockAttempt();
-        proxy.invoke(LOCK, SERIALIZER::encode, new Lock(attempt.id(), -1)).whenComplete((result, error) -> {
+        invoke(LOCK, SERIALIZER::encode, new Lock(attempt.id(), -1)).whenComplete((result, error) -> {
             if (error != null) {
                 attempt.completeExceptionally(error);
             }
@@ -116,8 +117,8 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
     @Override
     public CompletableFuture<Optional<Version>> tryLock() {
         // If the proxy is currently disconnected from the cluster, we can just fail the lock attempt here.
-        RaftProxy.State state = proxy.getState();
-        if (state != RaftProxy.State.CONNECTED) {
+        PartitionProxy.State state = proxy.getState();
+        if (state != PartitionProxy.State.CONNECTED) {
             return CompletableFuture.completedFuture(Optional.empty());
         }
 
@@ -125,7 +126,7 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
         // a 0 timeout. The timeout will cause the state machine to immediately reject the request if the lock is
         // already owned by another process.
         LockAttempt attempt = new LockAttempt();
-        proxy.invoke(LOCK, SERIALIZER::encode, new Lock(attempt.id(), 0)).whenComplete((result, error) -> {
+        invoke(LOCK, SERIALIZER::encode, new Lock(attempt.id(), 0)).whenComplete((result, error) -> {
             if (error != null) {
                 attempt.completeExceptionally(error);
             }
@@ -148,14 +149,14 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
         // lock call also granted to this process.
         LockAttempt attempt = new LockAttempt(timeout, a -> {
             a.complete(null);
-            proxy.invoke(UNLOCK, SERIALIZER::encode, new Unlock(a.id()));
+            invoke(UNLOCK, SERIALIZER::encode, new Unlock(a.id()));
         });
 
         // Invoke the LOCK operation on the replicated state machine with the given timeout. If the lock is currently
         // held by another process, the state machine will add the attempt to a queue and publish a FAILED event if
         // the timer expires before this process can be granted the lock. If the client cannot reach the Raft cluster,
         // the client-side timer will expire the attempt.
-        proxy.invoke(LOCK, SERIALIZER::encode, new Lock(attempt.id(), timeout.toMillis()))
+        invoke(LOCK, SERIALIZER::encode, new Lock(attempt.id(), timeout.toMillis()))
             .whenComplete((result, error) -> {
                 if (error != null) {
                     attempt.completeExceptionally(error);
@@ -173,7 +174,7 @@ public class AtomixDistributedLock extends AbstractRaftPrimitive implements Asyn
         int lock = this.lock.getAndSet(0);
         if (lock != 0) {
             return orderedFuture(
-                proxy.invoke(UNLOCK, SERIALIZER::encode, new Unlock(lock)),
+                invoke(UNLOCK, SERIALIZER::encode, new Unlock(lock)),
                 orderedExecutor,
                 scheduledExecutor);
         }

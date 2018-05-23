@@ -23,7 +23,7 @@ import java.util.NavigableSet;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 
-import io.atomix.protocols.raft.proxy.RaftProxy;
+import io.atomix.primitive.proxy.PartitionProxy;
 import org.onlab.util.KryoNamespace;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapOperations.FloorEntry;
@@ -74,7 +74,7 @@ public class AtomixConsistentTreeMap extends AtomixConsistentMap implements Asyn
             .register(TreeMap.class)
             .build());
 
-    public AtomixConsistentTreeMap(RaftProxy proxy) {
+    public AtomixConsistentTreeMap(PartitionProxy proxy) {
         super(proxy);
     }
 
@@ -85,74 +85,74 @@ public class AtomixConsistentTreeMap extends AtomixConsistentMap implements Asyn
 
     @Override
     public CompletableFuture<String> firstKey() {
-        return proxy.invoke(FIRST_KEY, serializer()::decode);
+        return invoke(FIRST_KEY, serializer()::decode);
     }
 
     @Override
     public CompletableFuture<String> lastKey() {
-        return proxy.invoke(LAST_KEY, serializer()::decode);
+        return invoke(LAST_KEY, serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> ceilingEntry(String key) {
-        return proxy.invoke(CEILING_ENTRY, serializer()::encode, new CeilingEntry(key), serializer()::decode);
+        return invoke(CEILING_ENTRY, serializer()::encode, new CeilingEntry(key), serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> floorEntry(String key) {
-        return proxy.invoke(FLOOR_ENTRY, serializer()::encode, new FloorEntry(key), serializer()::decode);
+        return invoke(FLOOR_ENTRY, serializer()::encode, new FloorEntry(key), serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> higherEntry(
             String key) {
-        return proxy.invoke(HIGHER_ENTRY, serializer()::encode, new HigherEntry(key), serializer()::decode);
+        return invoke(HIGHER_ENTRY, serializer()::encode, new HigherEntry(key), serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> lowerEntry(
             String key) {
-        return proxy.invoke(LOWER_ENTRY, serializer()::encode, new LowerEntry(key), serializer()::decode);
+        return invoke(LOWER_ENTRY, serializer()::encode, new LowerEntry(key), serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> firstEntry() {
-        return proxy.invoke(FIRST_ENTRY, serializer()::decode);
+        return invoke(FIRST_ENTRY, serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> lastEntry() {
-        return proxy.invoke(LAST_ENTRY, serializer()::decode);
+        return invoke(LAST_ENTRY, serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> pollFirstEntry() {
-        return proxy.invoke(POLL_FIRST_ENTRY, serializer()::decode);
+        return invoke(POLL_FIRST_ENTRY, serializer()::decode);
     }
 
     @Override
     public CompletableFuture<Map.Entry<String, Versioned<byte[]>>> pollLastEntry() {
-        return proxy.invoke(POLL_LAST_ENTRY, serializer()::decode);
+        return invoke(POLL_LAST_ENTRY, serializer()::decode);
     }
 
     @Override
     public CompletableFuture<String> lowerKey(String key) {
-        return proxy.invoke(LOWER_KEY, serializer()::encode, new LowerKey(key), serializer()::decode);
+        return invoke(LOWER_KEY, serializer()::encode, new LowerKey(key), serializer()::decode);
     }
 
     @Override
     public CompletableFuture<String> floorKey(String key) {
-        return proxy.invoke(FLOOR_KEY, serializer()::encode, new FloorKey(key), serializer()::decode);
+        return invoke(FLOOR_KEY, serializer()::encode, new FloorKey(key), serializer()::decode);
     }
 
     @Override
     public CompletableFuture<String> ceilingKey(String key) {
-        return proxy.invoke(CEILING_KEY, serializer()::encode, new CeilingKey(key), serializer()::decode);
+        return invoke(CEILING_KEY, serializer()::encode, new CeilingKey(key), serializer()::decode);
     }
 
     @Override
     public CompletableFuture<String> higherKey(String key) {
-        return proxy.invoke(HIGHER_KEY, serializer()::encode, new HigherKey(key), serializer()::decode);
+        return invoke(HIGHER_KEY, serializer()::encode, new HigherKey(key), serializer()::decode);
     }
 
     @Override

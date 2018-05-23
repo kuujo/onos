@@ -22,6 +22,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 import com.google.common.collect.Sets;
+import io.atomix.primitive.proxy.PartitionProxy;
 import io.atomix.protocols.raft.proxy.RaftProxy;
 import org.onlab.util.KryoNamespace;
 import org.onosproject.cluster.Leadership;
@@ -61,14 +62,14 @@ public class AtomixLeaderElector extends AbstractRaftPrimitive implements AsyncL
 
     private final Set<Consumer<Change<Leadership>>> leadershipChangeListeners = Sets.newCopyOnWriteArraySet();
 
-    public AtomixLeaderElector(RaftProxy proxy) {
+    public AtomixLeaderElector(PartitionProxy proxy) {
         super(proxy);
         proxy.addStateChangeListener(state -> {
             if (state == RaftProxy.State.CONNECTED && isListening()) {
-                proxy.invoke(ADD_LISTENER);
+                invoke(ADD_LISTENER);
             }
         });
-        proxy.addEventListener(CHANGE, SERIALIZER::decode, this::handleEvent);
+        proxy.addEventListener(CHANGE, event -> handleEvent(SERIALIZER.decode(event.value())));
     }
 
     private void handleEvent(List<Change<Leadership>> changes) {
@@ -77,48 +78,48 @@ public class AtomixLeaderElector extends AbstractRaftPrimitive implements AsyncL
 
     @Override
     public CompletableFuture<Leadership> run(String topic, NodeId nodeId) {
-        return proxy.<Run, Leadership>invoke(RUN, SERIALIZER::encode, new Run(topic, nodeId), SERIALIZER::decode);
+        return this.<Run, Leadership>invoke(RUN, SERIALIZER::encode, new Run(topic, nodeId), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Void> withdraw(String topic) {
-        return proxy.invoke(WITHDRAW, SERIALIZER::encode, new Withdraw(topic));
+        return invoke(WITHDRAW, SERIALIZER::encode, new Withdraw(topic));
     }
 
     @Override
     public CompletableFuture<Boolean> anoint(String topic, NodeId nodeId) {
-        return proxy.<Anoint, Boolean>invoke(ANOINT, SERIALIZER::encode, new Anoint(topic, nodeId), SERIALIZER::decode);
+        return this.<Anoint, Boolean>invoke(ANOINT, SERIALIZER::encode, new Anoint(topic, nodeId), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Boolean> promote(String topic, NodeId nodeId) {
-        return proxy.<Promote, Boolean>invoke(
+        return this.<Promote, Boolean>invoke(
                 PROMOTE, SERIALIZER::encode, new Promote(topic, nodeId), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Void> evict(NodeId nodeId) {
-        return proxy.invoke(EVICT, SERIALIZER::encode, new AtomixLeaderElectorOperations.Evict(nodeId));
+        return invoke(EVICT, SERIALIZER::encode, new AtomixLeaderElectorOperations.Evict(nodeId));
     }
 
     @Override
     public CompletableFuture<Leadership> getLeadership(String topic) {
-        return proxy.invoke(GET_LEADERSHIP, SERIALIZER::encode, new GetLeadership(topic), SERIALIZER::decode);
+        return invoke(GET_LEADERSHIP, SERIALIZER::encode, new GetLeadership(topic), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Map<String, Leadership>> getLeaderships() {
-        return proxy.invoke(GET_ALL_LEADERSHIPS, SERIALIZER::decode);
+        return invoke(GET_ALL_LEADERSHIPS, SERIALIZER::decode);
     }
 
     public CompletableFuture<Set<String>> getElectedTopics(NodeId nodeId) {
-        return proxy.invoke(GET_ELECTED_TOPICS, SERIALIZER::encode, new GetElectedTopics(nodeId), SERIALIZER::decode);
+        return invoke(GET_ELECTED_TOPICS, SERIALIZER::encode, new GetElectedTopics(nodeId), SERIALIZER::decode);
     }
 
     @Override
     public synchronized CompletableFuture<Void> addChangeListener(Consumer<Change<Leadership>> consumer) {
         if (leadershipChangeListeners.isEmpty()) {
-            return proxy.invoke(ADD_LISTENER).thenRun(() -> leadershipChangeListeners.add(consumer));
+            return invoke(ADD_LISTENER).thenRun(() -> leadershipChangeListeners.add(consumer));
         } else {
             leadershipChangeListeners.add(consumer);
             return CompletableFuture.completedFuture(null);
@@ -128,7 +129,7 @@ public class AtomixLeaderElector extends AbstractRaftPrimitive implements AsyncL
     @Override
     public synchronized CompletableFuture<Void> removeChangeListener(Consumer<Change<Leadership>> consumer) {
         if (leadershipChangeListeners.remove(consumer) && leadershipChangeListeners.isEmpty()) {
-            return proxy.invoke(REMOVE_LISTENER).thenApply(v -> null);
+            return invoke(REMOVE_LISTENER).thenApply(v -> null);
         }
         return CompletableFuture.completedFuture(null);
     }

@@ -17,15 +17,12 @@ package org.onosproject.store.primitives.resources.impl;
 
 import java.util.Optional;
 
-import io.atomix.protocols.raft.service.impl.DefaultCommit;
-import io.atomix.protocols.raft.session.impl.RaftSessionContext;
-import io.atomix.protocols.raft.storage.RaftStorage;
-import io.atomix.protocols.raft.storage.snapshot.Snapshot;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotReader;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotStore;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotWriter;
-import io.atomix.storage.StorageLevel;
-import io.atomix.time.WallClockTimestamp;
+import io.atomix.primitive.service.impl.DefaultBackupInput;
+import io.atomix.primitive.service.impl.DefaultBackupOutput;
+import io.atomix.primitive.service.impl.DefaultCommit;
+import io.atomix.protocols.raft.session.RaftSession;
+import io.atomix.storage.buffer.Buffer;
+import io.atomix.storage.buffer.HeapBuffer;
 import org.junit.Test;
 import org.onlab.util.Match;
 import org.onosproject.store.service.DocumentPath;
@@ -54,12 +51,6 @@ public class AtomixDocumentTreeServiceTest {
     }
 
     private void testSnapshot(Ordering ordering) throws Exception {
-        SnapshotStore store = new SnapshotStore(RaftStorage.newBuilder()
-                .withPrefix("test")
-                .withStorageLevel(StorageLevel.MEMORY)
-                .build());
-        Snapshot snapshot = store.newSnapshot(2, new WallClockTimestamp());
-
         AtomixDocumentTreeService service = new AtomixDocumentTreeService(ordering);
         service.update(new DefaultCommit<>(
                 2,
@@ -69,25 +60,20 @@ public class AtomixDocumentTreeServiceTest {
                         Optional.of("Hello world!".getBytes()),
                         Match.any(),
                         Match.ifNull()),
-                mock(RaftSessionContext.class),
+                mock(RaftSession.class),
                 System.currentTimeMillis()));
 
-        try (SnapshotWriter writer = snapshot.openWriter()) {
-            service.snapshot(writer);
-        }
-
-        snapshot.complete();
+        Buffer buffer = HeapBuffer.allocate();
+        service.backup(new DefaultBackupOutput(buffer, service.serializer()));
 
         service = new AtomixDocumentTreeService(ordering);
-        try (SnapshotReader reader = snapshot.openReader()) {
-            service.install(reader);
-        }
+        service.restore(new DefaultBackupInput(buffer.flip(), service.serializer()));
 
         Versioned<byte[]> value = service.get(new DefaultCommit<>(
                 2,
                 GET,
                 new AtomixDocumentTreeOperations.Get(DocumentPath.from("root|foo")),
-                mock(RaftSessionContext.class),
+                mock(RaftSession.class),
                 System.currentTimeMillis()));
         assertNotNull(value);
         assertArrayEquals("Hello world!".getBytes(), value.value());

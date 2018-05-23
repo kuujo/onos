@@ -44,12 +44,13 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.Sets;
-import io.atomix.protocols.raft.service.AbstractRaftService;
-import io.atomix.protocols.raft.service.Commit;
-import io.atomix.protocols.raft.service.RaftServiceExecutor;
-import io.atomix.protocols.raft.session.RaftSession;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotReader;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotWriter;
+import io.atomix.primitive.service.AbstractPrimitiveService;
+import io.atomix.primitive.service.BackupInput;
+import io.atomix.primitive.service.BackupOutput;
+import io.atomix.primitive.service.Commit;
+import io.atomix.primitive.service.ServiceConfig;
+import io.atomix.primitive.service.ServiceExecutor;
+import io.atomix.primitive.session.PrimitiveSession;
 import org.onlab.util.KryoNamespace;
 import org.onlab.util.Match;
 import org.onosproject.store.serializers.KryoNamespaces;
@@ -88,9 +89,10 @@ import static org.onosproject.store.primitives.resources.impl.AtomixConsistentSe
 /**
  * State Machine for {@link AtomixConsistentSetMultimap} resource.
  */
-public class AtomixConsistentSetMultimapService extends AbstractRaftService {
+public class AtomixConsistentSetMultimapService extends AbstractPrimitiveService {
 
-    private final Serializer serializer = Serializer.using(KryoNamespace.newBuilder()
+    private final io.atomix.utils.serializer.Serializer serializer = new AtomixSerializerAdapter(
+        Serializer.using(KryoNamespace.newBuilder()
             .register(KryoNamespaces.BASIC)
             .register(AtomixConsistentSetMultimapOperations.NAMESPACE)
             .register(AtomixConsistentSetMultimapEvents.NAMESPACE)
@@ -111,59 +113,67 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
                     return commit;
                 }
             }, NonTransactionalCommit.class)
-            .build());
+            .build()));
 
     private AtomicLong globalVersion = new AtomicLong(1);
-    private Map<Long, RaftSession> listeners = new LinkedHashMap<>();
+    private Map<Long, PrimitiveSession> listeners = new LinkedHashMap<>();
     private Map<String, MapEntryValue> backingMap = Maps.newHashMap();
 
-    @Override
-    public void snapshot(SnapshotWriter writer) {
-        writer.writeLong(globalVersion.get());
-        writer.writeObject(Sets.newHashSet(listeners.keySet()), serializer::encode);
-        writer.writeObject(backingMap, serializer::encode);
+    public AtomixConsistentSetMultimapService() {
+        super(new ServiceConfig());
     }
 
     @Override
-    public void install(SnapshotReader reader) {
-        globalVersion = new AtomicLong(reader.readLong());
+    public io.atomix.utils.serializer.Serializer serializer() {
+        return serializer;
+    }
+
+    @Override
+    public void backup(BackupOutput output) {
+        output.writeObject(Sets.newHashSet(listeners.keySet()));
+        output.writeObject(backingMap);
+    }
+
+    @Override
+    public void restore(BackupInput input) {
+        globalVersion = new AtomicLong(input.readLong());
 
         listeners = new LinkedHashMap<>();
-        for (Long sessionId : reader.<Set<Long>>readObject(serializer::decode)) {
-            listeners.put(sessionId, sessions().getSession(sessionId));
+        for (Long sessionId : input.<Set<Long>>readObject()) {
+            listeners.put(sessionId, getSession(sessionId));
         }
 
-        backingMap = reader.readObject(serializer::decode);
+        backingMap = input.readObject();
     }
 
     @Override
-    protected void configure(RaftServiceExecutor executor) {
-        executor.register(SIZE, this::size, serializer::encode);
-        executor.register(IS_EMPTY, this::isEmpty, serializer::encode);
-        executor.register(CONTAINS_KEY, serializer::decode, this::containsKey, serializer::encode);
-        executor.register(CONTAINS_VALUE, serializer::decode, this::containsValue, serializer::encode);
-        executor.register(CONTAINS_ENTRY, serializer::decode, this::containsEntry, serializer::encode);
+    protected void configure(ServiceExecutor executor) {
+        executor.register(SIZE, this::size);
+        executor.register(IS_EMPTY, this::isEmpty);
+        executor.register(CONTAINS_KEY, this::containsKey);
+        executor.register(CONTAINS_VALUE, this::containsValue);
+        executor.register(CONTAINS_ENTRY, this::containsEntry);
         executor.register(CLEAR, this::clear);
-        executor.register(KEY_SET, this::keySet, serializer::encode);
-        executor.register(KEYS, this::keys, serializer::encode);
-        executor.register(VALUES, this::values, serializer::encode);
-        executor.register(ENTRIES, this::entries, serializer::encode);
-        executor.register(GET, serializer::decode, this::get, serializer::encode);
-        executor.register(REMOVE_ALL, serializer::decode, this::removeAll, serializer::encode);
-        executor.register(REMOVE, serializer::decode, this::multiRemove, serializer::encode);
-        executor.register(PUT, serializer::decode, this::put, serializer::encode);
-        executor.register(REPLACE, serializer::decode, this::replace, serializer::encode);
+        executor.register(KEY_SET, this::keySet);
+        executor.register(KEYS, this::keys);
+        executor.register(VALUES, this::values);
+        executor.register(ENTRIES, this::entries);
+        executor.register(GET, this::get);
+        executor.register(REMOVE_ALL, this::removeAll);
+        executor.register(REMOVE, this::multiRemove);
+        executor.register(PUT, this::put);
+        executor.register(REPLACE, this::replace);
         executor.register(ADD_LISTENER, this::listen);
         executor.register(REMOVE_LISTENER, this::unlisten);
     }
 
     @Override
-    public void onExpire(RaftSession session) {
+    public void onExpire(PrimitiveSession session) {
         listeners.remove(session.sessionId().id());
     }
 
     @Override
-    public void onClose(RaftSession session) {
+    public void onClose(PrimitiveSession session) {
         listeners.remove(session.sessionId().id());
     }
 
@@ -175,9 +185,9 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
      */
     protected int size(Commit<Void> commit) {
         return backingMap.values()
-                .stream()
-                .map(valueCollection -> valueCollection.values().size())
-                .collect(Collectors.summingInt(size -> size));
+            .stream()
+            .map(valueCollection -> valueCollection.values().size())
+            .collect(Collectors.summingInt(size -> size));
     }
 
     /**
@@ -212,14 +222,14 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
         }
         Match<byte[]> match = Match.ifValue(commit.value().value());
         return backingMap
-                .values()
-                .stream()
-                .anyMatch(valueList ->
-                        valueList
-                                .values()
-                                .stream()
-                                .anyMatch(byteValue ->
-                                        match.matches(byteValue)));
+            .values()
+            .stream()
+            .anyMatch(valueList ->
+                valueList
+                    .values()
+                    .stream()
+                    .anyMatch(byteValue ->
+                        match.matches(byteValue)));
     }
 
     /**
@@ -230,15 +240,15 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
      */
     protected boolean containsEntry(Commit<? extends ContainsEntry> commit) {
         MapEntryValue entryValue =
-                backingMap.get(commit.value().key());
+            backingMap.get(commit.value().key());
         if (entryValue == null) {
             return false;
         } else {
             Match valueMatch = Match.ifValue(commit.value().value());
             return entryValue
-                    .values()
-                    .stream()
-                    .anyMatch(byteValue -> valueMatch.matches(byteValue));
+                .values()
+                .stream()
+                .anyMatch(byteValue -> valueMatch.matches(byteValue));
         }
     }
 
@@ -284,9 +294,9 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
      */
     protected Multiset<byte[]> values(Commit<Void> commit) {
         return backingMap
-                .values()
-                .stream()
-                .collect(new HashMultisetValueCollector());
+            .values()
+            .stream()
+            .collect(new HashMultisetValueCollector());
     }
 
     /**
@@ -297,9 +307,9 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
      */
     protected Collection<Map.Entry<String, byte[]>> entries(Commit<Void> commit) {
         return backingMap
-                .entrySet()
-                .stream()
-                .collect(new EntrySetCollector());
+            .entrySet()
+            .stream()
+            .collect(new EntrySetCollector());
     }
 
     /**
@@ -327,17 +337,18 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
         }
 
         Versioned<Collection<? extends byte[]>> removedValues =
-                backingMap.get(key).addCommit(commit);
+            backingMap.get(key).addCommit(commit);
         publish(removedValues.value().stream()
-                .map(value -> new MultimapEvent<String, byte[]>(
-                        "", key, null, value))
-                .collect(Collectors.toList()));
+            .map(value -> new MultimapEvent<String, byte[]>(
+                "", key, null, value))
+            .collect(Collectors.toList()));
         return removedValues;
     }
 
     /**
      * Handles a multiRemove commit, returns true if the remove results in any
      * change.
+     *
      * @param commit multiRemove commit
      * @return true if any change results, else false
      */
@@ -349,8 +360,8 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
         }
 
         Versioned<Collection<? extends byte[]>> removedValues = backingMap
-                .get(key)
-                .addCommit(commit);
+            .get(key)
+            .addCommit(commit);
 
         if (removedValues != null) {
             if (removedValues.value().isEmpty()) {
@@ -358,9 +369,9 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
             }
 
             publish(removedValues.value().stream()
-                    .map(value -> new MultimapEvent<String, byte[]>(
-                            "", key, null, value))
-                    .collect(Collectors.toList()));
+                .map(value -> new MultimapEvent<String, byte[]>(
+                    "", key, null, value))
+                .collect(Collectors.toList()));
             return true;
         }
 
@@ -370,6 +381,7 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
     /**
      * Handles a put commit, returns true if any change results from this
      * commit.
+     *
      * @param commit a put commit
      * @return true if this commit results in a change, else false
      */
@@ -383,14 +395,14 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
         }
 
         Versioned<Collection<? extends byte[]>> addedValues = backingMap
-                .get(key)
-                .addCommit(commit);
+            .get(key)
+            .addCommit(commit);
 
         if (addedValues != null) {
             publish(addedValues.value().stream()
-                    .map(value -> new MultimapEvent<String, byte[]>(
-                            "", key, value, null))
-                    .collect(Collectors.toList()));
+                .map(value -> new MultimapEvent<String, byte[]>(
+                    "", key, value, null))
+                .collect(Collectors.toList()));
             return true;
         }
 
@@ -398,10 +410,10 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
     }
 
     protected Versioned<Collection<? extends byte[]>> replace(
-            Commit<? extends Replace> commit) {
+        Commit<? extends Replace> commit) {
         if (!backingMap.containsKey(commit.value().key())) {
             backingMap.put(commit.value().key(),
-                    new NonTransactionalCommit());
+                new NonTransactionalCommit());
         }
         return backingMap.get(commit.value().key()).addCommit(commit);
     }
@@ -430,7 +442,7 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
      * @param events list of map event to publish
      */
     private void publish(List<MultimapEvent<String, byte[]>> events) {
-        listeners.values().forEach(session -> session.publish(CHANGE, serializer::encode, events));
+        listeners.values().forEach(session -> session.publish(CHANGE, events));
     }
 
     private interface MapEntryValue {
@@ -459,7 +471,7 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
          * @param commit the commit to be added
          */
         Versioned<Collection<? extends byte[]>> addCommit(
-                Commit<? extends MultimapOperation> commit);
+            Commit<? extends MultimapOperation> commit);
     }
 
     private class NonTransactionalCommit implements MapEntryValue {
@@ -484,7 +496,7 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
 
         @Override
         public Versioned<Collection<? extends byte[]>> addCommit(
-                Commit<? extends MultimapOperation> commit) {
+            Commit<? extends MultimapOperation> commit) {
             Preconditions.checkNotNull(commit);
             Preconditions.checkNotNull(commit.value());
             Versioned<Collection<? extends byte[]>> retVersion;
@@ -492,7 +504,7 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
             if (commit.value() instanceof Put) {
                 //Using a treeset here sanitizes the input, removing duplicates
                 Set<byte[]> valuesToAdd =
-                        Sets.newTreeSet(new ByteArrayComparator());
+                    Sets.newTreeSet(new ByteArrayComparator());
                 ((Put) commit.value()).values().forEach(value -> {
                     if (!valueSet.contains(value)) {
                         valuesToAdd.add(value);
@@ -514,7 +526,7 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
                 retVersion = new Versioned<>(removedValues, version);
                 valueSet.clear();
                 Set<byte[]> valuesToAdd =
-                        Sets.newTreeSet(new ByteArrayComparator());
+                    Sets.newTreeSet(new ByteArrayComparator());
                 ((Replace) commit.value()).values().forEach(value -> {
                     valuesToAdd.add(value);
                 });
@@ -585,9 +597,9 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
      * which they participate.
      */
     private class HashMultisetValueCollector implements
-            Collector<MapEntryValue,
-                    HashMultiset<byte[]>,
-                    HashMultiset<byte[]>> {
+        Collector<MapEntryValue,
+            HashMultiset<byte[]>,
+            HashMultiset<byte[]>> {
 
         @Override
         public Supplier<HashMultiset<byte[]>> supplier() {
@@ -597,7 +609,7 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
         @Override
         public BiConsumer<HashMultiset<byte[]>, MapEntryValue> accumulator() {
             return (multiset, mapEntryValue) ->
-                    multiset.addAll(mapEntryValue.values());
+                multiset.addAll(mapEntryValue.values());
         }
 
         @Override
@@ -610,7 +622,7 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
 
         @Override
         public Function<HashMultiset<byte[]>,
-                HashMultiset<byte[]>> finisher() {
+            HashMultiset<byte[]>> finisher() {
             return Function.identity();
         }
 
@@ -625,9 +637,9 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
      * creates a set of entries all key value pairs in the map.
      */
     private class EntrySetCollector implements
-            Collector<Map.Entry<String, MapEntryValue>,
-                    Set<Map.Entry<String, byte[]>>,
-                    Set<Map.Entry<String, byte[]>>> {
+        Collector<Map.Entry<String, MapEntryValue>,
+            Set<Map.Entry<String, byte[]>>,
+            Set<Map.Entry<String, byte[]>>> {
         private Set<Map.Entry<String, byte[]>> set = null;
 
         @Override
@@ -642,14 +654,14 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
 
         @Override
         public BiConsumer<Set<Map.Entry<String, byte[]>>,
-                Map.Entry<String, MapEntryValue>> accumulator() {
+            Map.Entry<String, MapEntryValue>> accumulator() {
             return (set, entry) -> {
                 entry
-                        .getValue()
-                        .values()
-                        .forEach(byteValue ->
-                                set.add(Maps.immutableEntry(entry.getKey(),
-                                        byteValue)));
+                    .getValue()
+                    .values()
+                    .forEach(byteValue ->
+                        set.add(Maps.immutableEntry(entry.getKey(),
+                            byteValue)));
             };
         }
 
@@ -663,7 +675,7 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
 
         @Override
         public Function<Set<Map.Entry<String, byte[]>>,
-                Set<Map.Entry<String, byte[]>>> finisher() {
+            Set<Map.Entry<String, byte[]>>> finisher() {
             return (unused) -> set;
         }
 
@@ -672,17 +684,19 @@ public class AtomixConsistentSetMultimapService extends AbstractRaftService {
             return EnumSet.of(Characteristics.UNORDERED);
         }
     }
+
     /**
      * Utility for turning a {@code MapEntryValue} to {@code Versioned}.
+     *
      * @param value map entry value
      * @return versioned instance or an empty list versioned -1 if argument is
      * null
      */
     private Versioned<Collection<? extends byte[]>> toVersioned(
-            MapEntryValue value) {
+        MapEntryValue value) {
         return value == null ? new Versioned<>(Lists.newArrayList(), -1) :
-                new Versioned<>(value.values(),
-                        value.version());
+            new Versioned<>(value.values(),
+                value.version());
     }
 
     private static class ByteArrayComparator implements Comparator<byte[]> {

@@ -27,7 +27,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import com.google.common.collect.ImmutableList;
-import io.atomix.protocols.raft.proxy.RaftProxy;
+import io.atomix.primitive.proxy.PartitionProxy;
+import io.atomix.primitive.proxy.PrimitiveProxy;
 import org.onlab.util.AbstractAccumulator;
 import org.onlab.util.Accumulator;
 import org.onlab.util.KryoNamespace;
@@ -69,21 +70,21 @@ public class AtomixWorkQueue extends AbstractRaftPrimitive implements WorkQueue<
     private final Timer timer = new Timer("atomix-work-queue-completer");
     private final AtomicBoolean isRegistered = new AtomicBoolean(false);
 
-    public AtomixWorkQueue(RaftProxy proxy) {
+    public AtomixWorkQueue(PartitionProxy proxy) {
         super(proxy);
         proxy.addStateChangeListener(state -> {
-            if (state == RaftProxy.State.CONNECTED && isRegistered.get()) {
-                proxy.invoke(REGISTER);
+            if (state == PrimitiveProxy.State.CONNECTED && isRegistered.get()) {
+                invoke(REGISTER);
             }
         });
-        proxy.addEventListener(TASK_AVAILABLE, this::resumeWork);
+        proxy.addEventListener(TASK_AVAILABLE, event -> resumeWork());
     }
 
     @Override
     public CompletableFuture<Void> destroy() {
         executor.shutdown();
         timer.cancel();
-        return proxy.invoke(CLEAR);
+        return invoke(CLEAR);
     }
 
     @Override
@@ -91,7 +92,7 @@ public class AtomixWorkQueue extends AbstractRaftPrimitive implements WorkQueue<
         if (items.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
-        return proxy.invoke(ADD, SERIALIZER::encode, new Add(items));
+        return invoke(ADD, SERIALIZER::encode, new Add(items));
     }
 
     @Override
@@ -99,7 +100,7 @@ public class AtomixWorkQueue extends AbstractRaftPrimitive implements WorkQueue<
         if (maxTasks <= 0) {
             return CompletableFuture.completedFuture(ImmutableList.of());
         }
-        return proxy.invoke(TAKE, SERIALIZER::encode, new Take(maxTasks), SERIALIZER::decode);
+        return invoke(TAKE, SERIALIZER::encode, new Take(maxTasks), SERIALIZER::decode);
     }
 
     @Override
@@ -107,7 +108,7 @@ public class AtomixWorkQueue extends AbstractRaftPrimitive implements WorkQueue<
         if (taskIds.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
-        return proxy.invoke(COMPLETE, SERIALIZER::encode, new Complete(taskIds));
+        return invoke(COMPLETE, SERIALIZER::encode, new Complete(taskIds));
     }
 
     @Override
@@ -131,7 +132,7 @@ public class AtomixWorkQueue extends AbstractRaftPrimitive implements WorkQueue<
 
     @Override
     public CompletableFuture<WorkQueueStats> stats() {
-        return proxy.invoke(STATS, SERIALIZER::decode);
+        return invoke(STATS, SERIALIZER::decode);
     }
 
     private void resumeWork() {
@@ -144,11 +145,11 @@ public class AtomixWorkQueue extends AbstractRaftPrimitive implements WorkQueue<
     }
 
     private CompletableFuture<Void> register() {
-        return proxy.invoke(REGISTER).thenRun(() -> isRegistered.set(true));
+        return invoke(REGISTER).thenRun(() -> isRegistered.set(true));
     }
 
     private CompletableFuture<Void> unregister() {
-        return proxy.invoke(UNREGISTER).thenRun(() -> isRegistered.set(false));
+        return invoke(UNREGISTER).thenRun(() -> isRegistered.set(false));
     }
 
     // TaskId accumulator for paced triggering of task completion calls.

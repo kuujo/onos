@@ -17,25 +17,21 @@ package org.onosproject.store.primitives.resources.impl;
 
 import java.util.concurrent.atomic.AtomicLong;
 
+import io.atomix.cluster.MemberId;
+import io.atomix.primitive.PrimitiveId;
+import io.atomix.primitive.operation.OperationType;
+import io.atomix.primitive.service.impl.DefaultBackupInput;
+import io.atomix.primitive.service.impl.DefaultBackupOutput;
+import io.atomix.primitive.service.impl.DefaultCommit;
+import io.atomix.primitive.session.SessionId;
 import io.atomix.protocols.raft.ReadConsistency;
-import io.atomix.protocols.raft.cluster.MemberId;
 import io.atomix.protocols.raft.impl.RaftContext;
 import io.atomix.protocols.raft.impl.RaftServiceManager;
-import io.atomix.protocols.raft.operation.OperationType;
 import io.atomix.protocols.raft.protocol.RaftServerProtocol;
-import io.atomix.protocols.raft.service.ServiceId;
-import io.atomix.protocols.raft.service.ServiceType;
-import io.atomix.protocols.raft.service.impl.DefaultCommit;
-import io.atomix.protocols.raft.service.impl.DefaultServiceContext;
-import io.atomix.protocols.raft.session.SessionId;
-import io.atomix.protocols.raft.session.impl.RaftSessionContext;
-import io.atomix.protocols.raft.storage.RaftStorage;
-import io.atomix.protocols.raft.storage.snapshot.Snapshot;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotReader;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotStore;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotWriter;
-import io.atomix.storage.StorageLevel;
-import io.atomix.time.WallClockTimestamp;
+import io.atomix.protocols.raft.service.RaftServiceContext;
+import io.atomix.protocols.raft.session.RaftSession;
+import io.atomix.storage.buffer.Buffer;
+import io.atomix.storage.buffer.HeapBuffer;
 import io.atomix.utils.concurrent.AtomixThreadFactory;
 import io.atomix.utils.concurrent.SingleThreadContextFactory;
 import io.atomix.utils.concurrent.ThreadContext;
@@ -44,7 +40,7 @@ import org.junit.Test;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.mock;
 import static org.easymock.EasyMock.replay;
-import static org.onosproject.store.service.DistributedPrimitive.Type.LEADER_ELECTOR;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.LOCK;
 
 /**
  * Distributed lock service test.
@@ -52,20 +48,13 @@ import static org.onosproject.store.service.DistributedPrimitive.Type.LEADER_ELE
 public class AtomixDistributedLockServiceTest {
     @Test
     public void testSnapshot() throws Exception {
-        SnapshotStore store = new SnapshotStore(RaftStorage.newBuilder()
-            .withPrefix("test")
-            .withStorageLevel(StorageLevel.MEMORY)
-            .build());
-        Snapshot snapshot = store.newSnapshot(2, new WallClockTimestamp());
-
         AtomicLong index = new AtomicLong();
-        DefaultServiceContext context = mock(DefaultServiceContext.class);
-        expect(context.serviceType()).andReturn(ServiceType.from(LEADER_ELECTOR.name())).anyTimes();
+        RaftServiceContext context = mock(RaftServiceContext.class);
+        expect(context.serviceType()).andReturn(LOCK).anyTimes();
         expect(context.serviceName()).andReturn("test").anyTimes();
-        expect(context.serviceId()).andReturn(ServiceId.from(1)).anyTimes();
+        expect(context.serviceId()).andReturn(PrimitiveId.from(1)).anyTimes();
         expect(context.currentIndex()).andReturn(index.get()).anyTimes();
         expect(context.currentOperation()).andReturn(OperationType.COMMAND).anyTimes();
-        expect(context.locked()).andReturn(false).anyTimes();
 
         RaftContext server = mock(RaftContext.class);
         expect(server.getProtocol()).andReturn(mock(RaftServerProtocol.class)).anyTimes();
@@ -78,15 +67,16 @@ public class AtomixDistributedLockServiceTest {
         AtomixDistributedLockService service = new AtomixDistributedLockService();
         service.init(context);
 
-        RaftSessionContext session = new RaftSessionContext(
+        RaftSession session = new RaftSession(
             SessionId.from(1),
             MemberId.from("1"),
             "test",
-            ServiceType.from(LEADER_ELECTOR.name()),
+            LOCK,
             ReadConsistency.LINEARIZABLE,
             100,
             5000,
             System.currentTimeMillis(),
+            service.serializer(),
             context,
             server,
             new SingleThreadContextFactory(new AtomixThreadFactory()));
@@ -99,16 +89,11 @@ public class AtomixDistributedLockServiceTest {
             session,
             System.currentTimeMillis()));
 
-        try (SnapshotWriter writer = snapshot.openWriter()) {
-            service.snapshot(writer);
-        }
-
-        snapshot.complete();
+        Buffer buffer = HeapBuffer.allocate();
+        service.backup(new DefaultBackupOutput(buffer, service.serializer()));
 
         service = new AtomixDistributedLockService();
-        try (SnapshotReader reader = snapshot.openReader()) {
-            service.install(reader);
-        }
+        service.restore(new DefaultBackupInput(buffer.flip(), service.serializer()));
 
         service.unlock(new DefaultCommit<>(
             index.incrementAndGet(),

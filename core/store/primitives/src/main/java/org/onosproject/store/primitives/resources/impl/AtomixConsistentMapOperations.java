@@ -15,9 +15,9 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import io.atomix.protocols.raft.operation.OperationId;
-import io.atomix.protocols.raft.operation.OperationType;
-import io.atomix.utils.ArraySizeHashPrinter;
+import io.atomix.primitive.operation.OperationId;
+import io.atomix.primitive.operation.OperationType;
+import org.onlab.util.ByteArraySizeHashPrinter;
 import org.onlab.util.KryoNamespace;
 import org.onlab.util.Match;
 import org.onosproject.store.primitives.MapUpdate;
@@ -208,7 +208,7 @@ public enum AtomixConsistentMapOperations implements OperationId {
         public String toString() {
             return toStringHelper(getClass())
                     .add("key", key)
-                    .add("value", ArraySizeHashPrinter.of(value))
+                    .add("value", ByteArraySizeHashPrinter.of(value))
                     .toString();
         }
     }
@@ -359,8 +359,8 @@ public enum AtomixConsistentMapOperations implements OperationId {
         public String toString() {
             return toStringHelper(this)
                     .add("key", key)
-                    .add("oldValue", ArraySizeHashPrinter.of(oldValue))
-                    .add("newValue", ArraySizeHashPrinter.of(newValue))
+                    .add("oldValue", ByteArraySizeHashPrinter.of(oldValue))
+                    .add("newValue", ByteArraySizeHashPrinter.of(newValue))
                     .toString();
         }
     }
@@ -394,7 +394,7 @@ public enum AtomixConsistentMapOperations implements OperationId {
             return toStringHelper(this)
                     .add("key", key)
                     .add("oldVersion", oldVersion)
-                    .add("newValue", ArraySizeHashPrinter.of(newValue))
+                    .add("newValue", ByteArraySizeHashPrinter.of(newValue))
                     .toString();
         }
     }
@@ -557,7 +557,7 @@ public enum AtomixConsistentMapOperations implements OperationId {
         public String toString() {
             return toStringHelper(this)
                     .add("key", key)
-                    .add("defaultValue", ArraySizeHashPrinter.of(defaultValue))
+                    .add("defaultValue", ByteArraySizeHashPrinter.of(defaultValue))
                     .toString();
         }
     }

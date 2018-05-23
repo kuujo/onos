@@ -24,7 +24,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
 import com.google.common.util.concurrent.MoreExecutors;
-import io.atomix.protocols.raft.proxy.RaftProxy;
+import io.atomix.primitive.proxy.PartitionProxy;
 import org.onlab.util.KryoNamespace;
 import org.onlab.util.Match;
 import org.onlab.util.Tools;
@@ -33,13 +33,13 @@ import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.Get;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.GetChildren;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.Listen;
-import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.Unlisten;
-import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.Update;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.TransactionBegin;
+import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.TransactionCommit;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.TransactionPrepare;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.TransactionPrepareAndCommit;
-import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.TransactionCommit;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.TransactionRollback;
+import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.Unlisten;
+import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.Update;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.AsyncDocumentTree;
 import org.onosproject.store.service.DocumentPath;
@@ -54,17 +54,17 @@ import org.onosproject.store.service.Versioned;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeEvents.CHANGE;
+import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.ADD_LISTENER;
 import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.BEGIN;
-import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.PREPARE;
-import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.PREPARE_AND_COMMIT;
-import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.COMMIT;
-import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.ROLLBACK;
 import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.CLEAR;
+import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.COMMIT;
 import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.GET;
 import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.GET_CHILDREN;
-import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.UPDATE;
-import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.ADD_LISTENER;
+import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.PREPARE;
+import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.PREPARE_AND_COMMIT;
 import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.REMOVE_LISTENER;
+import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.ROLLBACK;
+import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.UPDATE;
 import static org.onosproject.store.primitives.resources.impl.DocumentTreeResult.Status.ILLEGAL_MODIFICATION;
 import static org.onosproject.store.primitives.resources.impl.DocumentTreeResult.Status.INVALID_PATH;
 import static org.onosproject.store.primitives.resources.impl.DocumentTreeResult.Status.OK;
@@ -81,14 +81,14 @@ public class AtomixDocumentTree extends AbstractRaftPrimitive implements AsyncDo
 
     private final Map<DocumentTreeListener<byte[]>, InternalListener> eventListeners = new HashMap<>();
 
-    public AtomixDocumentTree(RaftProxy proxy) {
+    public AtomixDocumentTree(PartitionProxy proxy) {
         super(proxy);
         proxy.addStateChangeListener(state -> {
-            if (state == RaftProxy.State.CONNECTED && isListening()) {
-                proxy.invoke(ADD_LISTENER, SERIALIZER::encode, new Listen());
+            if (state == PartitionProxy.State.CONNECTED && isListening()) {
+                invoke(ADD_LISTENER, SERIALIZER::encode, new Listen());
             }
         });
-        proxy.addEventListener(CHANGE, SERIALIZER::decode, this::processTreeUpdates);
+        proxy.addEventListener(CHANGE, event -> processTreeUpdates(SERIALIZER.decode(event.value())));
     }
 
     @Override
@@ -98,7 +98,7 @@ public class AtomixDocumentTree extends AbstractRaftPrimitive implements AsyncDo
 
     @Override
     public CompletableFuture<Void> destroy() {
-        return proxy.invoke(CLEAR);
+        return invoke(CLEAR);
     }
 
     @Override
@@ -108,7 +108,7 @@ public class AtomixDocumentTree extends AbstractRaftPrimitive implements AsyncDo
 
     @Override
     public CompletableFuture<Map<String, Versioned<byte[]>>> getChildren(DocumentPath path) {
-        return proxy.<GetChildren, DocumentTreeResult<Map<String, Versioned<byte[]>>>>invoke(
+        return this.<GetChildren, DocumentTreeResult<Map<String, Versioned<byte[]>>>>invoke(
                 GET_CHILDREN,
                 SERIALIZER::encode,
                 new GetChildren(checkNotNull(path)),
@@ -126,12 +126,12 @@ public class AtomixDocumentTree extends AbstractRaftPrimitive implements AsyncDo
 
     @Override
     public CompletableFuture<Versioned<byte[]>> get(DocumentPath path) {
-        return proxy.invoke(GET, SERIALIZER::encode, new Get(checkNotNull(path)), SERIALIZER::decode);
+        return invoke(GET, SERIALIZER::encode, new Get(checkNotNull(path)), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Versioned<byte[]>> set(DocumentPath path, byte[] value) {
-        return proxy.<Update, DocumentTreeResult<Versioned<byte[]>>>invoke(UPDATE,
+        return this.<Update, DocumentTreeResult<Versioned<byte[]>>>invoke(UPDATE,
                 SERIALIZER::encode,
                 new Update(checkNotNull(path), Optional.ofNullable(value), Match.any(), Match.any()),
                 SERIALIZER::decode)
@@ -171,7 +171,7 @@ public class AtomixDocumentTree extends AbstractRaftPrimitive implements AsyncDo
 
     @Override
     public CompletableFuture<Boolean> replace(DocumentPath path, byte[] newValue, long version) {
-        return proxy.<Update, DocumentTreeResult<byte[]>>invoke(UPDATE,
+        return this.<Update, DocumentTreeResult<byte[]>>invoke(UPDATE,
                 SERIALIZER::encode,
                 new Update(checkNotNull(path),
                         Optional.ofNullable(newValue),
@@ -182,7 +182,7 @@ public class AtomixDocumentTree extends AbstractRaftPrimitive implements AsyncDo
 
     @Override
     public CompletableFuture<Boolean> replace(DocumentPath path, byte[] newValue, byte[] currentValue) {
-        return proxy.<Update, DocumentTreeResult<byte[]>>invoke(UPDATE,
+        return this.<Update, DocumentTreeResult<byte[]>>invoke(UPDATE,
                 SERIALIZER::encode,
                 new Update(checkNotNull(path),
                         Optional.ofNullable(newValue),
@@ -205,7 +205,7 @@ public class AtomixDocumentTree extends AbstractRaftPrimitive implements AsyncDo
         if (path.equals(DocumentPath.from("root"))) {
             return Tools.exceptionalFuture(new IllegalDocumentModificationException());
         }
-        return proxy.<Update, DocumentTreeResult<Versioned<byte[]>>>invoke(UPDATE,
+        return this.<Update, DocumentTreeResult<Versioned<byte[]>>>invoke(UPDATE,
                 SERIALIZER::encode,
                 new Update(checkNotNull(path), null, Match.any(), Match.ifNotNull()),
                 SERIALIZER::decode)
@@ -227,7 +227,7 @@ public class AtomixDocumentTree extends AbstractRaftPrimitive implements AsyncDo
         InternalListener internalListener = new InternalListener(path, listener, MoreExecutors.directExecutor());
         // TODO: Support API that takes an executor
         if (!eventListeners.containsKey(listener)) {
-            return proxy.invoke(ADD_LISTENER, SERIALIZER::encode, new Listen(path))
+            return invoke(ADD_LISTENER, SERIALIZER::encode, new Listen(path))
                     .thenRun(() -> eventListeners.put(listener, internalListener));
         }
         return CompletableFuture.completedFuture(null);
@@ -238,14 +238,14 @@ public class AtomixDocumentTree extends AbstractRaftPrimitive implements AsyncDo
         checkNotNull(listener);
         InternalListener internalListener = eventListeners.remove(listener);
         if  (internalListener != null && eventListeners.isEmpty()) {
-            return proxy.invoke(REMOVE_LISTENER, SERIALIZER::encode, new Unlisten(internalListener.path))
+            return invoke(REMOVE_LISTENER, SERIALIZER::encode, new Unlisten(internalListener.path))
                     .thenApply(v -> null);
         }
         return CompletableFuture.completedFuture(null);
     }
 
     private CompletableFuture<DocumentTreeResult.Status> createInternal(DocumentPath path, byte[] value) {
-        return proxy.<Update, DocumentTreeResult<byte[]>>invoke(UPDATE,
+        return this.<Update, DocumentTreeResult<byte[]>>invoke(UPDATE,
                 SERIALIZER::encode,
                 new Update(checkNotNull(path), Optional.ofNullable(value), Match.any(), Match.ifNull()),
                 SERIALIZER::decode)
@@ -262,7 +262,7 @@ public class AtomixDocumentTree extends AbstractRaftPrimitive implements AsyncDo
 
     @Override
     public CompletableFuture<Version> begin(TransactionId transactionId) {
-        return proxy.<TransactionBegin, Long>invoke(
+        return this.<TransactionBegin, Long>invoke(
                 BEGIN,
                 SERIALIZER::encode,
                 new TransactionBegin(transactionId),
@@ -272,7 +272,7 @@ public class AtomixDocumentTree extends AbstractRaftPrimitive implements AsyncDo
 
     @Override
     public CompletableFuture<Boolean> prepare(TransactionLog<NodeUpdate<byte[]>> transactionLog) {
-        return proxy.<TransactionPrepare, PrepareResult>invoke(
+        return this.<TransactionPrepare, PrepareResult>invoke(
                 PREPARE,
                 SERIALIZER::encode,
                 new TransactionPrepare(transactionLog),
@@ -282,7 +282,7 @@ public class AtomixDocumentTree extends AbstractRaftPrimitive implements AsyncDo
 
     @Override
     public CompletableFuture<Boolean> prepareAndCommit(TransactionLog<NodeUpdate<byte[]>> transactionLog) {
-        return proxy.<TransactionPrepareAndCommit, PrepareResult>invoke(
+        return this.<TransactionPrepareAndCommit, PrepareResult>invoke(
                 PREPARE_AND_COMMIT,
                 SERIALIZER::encode,
                 new TransactionPrepareAndCommit(transactionLog),
@@ -292,7 +292,7 @@ public class AtomixDocumentTree extends AbstractRaftPrimitive implements AsyncDo
 
     @Override
     public CompletableFuture<Void> commit(TransactionId transactionId) {
-        return proxy.<TransactionCommit, CommitResult>invoke(
+        return this.<TransactionCommit, CommitResult>invoke(
                 COMMIT,
                 SERIALIZER::encode,
                 new TransactionCommit(transactionId),
@@ -302,7 +302,7 @@ public class AtomixDocumentTree extends AbstractRaftPrimitive implements AsyncDo
 
     @Override
     public CompletableFuture<Void> rollback(TransactionId transactionId) {
-        return proxy.invoke(
+        return invoke(
                 ROLLBACK,
                 SERIALIZER::encode,
                 new TransactionRollback(transactionId),

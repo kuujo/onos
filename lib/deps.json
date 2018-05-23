@@ -109,6 +109,14 @@
       "asm",
       "minlog",
       "objenesis"
+    ],
+    "ATOMIX": [
+      "atomix",
+      "atomix-cluster",
+      "atomix-storage",
+      "atomix-primitive",
+      "atomix-raft",
+      "atomix-utils"
     ]
   },
 
@@ -116,7 +124,13 @@
     "aopalliance-repackaged": "mvn:org.glassfish.hk2.external:aopalliance-repackaged:2.5.0-b42",
     "amqp-client": "mvn:com.rabbitmq:amqp-client:jar:3.6.1",
     "asm": "mvn:org.ow2.asm:asm:5.0.4",
-    "atomix": "mvn:io.atomix:atomix:2.0.20",
+    "atomix": "mvn:io.atomix:atomix:2.1.0-rc1",
+    "atomix-cluster": "mvn:io.atomix:atomix-cluster:2.1.0-rc1",
+    "atomix-cluster": "mvn:io.atomix:atomix-messaging:2.1.0-rc1",
+    "atomix-storage": "mvn:io.atomix:atomix-storage:2.1.0-rc1",
+    "atomix-primitive": "mvn:io.atomix:atomix-primitive:2.1.0-rc1",
+    "atomix-raft": "mvn:io.atomix:atomix-raft:2.1.0-rc1",
+    "atomix-utils": "mvn:io.atomix:atomix-utils:2.1.0-rc1",
     "commons-codec": "mvn:commons-codec:commons-codec:1.10",
     "commons-collections": "mvn:commons-collections:commons-collections:3.2.2",
     "commons-configuration": "mvn:commons-configuration:commons-configuration:1.10",
@@ -125,7 +139,7 @@
     "commons-beanutils": "mvn:commons-beanutils:commons-beanutils:1.9.3",
     "jdom": "mvn:jdom:jdom:1.0",
     "commons-lang": "mvn:commons-lang:commons-lang:2.6",
-    "commons-lang3": "mvn:org.apache.commons:commons-lang3:3.6",
+    "commons-lang3": "mvn:org.apache.commons:commons-lang3:3.7",
     "commons-logging": "mvn:commons-logging:commons-logging:1.2",
     "commons-math3": "mvn:org.apache.commons:commons-math3:3.6.1",
     "commons-pool": "mvn:commons-pool:commons-pool:1.6",

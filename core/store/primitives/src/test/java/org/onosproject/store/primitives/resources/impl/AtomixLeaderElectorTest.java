@@ -20,8 +20,8 @@ import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
-import io.atomix.protocols.raft.proxy.RaftProxy;
-import io.atomix.protocols.raft.service.RaftService;
+import io.atomix.primitive.PrimitiveType;
+import io.atomix.primitive.proxy.PartitionProxy;
 import org.junit.Test;
 import org.onosproject.cluster.Leadership;
 import org.onosproject.cluster.NodeId;
@@ -30,6 +30,7 @@ import org.onosproject.event.Change;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.LEADER_ELECTOR;
 
 /**
  * Unit tests for {@link AtomixLeaderElector}.
@@ -41,12 +42,12 @@ public class AtomixLeaderElectorTest extends AtomixTestBase<AtomixLeaderElector>
     NodeId node3 = new NodeId("node3");
 
     @Override
-    protected RaftService createService() {
-        return new AtomixLeaderElectorService();
+    protected PrimitiveType primitiveType() {
+        return LEADER_ELECTOR;
     }
 
     @Override
-    protected AtomixLeaderElector createPrimitive(RaftProxy proxy) {
+    protected AtomixLeaderElector createPrimitive(PartitionProxy proxy) {
         return new AtomixLeaderElector(proxy);
     }
 

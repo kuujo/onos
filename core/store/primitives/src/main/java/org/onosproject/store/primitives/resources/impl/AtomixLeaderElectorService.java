@@ -33,12 +33,13 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import io.atomix.protocols.raft.service.AbstractRaftService;
-import io.atomix.protocols.raft.service.Commit;
-import io.atomix.protocols.raft.service.RaftServiceExecutor;
-import io.atomix.protocols.raft.session.RaftSession;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotReader;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotWriter;
+import io.atomix.primitive.service.AbstractPrimitiveService;
+import io.atomix.primitive.service.BackupInput;
+import io.atomix.primitive.service.BackupOutput;
+import io.atomix.primitive.service.Commit;
+import io.atomix.primitive.service.ServiceConfig;
+import io.atomix.primitive.service.ServiceExecutor;
+import io.atomix.primitive.session.PrimitiveSession;
 import org.onlab.util.KryoNamespace;
 import org.onosproject.cluster.Leader;
 import org.onosproject.cluster.Leadership;
@@ -68,54 +69,64 @@ import static org.onosproject.store.primitives.resources.impl.AtomixLeaderElecto
 /**
  * State machine for {@link AtomixLeaderElector} resource.
  */
-public class AtomixLeaderElectorService extends AbstractRaftService {
+public class AtomixLeaderElectorService extends AbstractPrimitiveService {
 
-    private static final Serializer SERIALIZER = Serializer.using(KryoNamespace.newBuilder()
+    private static final io.atomix.utils.serializer.Serializer SERIALIZER = new AtomixSerializerAdapter(
+        Serializer.using(KryoNamespace.newBuilder()
             .register(AtomixLeaderElectorOperations.NAMESPACE)
             .register(AtomixLeaderElectorEvents.NAMESPACE)
             .register(ElectionState.class)
             .register(Registration.class)
             .register(new LinkedHashMap<>().keySet().getClass())
-            .build());
+            .build()));
 
     private Map<String, AtomicLong> termCounters = new HashMap<>();
     private Map<String, ElectionState> elections = new HashMap<>();
-    private Map<Long, RaftSession> listeners = new LinkedHashMap<>();
+    private Map<Long, PrimitiveSession> listeners = new LinkedHashMap<>();
 
-    @Override
-    public void snapshot(SnapshotWriter writer) {
-        writer.writeObject(Sets.newHashSet(listeners.keySet()), SERIALIZER::encode);
-        writer.writeObject(termCounters, SERIALIZER::encode);
-        writer.writeObject(elections, SERIALIZER::encode);
-        logger().debug("Took state machine snapshot");
+    public AtomixLeaderElectorService() {
+        super(new ServiceConfig());
     }
 
     @Override
-    public void install(SnapshotReader reader) {
+    public io.atomix.utils.serializer.Serializer serializer() {
+        return SERIALIZER;
+    }
+
+    @Override
+    public void backup(BackupOutput output) {
+        output.writeObject(Sets.newHashSet(listeners.keySet()), SERIALIZER::encode);
+        output.writeObject(termCounters, SERIALIZER::encode);
+        output.writeObject(elections, SERIALIZER::encode);
+        getLogger().debug("Took state machine snapshot");
+    }
+
+    @Override
+    public void restore(BackupInput input) {
         listeners = new LinkedHashMap<>();
-        for (Long sessionId : reader.<Set<Long>>readObject(SERIALIZER::decode)) {
-            listeners.put(sessionId, sessions().getSession(sessionId));
+        for (Long sessionId : input.<Set<Long>>readObject()) {
+            listeners.put(sessionId, getSession(sessionId));
         }
-        termCounters = reader.readObject(SERIALIZER::decode);
-        elections = reader.readObject(SERIALIZER::decode);
-        logger().debug("Reinstated state machine from snapshot");
+        termCounters = input.readObject();
+        elections = input.readObject();
+        getLogger().debug("Reinstated state machine from snapshot");
     }
 
     @Override
-    protected void configure(RaftServiceExecutor executor) {
+    protected void configure(ServiceExecutor executor) {
         // Notification
         executor.register(ADD_LISTENER, this::listen);
         executor.register(REMOVE_LISTENER, this::unlisten);
         // Commands
-        executor.register(RUN, SERIALIZER::decode, this::run, SERIALIZER::encode);
-        executor.register(WITHDRAW, SERIALIZER::decode, this::withdraw);
-        executor.register(ANOINT, SERIALIZER::decode, this::anoint, SERIALIZER::encode);
-        executor.register(PROMOTE, SERIALIZER::decode, this::promote, SERIALIZER::encode);
-        executor.register(EVICT, SERIALIZER::decode, this::evict);
+        executor.register(RUN, this::run);
+        executor.register(WITHDRAW, this::withdraw);
+        executor.register(ANOINT, this::anoint);
+        executor.register(PROMOTE, this::promote);
+        executor.register(EVICT, this::evict);
         // Queries
-        executor.register(GET_LEADERSHIP, SERIALIZER::decode, this::getLeadership, SERIALIZER::encode);
-        executor.register(GET_ALL_LEADERSHIPS, this::allLeaderships, SERIALIZER::encode);
-        executor.register(GET_ELECTED_TOPICS, SERIALIZER::decode, this::electedTopics, SERIALIZER::encode);
+        executor.register(GET_LEADERSHIP, this::getLeadership);
+        executor.register(GET_ALL_LEADERSHIPS, this::allLeaderships);
+        executor.register(GET_ELECTED_TOPICS, this::electedTopics);
     }
 
     private void notifyLeadershipChange(Leadership previousLeadership, Leadership newLeadership) {
@@ -126,7 +137,7 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
         if (changes.isEmpty()) {
             return;
         }
-        listeners.values().forEach(session -> session.publish(CHANGE, SERIALIZER::encode, changes));
+        listeners.values().forEach(session -> session.publish(CHANGE, changes));
     }
 
     /**
@@ -149,6 +160,7 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
 
     /**
      * Applies an {@link AtomixLeaderElectorOperations.Run} commit.
+     *
      * @param commit commit entry
      * @return topic leader. If no previous leader existed this is the node that just entered the race.
      */
@@ -175,13 +187,14 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
             }
             return newLeadership;
         } catch (Exception e) {
-            logger().error("State machine operation failed", e);
+            getLogger().error("State machine operation failed", e);
             throw new IllegalStateException(e);
         }
     }
 
     /**
      * Applies an {@link AtomixLeaderElectorOperations.Withdraw} commit.
+     *
      * @param commit withdraw commit
      */
     public void withdraw(Commit<? extends Withdraw> commit) {
@@ -189,19 +202,20 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
             String topic = commit.value().topic();
             Leadership oldLeadership = leadership(topic);
             elections.computeIfPresent(topic, (k, v) -> v.cleanup(commit.session(),
-                    termCounter(topic)::incrementAndGet));
+                termCounter(topic)::incrementAndGet));
             Leadership newLeadership = leadership(topic);
             if (!Objects.equal(oldLeadership, newLeadership)) {
                 notifyLeadershipChange(oldLeadership, newLeadership);
             }
         } catch (Exception e) {
-            logger().error("State machine operation failed", e);
+            getLogger().error("State machine operation failed", e);
             throw new IllegalStateException(e);
         }
     }
 
     /**
      * Applies an {@link AtomixLeaderElectorOperations.Anoint} commit.
+     *
      * @param commit anoint commit
      * @return {@code true} if changes were made and the transfer occurred; {@code false} if it did not.
      */
@@ -211,22 +225,23 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
             NodeId nodeId = commit.value().nodeId();
             Leadership oldLeadership = leadership(topic);
             ElectionState electionState = elections.computeIfPresent(topic,
-                    (k, v) -> v.transferLeadership(nodeId, termCounter(topic)));
+                (k, v) -> v.transferLeadership(nodeId, termCounter(topic)));
             Leadership newLeadership = leadership(topic);
             if (!Objects.equal(oldLeadership, newLeadership)) {
                 notifyLeadershipChange(oldLeadership, newLeadership);
             }
             return (electionState != null &&
-                    electionState.leader() != null &&
-                    commit.value().nodeId().equals(electionState.leader().nodeId()));
+                electionState.leader() != null &&
+                commit.value().nodeId().equals(electionState.leader().nodeId()));
         } catch (Exception e) {
-            logger().error("State machine operation failed", e);
+            getLogger().error("State machine operation failed", e);
             throw new IllegalStateException(e);
         }
     }
 
     /**
      * Applies an {@link AtomixLeaderElectorOperations.Promote} commit.
+     *
      * @param commit promote commit
      * @return {@code true} if changes desired end state is achieved.
      */
@@ -245,13 +260,14 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
             }
             return true;
         } catch (Exception e) {
-            logger().error("State machine operation failed", e);
+            getLogger().error("State machine operation failed", e);
             throw new IllegalStateException(e);
         }
     }
 
     /**
      * Applies an {@link AtomixLeaderElectorOperations.Evict} commit.
+     *
      * @param commit evict commit
      */
     public void evict(Commit<? extends Evict> commit) {
@@ -269,13 +285,14 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
             });
             notifyLeadershipChanges(changes);
         } catch (Exception e) {
-            logger().error("State machine operation failed", e);
+            getLogger().error("State machine operation failed", e);
             throw new IllegalStateException(e);
         }
     }
 
     /**
      * Applies an {@link AtomixLeaderElectorOperations.GetLeadership} commit.
+     *
      * @param commit GetLeadership commit
      * @return leader
      */
@@ -284,13 +301,14 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
         try {
             return leadership(topic);
         } catch (Exception e) {
-            logger().error("State machine operation failed", e);
+            getLogger().error("State machine operation failed", e);
             throw new IllegalStateException(e);
         }
     }
 
     /**
      * Applies an {@link AtomixLeaderElectorOperations.GetElectedTopics} commit.
+     *
      * @param commit commit entry
      * @return set of topics for which the node is the leader
      */
@@ -302,13 +320,14 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
                 return leader != null && leader.nodeId().equals(nodeId);
             }).keySet());
         } catch (Exception e) {
-            logger().error("State machine operation failed", e);
+            getLogger().error("State machine operation failed", e);
             throw new IllegalStateException(e);
         }
     }
 
     /**
      * Applies an {@link AtomixLeaderElectorOperations#GET_ALL_LEADERSHIPS} commit.
+     *
      * @param commit GetAllLeaderships commit
      * @return topic to leader mapping
      */
@@ -318,15 +337,15 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
             result.putAll(Maps.transformEntries(elections, (k, v) -> leadership(k)));
             return result;
         } catch (Exception e) {
-            logger().error("State machine operation failed", e);
+            getLogger().error("State machine operation failed", e);
             throw new IllegalStateException(e);
         }
     }
 
     private Leadership leadership(String topic) {
         return new Leadership(topic,
-                leader(topic),
-                candidates(topic));
+            leader(topic),
+            candidates(topic));
     }
 
     private Leader leader(String topic) {
@@ -339,11 +358,11 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
         return electionState == null ? new LinkedList<>() : electionState.candidates();
     }
 
-    private void onSessionEnd(RaftSession session) {
+    private void onSessionEnd(PrimitiveSession session) {
         listeners.remove(session.sessionId().id());
         Set<String> topics = ImmutableSet.copyOf(elections.keySet());
         List<Change<Leadership>> changes = Lists.newArrayList();
-        for (String topic: topics) {
+        for (String topic : topics) {
             Leadership oldLeadership = leadership(topic);
             elections.compute(topic, (k, v) -> v.cleanup(session, termCounter(topic)::incrementAndGet));
             Leadership newLeadership = leadership(topic);
@@ -374,9 +393,9 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
         @Override
         public String toString() {
             return MoreObjects.toStringHelper(getClass())
-                    .add("nodeId", nodeId)
-                    .add("sessionId", sessionId)
-                    .toString();
+                .add("nodeId", nodeId)
+                .add("sessionId", sessionId)
+                .toString();
         }
     }
 
@@ -401,29 +420,29 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
         }
 
         public ElectionState(List<Registration> registrations,
-                Registration leader,
-                long term,
-                long termStartTime) {
+            Registration leader,
+            long term,
+            long termStartTime) {
             this.registrations = Lists.newArrayList(registrations);
             this.leader = leader;
             this.term = term;
             this.termStartTime = termStartTime;
         }
 
-        public ElectionState cleanup(RaftSession session, Supplier<Long> termCounter) {
+        public ElectionState cleanup(PrimitiveSession session, Supplier<Long> termCounter) {
             Optional<Registration> registration =
-                    registrations.stream().filter(r -> r.sessionId() == session.sessionId().id()).findFirst();
+                registrations.stream().filter(r -> r.sessionId() == session.sessionId().id()).findFirst();
             if (registration.isPresent()) {
                 List<Registration> updatedRegistrations =
-                        registrations.stream()
-                                .filter(r -> r.sessionId() != session.sessionId().id())
-                                .collect(Collectors.toList());
+                    registrations.stream()
+                        .filter(r -> r.sessionId() != session.sessionId().id())
+                        .collect(Collectors.toList());
                 if (leader.sessionId() == session.sessionId().id()) {
                     if (!updatedRegistrations.isEmpty()) {
                         return new ElectionState(updatedRegistrations,
-                                updatedRegistrations.get(0),
-                                termCounter.get(),
-                                System.currentTimeMillis());
+                            updatedRegistrations.get(0),
+                            termCounter.get(),
+                            System.currentTimeMillis());
                     } else {
                         return new ElectionState(updatedRegistrations, null, term, termStartTime);
                     }
@@ -437,18 +456,18 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
 
         public ElectionState evict(NodeId nodeId, Supplier<Long> termCounter) {
             Optional<Registration> registration =
-                    registrations.stream().filter(r -> r.nodeId.equals(nodeId)).findFirst();
+                registrations.stream().filter(r -> r.nodeId.equals(nodeId)).findFirst();
             if (registration.isPresent()) {
                 List<Registration> updatedRegistrations =
-                        registrations.stream()
-                                .filter(r -> !r.nodeId().equals(nodeId))
-                                .collect(Collectors.toList());
+                    registrations.stream()
+                        .filter(r -> !r.nodeId().equals(nodeId))
+                        .collect(Collectors.toList());
                 if (leader.nodeId().equals(nodeId)) {
                     if (!updatedRegistrations.isEmpty()) {
                         return new ElectionState(updatedRegistrations,
-                                updatedRegistrations.get(0),
-                                termCounter.get(),
-                                System.currentTimeMillis());
+                            updatedRegistrations.get(0),
+                            termCounter.get(),
+                            System.currentTimeMillis());
                     } else {
                         return new ElectionState(updatedRegistrations, null, term, termStartTime);
                     }
@@ -483,23 +502,23 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
                 updatedRegistrations.add(registration);
                 boolean newLeader = leader == null;
                 return new ElectionState(updatedRegistrations,
-                        newLeader ? registration : leader,
-                        newLeader ? termCounter.get() : term,
-                        newLeader ? System.currentTimeMillis() : termStartTime);
+                    newLeader ? registration : leader,
+                    newLeader ? termCounter.get() : term,
+                    newLeader ? System.currentTimeMillis() : termStartTime);
             }
             return this;
         }
 
         public ElectionState transferLeadership(NodeId nodeId, AtomicLong termCounter) {
             Registration newLeader = registrations.stream()
-                    .filter(r -> r.nodeId().equals(nodeId))
-                    .findFirst()
-                    .orElse(null);
+                .filter(r -> r.nodeId().equals(nodeId))
+                .findFirst()
+                .orElse(null);
             if (newLeader != null) {
                 return new ElectionState(registrations,
-                        newLeader,
-                        termCounter.incrementAndGet(),
-                        System.currentTimeMillis());
+                    newLeader,
+                    termCounter.incrementAndGet(),
+                    System.currentTimeMillis());
             } else {
                 return this;
             }
@@ -507,29 +526,29 @@ public class AtomixLeaderElectorService extends AbstractRaftService {
 
         public ElectionState promote(NodeId nodeId) {
             Registration registration = registrations.stream()
-                    .filter(r -> r.nodeId().equals(nodeId))
-                    .findFirst()
-                    .orElse(null);
+                .filter(r -> r.nodeId().equals(nodeId))
+                .findFirst()
+                .orElse(null);
             List<Registration> updatedRegistrations = Lists.newArrayList();
             updatedRegistrations.add(registration);
             registrations.stream()
-                    .filter(r -> !r.nodeId().equals(nodeId))
-                    .forEach(updatedRegistrations::add);
+                .filter(r -> !r.nodeId().equals(nodeId))
+                .forEach(updatedRegistrations::add);
             return new ElectionState(updatedRegistrations,
-                    leader,
-                    term,
-                    termStartTime);
+                leader,
+                term,
+                termStartTime);
 
         }
     }
 
     @Override
-    public void onExpire(RaftSession session) {
+    public void onExpire(PrimitiveSession session) {
         onSessionEnd(session);
     }
 
     @Override
-    public void onClose(RaftSession session) {
+    public void onClose(PrimitiveSession session) {
         onSessionEnd(session);
     }
 

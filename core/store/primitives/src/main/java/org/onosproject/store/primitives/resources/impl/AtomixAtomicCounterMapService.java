@@ -18,11 +18,12 @@ package org.onosproject.store.primitives.resources.impl;
 import java.util.HashMap;
 import java.util.Map;
 
-import io.atomix.protocols.raft.service.AbstractRaftService;
-import io.atomix.protocols.raft.service.Commit;
-import io.atomix.protocols.raft.service.RaftServiceExecutor;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotReader;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotWriter;
+import io.atomix.primitive.service.AbstractPrimitiveService;
+import io.atomix.primitive.service.BackupInput;
+import io.atomix.primitive.service.BackupOutput;
+import io.atomix.primitive.service.Commit;
+import io.atomix.primitive.service.ServiceConfig;
+import io.atomix.primitive.service.ServiceExecutor;
 import org.onlab.util.KryoNamespace;
 import org.onosproject.store.primitives.resources.impl.AtomixAtomicCounterMapOperations.AddAndGet;
 import org.onosproject.store.primitives.resources.impl.AtomixAtomicCounterMapOperations.DecrementAndGet;
@@ -63,42 +64,52 @@ import static org.onosproject.store.primitives.resources.impl.AtomixAtomicCounte
  * of all its increments. Note that this snapshotting large state machines may risk blocking of the
  * Raft cluster with the current implementation of snapshotting in Copycat.
  */
-public class AtomixAtomicCounterMapService extends AbstractRaftService {
+public class AtomixAtomicCounterMapService extends AbstractPrimitiveService {
 
-    private static final Serializer SERIALIZER = Serializer.using(KryoNamespace.newBuilder()
+    private static final io.atomix.utils.serializer.Serializer SERIALIZER = new AtomixSerializerAdapter(
+        Serializer.using(KryoNamespace.newBuilder()
             .register(KryoNamespaces.BASIC)
             .register(AtomixAtomicCounterMapOperations.NAMESPACE)
-            .build());
+            .build()));
 
     private Map<String, Long> map = new HashMap<>();
 
+    public AtomixAtomicCounterMapService() {
+        super(new ServiceConfig());
+    }
+
     @Override
-    protected void configure(RaftServiceExecutor executor) {
-        executor.register(PUT, SERIALIZER::decode, this::put, SERIALIZER::encode);
-        executor.register(PUT_IF_ABSENT, SERIALIZER::decode, this::putIfAbsent, SERIALIZER::encode);
-        executor.register(GET, SERIALIZER::decode, this::get, SERIALIZER::encode);
-        executor.register(REPLACE, SERIALIZER::decode, this::replace, SERIALIZER::encode);
-        executor.register(REMOVE, SERIALIZER::decode, this::remove, SERIALIZER::encode);
-        executor.register(REMOVE_VALUE, SERIALIZER::decode, this::removeValue, SERIALIZER::encode);
-        executor.register(GET_AND_INCREMENT, SERIALIZER::decode, this::getAndIncrement, SERIALIZER::encode);
-        executor.register(GET_AND_DECREMENT, SERIALIZER::decode, this::getAndDecrement, SERIALIZER::encode);
-        executor.register(INCREMENT_AND_GET, SERIALIZER::decode, this::incrementAndGet, SERIALIZER::encode);
-        executor.register(DECREMENT_AND_GET, SERIALIZER::decode, this::decrementAndGet, SERIALIZER::encode);
-        executor.register(ADD_AND_GET, SERIALIZER::decode, this::addAndGet, SERIALIZER::encode);
-        executor.register(GET_AND_ADD, SERIALIZER::decode, this::getAndAdd, SERIALIZER::encode);
-        executor.register(SIZE, this::size, SERIALIZER::encode);
-        executor.register(IS_EMPTY, this::isEmpty, SERIALIZER::encode);
+    public io.atomix.utils.serializer.Serializer serializer() {
+        return SERIALIZER;
+    }
+
+    @Override
+    protected void configure(ServiceExecutor executor) {
+        executor.register(PUT, this::put);
+        executor.register(PUT_IF_ABSENT, this::putIfAbsent);
+        executor.register(GET, this::get);
+        executor.register(REPLACE, this::replace);
+        executor.register(REMOVE, this::remove);
+        executor.register(REMOVE_VALUE, this::removeValue);
+        executor.register(GET_AND_INCREMENT, this::getAndIncrement);
+        executor.register(GET_AND_DECREMENT, this::getAndDecrement);
+        executor.register(INCREMENT_AND_GET, this::incrementAndGet);
+        executor.register(DECREMENT_AND_GET, this::decrementAndGet);
+        executor.register(ADD_AND_GET, this::addAndGet);
+        executor.register(GET_AND_ADD, this::getAndAdd);
+        executor.register(SIZE, this::size);
+        executor.register(IS_EMPTY, this::isEmpty);
         executor.register(CLEAR, this::clear);
     }
 
     @Override
-    public void snapshot(SnapshotWriter writer) {
-        writer.writeObject(map, SERIALIZER::encode);
+    public void backup(BackupOutput output) {
+        output.writeObject(map);
     }
 
     @Override
-    public void install(SnapshotReader reader) {
-        map = reader.readObject(SERIALIZER::decode);
+    public void restore(BackupInput input) {
+        map = input.readObject();
     }
 
     /**

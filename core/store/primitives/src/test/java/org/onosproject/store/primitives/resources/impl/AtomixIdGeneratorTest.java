@@ -17,11 +17,12 @@ package org.onosproject.store.primitives.resources.impl;
 
 import java.util.concurrent.CompletableFuture;
 
-import io.atomix.protocols.raft.proxy.RaftProxy;
-import io.atomix.protocols.raft.service.RaftService;
+import io.atomix.primitive.PrimitiveType;
+import io.atomix.primitive.proxy.PartitionProxy;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.ATOMIC_COUNTER;
 
 /**
  * Unit test for {@code AtomixIdGenerator}.
@@ -29,12 +30,12 @@ import static org.junit.Assert.assertEquals;
 public class AtomixIdGeneratorTest extends AtomixTestBase<AtomixCounter> {
 
     @Override
-    protected RaftService createService() {
-        return new AtomixCounterService();
+    protected PrimitiveType primitiveType() {
+        return ATOMIC_COUNTER;
     }
 
     @Override
-    protected AtomixCounter createPrimitive(RaftProxy proxy) {
+    protected AtomixCounter createPrimitive(PartitionProxy proxy) {
         return new AtomixCounter(proxy);
     }
 

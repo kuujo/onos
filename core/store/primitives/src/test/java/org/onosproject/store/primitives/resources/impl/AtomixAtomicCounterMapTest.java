@@ -15,12 +15,13 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import io.atomix.protocols.raft.proxy.RaftProxy;
-import io.atomix.protocols.raft.service.RaftService;
+import io.atomix.primitive.PrimitiveType;
+import io.atomix.primitive.proxy.PartitionProxy;
 import org.junit.Test;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.ATOMIC_COUNTER_MAP;
 
 /**
  * Unit test for {@code AtomixCounterMap}.
@@ -28,12 +29,12 @@ import static org.junit.Assert.assertTrue;
 public class AtomixAtomicCounterMapTest extends AtomixTestBase<AtomixAtomicCounterMap> {
 
     @Override
-    protected RaftService createService() {
-        return new AtomixAtomicCounterMapService();
+    protected PrimitiveType primitiveType() {
+        return ATOMIC_COUNTER_MAP;
     }
 
     @Override
-    protected AtomixAtomicCounterMap createPrimitive(RaftProxy proxy) {
+    protected AtomixAtomicCounterMap createPrimitive(PartitionProxy proxy) {
         return new AtomixAtomicCounterMap(proxy);
     }
 

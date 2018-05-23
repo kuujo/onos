@@ -17,12 +17,16 @@ package org.onosproject.store.primitives.resources.impl;
 
 import java.util.Collection;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
-import io.atomix.protocols.raft.proxy.RaftProxy;
+import io.atomix.primitive.operation.OperationId;
+import io.atomix.primitive.operation.PrimitiveOperation;
+import io.atomix.primitive.proxy.PartitionProxy;
+import io.atomix.primitive.proxy.PrimitiveProxy;
 import org.onosproject.store.service.DistributedPrimitive;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -32,7 +36,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
  * Abstract base class for primitives that interact with Raft replicated state machines via proxy.
  */
 public abstract class AbstractRaftPrimitive implements DistributedPrimitive {
-    private final Function<RaftProxy.State, Status> mapper = state -> {
+    private final Function<PrimitiveProxy.State, Status> mapper = state -> {
         switch (state) {
             case CONNECTED:
                 return Status.ACTIVE;
@@ -45,10 +49,10 @@ public abstract class AbstractRaftPrimitive implements DistributedPrimitive {
         }
     };
 
-    protected final RaftProxy proxy;
+    protected final PartitionProxy proxy;
     private final Set<Consumer<Status>> statusChangeListeners = Sets.newCopyOnWriteArraySet();
 
-    public AbstractRaftPrimitive(RaftProxy proxy) {
+    public AbstractRaftPrimitive(PartitionProxy proxy) {
         this.proxy = checkNotNull(proxy, "proxy cannot be null");
         proxy.addStateChangeListener(this::onStateChange);
     }
@@ -58,12 +62,31 @@ public abstract class AbstractRaftPrimitive implements DistributedPrimitive {
         return proxy.name();
     }
 
+    protected CompletableFuture<Void> invoke(OperationId operationId) {
+        return proxy.execute(PrimitiveOperation.operation(operationId)).thenApply(v -> null);
+    }
+
+    protected <R> CompletableFuture<R> invoke(OperationId operationId, Function<byte[], R> decoder) {
+        return proxy.execute(PrimitiveOperation.operation(operationId))
+            .thenApply(value -> value != null ? decoder.apply(value) : null);
+    }
+
+    protected <O> CompletableFuture<Void> invoke(OperationId operationId, Function<O, byte[]> encoder, O operation) {
+        return proxy.execute(PrimitiveOperation.operation(operationId, encoder.apply(operation))).thenApply(v -> null);
+    }
+
+    protected <O, R> CompletableFuture<R> invoke(
+        OperationId operationId, Function<O, byte[]> encoder, O operation, Function<byte[], R> decoder) {
+        return proxy.execute(PrimitiveOperation.operation(operationId, encoder.apply(operation)))
+            .thenApply(value -> value != null ? decoder.apply(value) : null);
+    }
+
     /**
      * Handles a Raft session state change.
      *
      * @param state the updated Raft session state
      */
-    private void onStateChange(RaftProxy.State state) {
+    private void onStateChange(PrimitiveProxy.State state) {
         statusChangeListeners.forEach(listener -> listener.accept(mapper.apply(state)));
     }
 
@@ -85,7 +108,7 @@ public abstract class AbstractRaftPrimitive implements DistributedPrimitive {
     @Override
     public String toString() {
         return toStringHelper(this)
-                .add("proxy", proxy)
-                .toString();
+            .add("proxy", proxy)
+            .toString();
     }
 }

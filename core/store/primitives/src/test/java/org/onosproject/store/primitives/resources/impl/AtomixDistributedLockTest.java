@@ -19,25 +19,26 @@ import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
-import io.atomix.protocols.raft.proxy.RaftProxy;
-import io.atomix.protocols.raft.service.RaftService;
+import io.atomix.primitive.PrimitiveType;
+import io.atomix.primitive.proxy.PartitionProxy;
 import org.junit.Test;
 import org.onosproject.store.service.Version;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.LOCK;
 
 /**
  * Raft lock test.
  */
 public class AtomixDistributedLockTest extends AtomixTestBase<AtomixDistributedLock> {
     @Override
-    protected RaftService createService() {
-        return new AtomixDistributedLockService();
+    protected PrimitiveType primitiveType() {
+        return LOCK;
     }
 
     @Override
-    protected AtomixDistributedLock createPrimitive(RaftProxy proxy) {
+    protected AtomixDistributedLock createPrimitive(PartitionProxy proxy) {
         return new AtomixDistributedLock(proxy);
     }
 

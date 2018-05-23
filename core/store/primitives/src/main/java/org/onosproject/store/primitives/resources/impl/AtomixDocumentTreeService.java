@@ -36,13 +36,14 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Queues;
 import com.google.common.collect.Sets;
-import io.atomix.protocols.raft.event.EventType;
-import io.atomix.protocols.raft.service.AbstractRaftService;
-import io.atomix.protocols.raft.service.Commit;
-import io.atomix.protocols.raft.service.RaftServiceExecutor;
-import io.atomix.protocols.raft.session.RaftSession;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotReader;
-import io.atomix.protocols.raft.storage.snapshot.SnapshotWriter;
+import io.atomix.primitive.event.EventType;
+import io.atomix.primitive.service.AbstractPrimitiveService;
+import io.atomix.primitive.service.BackupInput;
+import io.atomix.primitive.service.BackupOutput;
+import io.atomix.primitive.service.Commit;
+import io.atomix.primitive.service.ServiceConfig;
+import io.atomix.primitive.service.ServiceExecutor;
+import io.atomix.primitive.session.PrimitiveSession;
 import org.onlab.util.KryoNamespace;
 import org.onlab.util.Match;
 import org.onosproject.store.primitives.NodeUpdate;
@@ -50,14 +51,13 @@ import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.Get;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.GetChildren;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.Listen;
-import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.Unlisten;
-import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.Update;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.TransactionBegin;
+import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.TransactionCommit;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.TransactionPrepare;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.TransactionPrepareAndCommit;
-import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.TransactionCommit;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.TransactionRollback;
-
+import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.Unlisten;
+import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.Update;
 import org.onosproject.store.primitives.resources.impl.DocumentTreeResult.Status;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.DocumentPath;
@@ -73,23 +73,24 @@ import org.onosproject.store.service.Versioned;
 
 import static com.google.common.base.Preconditions.checkState;
 import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeEvents.CHANGE;
+import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.ADD_LISTENER;
 import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.BEGIN;
-import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.PREPARE;
-import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.PREPARE_AND_COMMIT;
-import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.COMMIT;
-import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.ROLLBACK;
 import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.CLEAR;
+import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.COMMIT;
 import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.GET;
 import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.GET_CHILDREN;
-import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.UPDATE;
-import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.ADD_LISTENER;
+import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.PREPARE;
+import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.PREPARE_AND_COMMIT;
 import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.REMOVE_LISTENER;
+import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.ROLLBACK;
+import static org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeOperations.UPDATE;
 
 /**
  * State Machine for {@link AtomixDocumentTree} resource.
  */
-public class AtomixDocumentTreeService extends AbstractRaftService {
-    private final Serializer serializer = Serializer.using(KryoNamespace.newBuilder()
+public class AtomixDocumentTreeService extends AbstractPrimitiveService {
+    private final io.atomix.utils.serializer.Serializer serializer = new AtomixSerializerAdapter(
+        Serializer.using(KryoNamespace.newBuilder()
             .register(KryoNamespaces.BASIC)
             .register(AtomixDocumentTreeOperations.NAMESPACE)
             .register(AtomixDocumentTreeEvents.NAMESPACE)
@@ -102,8 +103,8 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
 
                 @Override
                 public Listener read(Kryo kryo, Input input, Class<Listener> type) {
-                    return new Listener(sessions().getSession(input.readLong()),
-                            kryo.readObjectOrNull(input, DocumentPath.class));
+                    return new Listener(getSession(input.readLong()),
+                        kryo.readObjectOrNull(input, DocumentPath.class));
                 }
             }, Listener.class)
             .register(Versioned.class)
@@ -125,11 +126,11 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
                 @SuppressWarnings("unchecked")
                 public DefaultDocumentTree read(Kryo kryo, Input input, Class<DefaultDocumentTree> type) {
                     return new DefaultDocumentTree(versionCounter::incrementAndGet,
-                            kryo.readObject(input, DefaultDocumentTreeNode.class));
+                        kryo.readObject(input, DefaultDocumentTreeNode.class));
                 }
             }, DefaultDocumentTree.class)
             .register(DefaultDocumentTreeNode.class)
-            .build());
+            .build()));
 
     private Map<Long, SessionListenCommits> listeners = new HashMap<>();
     private AtomicLong versionCounter = new AtomicLong(0);
@@ -138,43 +139,49 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
     private Set<DocumentPath> preparedKeys = Sets.newHashSet();
 
     public AtomixDocumentTreeService(Ordering ordering) {
+        super(new ServiceConfig());
         this.docTree = new DefaultDocumentTree<>(versionCounter::incrementAndGet, ordering);
     }
 
     @Override
-    public void snapshot(SnapshotWriter writer) {
-        writer.writeLong(versionCounter.get());
-        writer.writeObject(listeners, serializer::encode);
-        writer.writeObject(docTree, serializer::encode);
-        writer.writeObject(preparedKeys, serializer::encode);
-        writer.writeObject(activeTransactions, serializer::encode);
+    public io.atomix.utils.serializer.Serializer serializer() {
+        return serializer;
     }
 
     @Override
-    public void install(SnapshotReader reader) {
-        versionCounter = new AtomicLong(reader.readLong());
-        listeners = reader.readObject(serializer::decode);
-        docTree = reader.readObject(serializer::decode);
-        preparedKeys = reader.readObject(serializer::decode);
-        activeTransactions = reader.readObject(serializer::decode);
+    public void backup(BackupOutput output) {
+        output.writeLong(versionCounter.get());
+        output.writeObject(listeners);
+        output.writeObject(docTree);
+        output.writeObject(preparedKeys);
+        output.writeObject(activeTransactions);
     }
 
     @Override
-    protected void configure(RaftServiceExecutor executor) {
+    public void restore(BackupInput input) {
+        versionCounter = new AtomicLong(input.readLong());
+        listeners = input.readObject();
+        docTree = input.readObject();
+        preparedKeys = input.readObject();
+        activeTransactions = input.readObject();
+    }
+
+    @Override
+    protected void configure(ServiceExecutor executor) {
         // Listeners
-        executor.register(ADD_LISTENER, serializer::decode, this::listen);
-        executor.register(REMOVE_LISTENER, serializer::decode, this::unlisten);
+        executor.register(ADD_LISTENER, this::listen);
+        executor.register(REMOVE_LISTENER, this::unlisten);
         // queries
-        executor.register(GET, serializer::decode, this::get, serializer::encode);
-        executor.register(GET_CHILDREN, serializer::decode, this::getChildren, serializer::encode);
+        executor.register(GET, this::get);
+        executor.register(GET_CHILDREN, this::getChildren);
         // commands
-        executor.register(UPDATE, serializer::decode, this::update, serializer::encode);
+        executor.register(UPDATE, this::update);
         executor.register(CLEAR, this::clear);
-        executor.register(BEGIN, serializer::decode, this::begin, serializer::encode);
-        executor.register(PREPARE, serializer::decode, this::prepare, serializer::encode);
-        executor.register(PREPARE_AND_COMMIT, serializer::decode, this::prepareAndCommit, serializer::encode);
-        executor.register(COMMIT, serializer::decode, this::commit, serializer::encode);
-        executor.register(ROLLBACK, serializer::decode, this::rollback, serializer::encode);
+        executor.register(BEGIN, this::begin);
+        executor.register(PREPARE, this::prepare);
+        executor.register(PREPARE_AND_COMMIT, this::prepareAndCommit);
+        executor.register(COMMIT, this::commit);
+        executor.register(ROLLBACK, this::rollback);
     }
 
     /**
@@ -190,7 +197,7 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
     protected void listen(Commit<? extends Listen> commit) {
         Long sessionId = commit.session().sessionId().id();
         listeners.computeIfAbsent(sessionId, k -> new SessionListenCommits())
-                .add(new Listener(commit.session(), commit.value().path()));
+            .add(new Listener(commit.session(), commit.value().path()));
     }
 
     protected void unlisten(Commit<? extends Unlisten> commit) {
@@ -233,16 +240,16 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
             Match<byte[]> valueMatch = commit.value().valueMatch();
 
             if (versionMatch.matches(currentValue == null ? null : currentValue.version())
-                    && valueMatch.matches(currentValue == null ? null : currentValue.value())) {
+                && valueMatch.matches(currentValue == null ? null : currentValue.value())) {
                 if (commit.value().value() == null) {
                     Versioned<byte[]> oldValue = docTree.removeNode(path);
                     result = new DocumentTreeResult<>(Status.OK, oldValue);
                     if (oldValue != null) {
                         notifyListeners(new DocumentTreeEvent<>(
-                                path,
-                                Type.DELETED,
-                                Optional.empty(),
-                                Optional.of(oldValue)));
+                            path,
+                            Type.DELETED,
+                            Optional.empty(),
+                            Optional.of(oldValue)));
                     }
                 } else {
                     Versioned<byte[]> oldValue = docTree.set(path, commit.value().value().orElse(null));
@@ -250,29 +257,29 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
                     result = new DocumentTreeResult<>(Status.OK, newValue);
                     if (oldValue == null) {
                         notifyListeners(new DocumentTreeEvent<>(
-                                path,
-                                Type.CREATED,
-                                Optional.of(newValue),
-                                Optional.empty()));
+                            path,
+                            Type.CREATED,
+                            Optional.of(newValue),
+                            Optional.empty()));
                     } else {
                         notifyListeners(new DocumentTreeEvent<>(
-                                path,
-                                Type.UPDATED,
-                                Optional.of(newValue),
-                                Optional.of(oldValue)));
+                            path,
+                            Type.UPDATED,
+                            Optional.of(newValue),
+                            Optional.of(oldValue)));
                     }
                 }
             } else {
                 result = new DocumentTreeResult<>(
-                        commit.value().value() == null ? Status.INVALID_PATH : Status.NOOP,
-                        currentValue);
+                    commit.value().value() == null ? Status.INVALID_PATH : Status.NOOP,
+                    currentValue);
             }
         } catch (IllegalDocumentModificationException e) {
             result = DocumentTreeResult.illegalModification();
         } catch (NoSuchDocumentPathException e) {
             result = DocumentTreeResult.invalidPath();
         } catch (Exception e) {
-            logger().error("Failed to apply {} to state machine", commit.value(), e);
+            getLogger().error("Failed to apply {} to state machine", commit.value(), e);
             throw new IllegalStateException(e);
         }
         return result;
@@ -282,9 +289,9 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
         Queue<DocumentPath> toClearQueue = Queues.newArrayDeque();
         Map<String, Versioned<byte[]>> topLevelChildren = docTree.getChildren(DocumentPath.from("root"));
         toClearQueue.addAll(topLevelChildren.keySet()
-                .stream()
-                .map(name -> new DocumentPath(name, DocumentPath.from("root")))
-                .collect(Collectors.toList()));
+            .stream()
+            .map(name -> new DocumentPath(name, DocumentPath.from("root")))
+            .collect(Collectors.toList()));
         while (!toClearQueue.isEmpty()) {
             DocumentPath path = toClearQueue.remove();
             Map<String, Versioned<byte[]>> children = docTree.getChildren(path);
@@ -354,17 +361,17 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
             TransactionScope transactionScope = activeTransactions.get(transactionLog.transactionId());
             if (transactionScope == null) {
                 activeTransactions.put(
-                        transactionLog.transactionId(),
-                        new TransactionScope(transactionLog.version(), commit.value().transactionLog()));
+                    transactionLog.transactionId(),
+                    new TransactionScope(transactionLog.version(), commit.value().transactionLog()));
                 return PrepareResult.PARTIAL_FAILURE;
             } else {
                 activeTransactions.put(
-                        transactionLog.transactionId(),
-                        transactionScope.prepared(commit));
+                    transactionLog.transactionId(),
+                    transactionScope.prepared(commit));
                 return PrepareResult.OK;
             }
         } catch (Exception e) {
-            logger().warn("Failure applying {}", commit, e);
+            getLogger().warn("Failure applying {}", commit, e);
             throw new IllegalStateException(e);
         }
     }
@@ -394,10 +401,10 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
 
         List<DocumentTreeEvent<byte[]>> eventsToPublish = Lists.newArrayList();
         DocumentTreeEvent<byte[]> start = new DocumentTreeEvent<>(
-                DocumentPath.from(transactionScope.transactionLog().transactionId().toString()),
-                Type.TRANSACTION_START,
-                Optional.empty(),
-                Optional.empty());
+            DocumentPath.from(transactionScope.transactionLog().transactionId().toString()),
+            Type.TRANSACTION_START,
+            Optional.empty(),
+            Optional.empty());
         eventsToPublish.add(start);
 
         for (NodeUpdate<byte[]> record : transactionLog.records()) {
@@ -410,30 +417,30 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
             try {
                 previousValue = docTree.removeNode(path);
             } catch (NoSuchDocumentPathException e) {
-                logger().info("Value is being inserted first time");
+                getLogger().info("Value is being inserted first time");
             }
 
             if (record.value() != null) {
                 if (docTree.create(path, record.value())) {
                     Versioned<byte[]> newValue = docTree.get(path);
                     eventsToPublish.add(new DocumentTreeEvent<>(
-                            path,
-                            Optional.ofNullable(newValue),
-                            Optional.ofNullable(previousValue)));
+                        path,
+                        Optional.ofNullable(newValue),
+                        Optional.ofNullable(previousValue)));
                 }
             } else if (previousValue != null) {
                 eventsToPublish.add(new DocumentTreeEvent<>(
-                        path,
-                        Optional.empty(),
-                        Optional.of(previousValue)));
+                    path,
+                    Optional.empty(),
+                    Optional.of(previousValue)));
             }
         }
 
         DocumentTreeEvent<byte[]> end = new DocumentTreeEvent<>(
-                DocumentPath.from(transactionScope.transactionLog().transactionId().toString()),
-                Type.TRANSACTION_END,
-                Optional.empty(),
-                Optional.empty());
+            DocumentPath.from(transactionScope.transactionLog().transactionId().toString()),
+            Type.TRANSACTION_END,
+            Optional.empty(),
+            Optional.empty());
         eventsToPublish.add(end);
         publish(eventsToPublish);
 
@@ -455,7 +462,7 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
         try {
             return commitTransaction(transactionScope);
         } catch (Exception e) {
-            logger().warn("Failure applying {}", commit, e);
+            getLogger().warn("Failure applying {}", commit, e);
             throw new IllegalStateException(e);
         }
     }
@@ -475,9 +482,9 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
             return RollbackResult.OK;
         } else {
             transactionScope.transactionLog().records()
-                    .forEach(record -> {
-                        preparedKeys.remove(record.path());
-                    });
+                .forEach(record -> {
+                    preparedKeys.remove(record.path());
+                });
             return RollbackResult.OK;
         }
 
@@ -546,18 +553,18 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
 
     private void notifyListeners(DocumentTreeEvent<byte[]> event) {
         listeners.values()
-                .stream()
-                .filter(l -> event.path().isDescendentOf(l.leastCommonAncestorPath()))
-                .forEach(listener -> listener.publish(CHANGE, Arrays.asList(event)));
+            .stream()
+            .filter(l -> event.path().isDescendentOf(l.leastCommonAncestorPath()))
+            .forEach(listener -> listener.publish(CHANGE, Arrays.asList(event)));
     }
 
     @Override
-    public void onExpire(RaftSession session) {
+    public void onExpire(PrimitiveSession session) {
         closeListener(session.sessionId().id());
     }
 
     @Override
-    public void onClose(RaftSession session) {
+    public void onClose(PrimitiveSession session) {
         closeListener(session.sessionId().id());
     }
 
@@ -592,21 +599,21 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
 
         public <M> void publish(EventType topic, M message) {
             listeners.stream().findAny().ifPresent(listener ->
-                    listener.session().publish(topic, serializer::encode, message));
+                listener.session().publish(topic, message));
         }
 
         private void recomputeLeastCommonAncestor() {
             this.leastCommonAncestorPath = DocumentPath.leastCommonAncestor(listeners.stream()
-                    .map(Listener::path)
-                    .collect(Collectors.toList()));
+                .map(Listener::path)
+                .collect(Collectors.toList()));
         }
     }
 
     private static class Listener {
-        private final RaftSession session;
+        private final PrimitiveSession session;
         private final DocumentPath path;
 
-        public Listener(RaftSession session, DocumentPath path) {
+        public Listener(PrimitiveSession session, DocumentPath path) {
             this.session = session;
             this.path = path;
         }
@@ -615,7 +622,7 @@ public class AtomixDocumentTreeService extends AbstractRaftService {
             return path;
         }
 
-        public RaftSession session() {
+        public PrimitiveSession session() {
             return session;
         }
     }

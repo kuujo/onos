@@ -20,8 +20,8 @@ import java.util.LinkedHashMap;
 import java.util.Optional;
 
 import com.google.common.base.MoreObjects;
-import io.atomix.protocols.raft.operation.OperationId;
-import io.atomix.protocols.raft.operation.OperationType;
+import io.atomix.primitive.operation.OperationId;
+import io.atomix.primitive.operation.OperationType;
 import org.onlab.util.KryoNamespace;
 import org.onlab.util.Match;
 import org.onosproject.store.primitives.NodeUpdate;

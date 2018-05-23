@@ -17,35 +17,20 @@ package org.onosproject.store.primitives.impl;
 
 import java.io.File;
 import java.util.Collection;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import com.google.common.collect.Collections2;
-import com.google.common.collect.ImmutableMap;
-import io.atomix.protocols.raft.cluster.MemberId;
-import io.atomix.protocols.raft.service.RaftService;
+import io.atomix.cluster.MemberId;
 import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.cluster.Partition;
 import org.onosproject.cluster.PartitionId;
 import org.onosproject.core.Version;
 import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
-import org.onosproject.store.primitives.resources.impl.AtomixAtomicCounterMapService;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapService;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentSetMultimapService;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentTreeMapService;
-import org.onosproject.store.primitives.resources.impl.AtomixCounterService;
-import org.onosproject.store.primitives.resources.impl.AtomixDistributedLockService;
-import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeService;
-import org.onosproject.store.primitives.resources.impl.AtomixLeaderElectorService;
-import org.onosproject.store.primitives.resources.impl.AtomixWorkQueueService;
-import org.onosproject.store.service.DistributedPrimitive;
-import org.onosproject.store.service.Ordering;
 import org.onosproject.store.service.PartitionInfo;
 import org.onosproject.store.service.Serializer;
 
@@ -59,28 +44,11 @@ public class StoragePartition implements Managed<StoragePartition> {
 
     protected final AtomicBoolean isOpened = new AtomicBoolean(false);
     protected final ClusterCommunicationService clusterCommunicator;
+    protected final ClusterService clusterService;
     protected Partition partition;
     protected NodeId localNodeId;
     protected StoragePartitionServer server;
     protected StoragePartitionClient client;
-
-    public static final Map<String, Supplier<RaftService>> RAFT_SERVICES =
-            ImmutableMap.<String, Supplier<RaftService>>builder()
-                    .put(DistributedPrimitive.Type.CONSISTENT_MAP.name(), AtomixConsistentMapService::new)
-                    .put(DistributedPrimitive.Type.CONSISTENT_TREEMAP.name(), AtomixConsistentTreeMapService::new)
-                    .put(DistributedPrimitive.Type.CONSISTENT_MULTIMAP.name(), AtomixConsistentSetMultimapService::new)
-                    .put(DistributedPrimitive.Type.COUNTER_MAP.name(), AtomixAtomicCounterMapService::new)
-                    .put(DistributedPrimitive.Type.COUNTER.name(), AtomixCounterService::new)
-                    .put(DistributedPrimitive.Type.LEADER_ELECTOR.name(), AtomixLeaderElectorService::new)
-                    .put(DistributedPrimitive.Type.WORK_QUEUE.name(), AtomixWorkQueueService::new)
-                    .put(DistributedPrimitive.Type.DOCUMENT_TREE.name(),
-                            () -> new AtomixDocumentTreeService(Ordering.NATURAL))
-                    .put(String.format("%s-%s", DistributedPrimitive.Type.DOCUMENT_TREE.name(), Ordering.NATURAL),
-                            () -> new AtomixDocumentTreeService(Ordering.NATURAL))
-                    .put(String.format("%s-%s", DistributedPrimitive.Type.DOCUMENT_TREE.name(), Ordering.INSERTION),
-                            () -> new AtomixDocumentTreeService(Ordering.INSERTION))
-                    .put(DistributedPrimitive.Type.LOCK.name(), AtomixDistributedLockService::new)
-                    .build();
 
     public StoragePartition(
             Partition partition,
@@ -88,6 +56,7 @@ public class StoragePartition implements Managed<StoragePartition> {
             ClusterService clusterService) {
         this.partition = partition;
         this.clusterCommunicator = clusterCommunicator;
+        this.clusterService = clusterService;
         this.localNodeId = clusterService.getLocalNode().id();
     }
 
@@ -188,6 +157,7 @@ public class StoragePartition implements Managed<StoragePartition> {
         StoragePartitionServer server = new StoragePartitionServer(
             this,
             MemberId.from(localNodeId.id()),
+            clusterService,
             clusterCommunicator);
         return server.open().thenRun(() -> this.server = server);
     }
@@ -203,6 +173,7 @@ public class StoragePartition implements Managed<StoragePartition> {
                  .collect(Collectors.toSet());
         StoragePartitionServer server = new StoragePartitionServer(this,
                 MemberId.from(localNodeId.id()),
+                clusterService,
                 clusterCommunicator);
         return server.join(Collections2.transform(otherMembers, n -> MemberId.from(n.id())))
                 .thenRun(() -> this.server = server);

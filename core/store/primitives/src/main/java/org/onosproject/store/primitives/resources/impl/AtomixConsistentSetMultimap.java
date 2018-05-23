@@ -27,7 +27,7 @@ import java.util.concurrent.Executor;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Multiset;
-import io.atomix.protocols.raft.proxy.RaftProxy;
+import io.atomix.primitive.proxy.PartitionProxy;
 import org.onlab.util.KryoNamespace;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.AsyncConsistentMultimap;
@@ -81,12 +81,12 @@ public class AtomixConsistentSetMultimap
 
     private final Map<MultimapEventListener<String, byte[]>, Executor> mapEventListeners = new ConcurrentHashMap<>();
 
-    public AtomixConsistentSetMultimap(RaftProxy proxy) {
+    public AtomixConsistentSetMultimap(PartitionProxy proxy) {
         super(proxy);
-        proxy.addEventListener(CHANGE, SERIALIZER::decode, this::handleEvent);
+        proxy.addEventListener(CHANGE, event -> handleEvent(SERIALIZER.decode(event.value())));
         proxy.addStateChangeListener(state -> {
-            if (state == RaftProxy.State.CONNECTED && isListening()) {
-                proxy.invoke(ADD_LISTENER);
+            if (state == PartitionProxy.State.CONNECTED && isListening()) {
+                this.invoke(ADD_LISTENER);
             }
         });
     }
@@ -98,32 +98,32 @@ public class AtomixConsistentSetMultimap
 
     @Override
     public CompletableFuture<Integer> size() {
-        return proxy.invoke(SIZE, SERIALIZER::decode);
+        return this.invoke(SIZE, SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Boolean> isEmpty() {
-        return proxy.invoke(IS_EMPTY, SERIALIZER::decode);
+        return this.invoke(IS_EMPTY, SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Boolean> containsKey(String key) {
-        return proxy.invoke(CONTAINS_KEY, SERIALIZER::encode, new ContainsKey(key), SERIALIZER::decode);
+        return this.invoke(CONTAINS_KEY, SERIALIZER::encode, new ContainsKey(key), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Boolean> containsValue(byte[] value) {
-        return proxy.invoke(CONTAINS_VALUE, SERIALIZER::encode, new ContainsValue(value), SERIALIZER::decode);
+        return this.invoke(CONTAINS_VALUE, SERIALIZER::encode, new ContainsValue(value), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Boolean> containsEntry(String key, byte[] value) {
-        return proxy.invoke(CONTAINS_ENTRY, SERIALIZER::encode, new ContainsEntry(key, value), SERIALIZER::decode);
+        return this.invoke(CONTAINS_ENTRY, SERIALIZER::encode, new ContainsEntry(key, value), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Boolean> put(String key, byte[] value) {
-        return proxy.invoke(
+        return this.invoke(
                 PUT,
                 SERIALIZER::encode,
                 new Put(key, Lists.newArrayList(value), null),
@@ -132,14 +132,14 @@ public class AtomixConsistentSetMultimap
 
     @Override
     public CompletableFuture<Boolean> remove(String key, byte[] value) {
-        return proxy.invoke(REMOVE, SERIALIZER::encode, new MultiRemove(key,
+        return this.invoke(REMOVE, SERIALIZER::encode, new MultiRemove(key,
                 Lists.newArrayList(value),
                 null), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Boolean> removeAll(String key, Collection<? extends byte[]> values) {
-        return proxy.invoke(
+        return this.invoke(
                 REMOVE,
                 SERIALIZER::encode,
                 new MultiRemove(key, (Collection<byte[]>) values, null),
@@ -148,19 +148,19 @@ public class AtomixConsistentSetMultimap
 
     @Override
     public CompletableFuture<Versioned<Collection<? extends byte[]>>> removeAll(String key) {
-        return proxy.invoke(REMOVE_ALL, SERIALIZER::encode, new RemoveAll(key, null), SERIALIZER::decode);
+        return this.invoke(REMOVE_ALL, SERIALIZER::encode, new RemoveAll(key, null), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Boolean> putAll(
             String key, Collection<? extends byte[]> values) {
-        return proxy.invoke(PUT, SERIALIZER::encode, new Put(key, values, null), SERIALIZER::decode);
+        return this.invoke(PUT, SERIALIZER::encode, new Put(key, values, null), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Versioned<Collection<? extends byte[]>>> replaceValues(
             String key, Collection<byte[]> values) {
-        return proxy.invoke(
+        return this.invoke(
                 REPLACE,
                 SERIALIZER::encode,
                 new Replace(key, values, null),
@@ -169,38 +169,38 @@ public class AtomixConsistentSetMultimap
 
     @Override
     public CompletableFuture<Void> clear() {
-        return proxy.invoke(CLEAR);
+        return this.invoke(CLEAR);
     }
 
     @Override
     public CompletableFuture<Versioned<Collection<? extends byte[]>>> get(String key) {
-        return proxy.invoke(GET, SERIALIZER::encode, new Get(key), SERIALIZER::decode);
+        return this.invoke(GET, SERIALIZER::encode, new Get(key), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Set<String>> keySet() {
-        return proxy.invoke(KEY_SET, SERIALIZER::decode);
+        return this.invoke(KEY_SET, SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Multiset<String>> keys() {
-        return proxy.invoke(KEYS, SERIALIZER::decode);
+        return this.invoke(KEYS, SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Multiset<byte[]>> values() {
-        return proxy.invoke(VALUES, SERIALIZER::decode);
+        return this.invoke(VALUES, SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Collection<Map.Entry<String, byte[]>>> entries() {
-        return proxy.invoke(ENTRIES, SERIALIZER::decode);
+        return this.invoke(ENTRIES, SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Void> addListener(MultimapEventListener<String, byte[]> listener, Executor executor) {
         if (mapEventListeners.isEmpty()) {
-            return proxy.invoke(ADD_LISTENER).thenRun(() -> mapEventListeners.put(listener, executor));
+            return this.invoke(ADD_LISTENER).thenRun(() -> mapEventListeners.put(listener, executor));
         } else {
             mapEventListeners.put(listener, executor);
             return CompletableFuture.completedFuture(null);
@@ -210,7 +210,7 @@ public class AtomixConsistentSetMultimap
     @Override
     public CompletableFuture<Void> removeListener(MultimapEventListener<String, byte[]> listener) {
         if (mapEventListeners.remove(listener) != null && mapEventListeners.isEmpty()) {
-            return proxy.invoke(REMOVE_LISTENER).thenApply(v -> null);
+            return this.invoke(REMOVE_LISTENER).thenApply(v -> null);
         }
         return CompletableFuture.completedFuture(null);
     }

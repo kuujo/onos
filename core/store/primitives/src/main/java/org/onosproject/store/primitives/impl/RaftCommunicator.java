@@ -19,8 +19,8 @@ import java.net.ConnectException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
+import io.atomix.cluster.MemberId;
 import io.atomix.protocols.raft.RaftException;
-import io.atomix.protocols.raft.cluster.MemberId;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
 import org.onosproject.store.cluster.messaging.MessageSubject;

@@ -15,7 +15,7 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import io.atomix.protocols.raft.event.EventType;
+import io.atomix.primitive.event.EventType;
 import org.onlab.util.KryoNamespace;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.DocumentTreeEvent;

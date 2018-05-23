@@ -4,6 +4,12 @@ osgi_feature (
   required_features = [],
   included_bundles = [
     '//lib:atomix',
+    '//lib:atomix-cluster',
+    '//lib:atomix-messaging',
+    '//lib:atomix-primitive',
+    '//lib:atomix-raft',
+    '//lib:atomix-storage',
+    '//lib:atomix-utils',
     '//lib:commons-lang',
     '//lib:commons-lang3',
     '//lib:commons-text',

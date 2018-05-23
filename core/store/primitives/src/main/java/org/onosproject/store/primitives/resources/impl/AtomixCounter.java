@@ -17,7 +17,7 @@ package org.onosproject.store.primitives.resources.impl;
 
 import java.util.concurrent.CompletableFuture;
 
-import io.atomix.protocols.raft.proxy.RaftProxy;
+import io.atomix.primitive.proxy.PartitionProxy;
 import org.onlab.util.KryoNamespace;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.AsyncAtomicCounter;
@@ -44,7 +44,7 @@ public class AtomixCounter extends AbstractRaftPrimitive implements AsyncAtomicC
             .register(AtomixCounterOperations.NAMESPACE)
             .build());
 
-    public AtomixCounter(RaftProxy proxy) {
+    public AtomixCounter(PartitionProxy proxy) {
         super(proxy);
     }
 
@@ -54,37 +54,37 @@ public class AtomixCounter extends AbstractRaftPrimitive implements AsyncAtomicC
 
     @Override
     public CompletableFuture<Long> get() {
-        return proxy.<Long>invoke(GET, SERIALIZER::decode).thenApply(this::nullOrZero);
+        return this.<Long>invoke(GET, SERIALIZER::decode).thenApply(this::nullOrZero);
     }
 
     @Override
     public CompletableFuture<Void> set(long value) {
-        return proxy.invoke(SET, SERIALIZER::encode, new Set(value));
+        return invoke(SET, SERIALIZER::encode, new Set(value));
     }
 
     @Override
     public CompletableFuture<Boolean> compareAndSet(long expectedValue, long updateValue) {
-        return proxy.invoke(COMPARE_AND_SET, SERIALIZER::encode,
+        return invoke(COMPARE_AND_SET, SERIALIZER::encode,
                 new CompareAndSet(expectedValue, updateValue), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Long> addAndGet(long delta) {
-        return proxy.invoke(ADD_AND_GET, SERIALIZER::encode, new AddAndGet(delta), SERIALIZER::decode);
+        return invoke(ADD_AND_GET, SERIALIZER::encode, new AddAndGet(delta), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Long> getAndAdd(long delta) {
-        return proxy.invoke(GET_AND_ADD, SERIALIZER::encode, new GetAndAdd(delta), SERIALIZER::decode);
+        return invoke(GET_AND_ADD, SERIALIZER::encode, new GetAndAdd(delta), SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Long> incrementAndGet() {
-        return proxy.invoke(INCREMENT_AND_GET, SERIALIZER::decode);
+        return invoke(INCREMENT_AND_GET, SERIALIZER::decode);
     }
 
     @Override
     public CompletableFuture<Long> getAndIncrement() {
-        return proxy.invoke(GET_AND_INCREMENT, SERIALIZER::decode);
+        return invoke(GET_AND_INCREMENT, SERIALIZER::decode);
     }
 }

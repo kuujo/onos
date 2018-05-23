@@ -15,20 +15,20 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import com.google.common.collect.Lists;
-import io.atomix.protocols.raft.proxy.RaftProxy;
-import io.atomix.protocols.raft.service.RaftService;
-import org.junit.Test;
-import org.onlab.util.Tools;
-import org.onosproject.store.service.MapEvent;
-import org.onosproject.store.service.MapEventListener;
-
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
+
+import com.google.common.collect.Lists;
+import io.atomix.primitive.PrimitiveType;
+import io.atomix.primitive.proxy.PartitionProxy;
+import org.junit.Test;
+import org.onlab.util.Tools;
+import org.onosproject.store.service.MapEvent;
+import org.onosproject.store.service.MapEventListener;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -37,6 +37,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.CONSISTENT_TREEMAP;
 
 /**
  * Unit tests for {@link AtomixConsistentTreeMap}.
@@ -59,12 +60,12 @@ public class AtomixConsistentTreeMapTest extends AtomixTestBase<AtomixConsistent
                                                               valueFour);
 
     @Override
-    protected RaftService createService() {
-        return new AtomixConsistentTreeMapService();
+    protected PrimitiveType primitiveType() {
+        return CONSISTENT_TREEMAP;
     }
 
     @Override
-    protected AtomixConsistentTreeMap createPrimitive(RaftProxy proxy) {
+    protected AtomixConsistentTreeMap createPrimitive(PartitionProxy proxy) {
         return new AtomixConsistentTreeMap(proxy);
     }
 

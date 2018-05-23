@@ -24,8 +24,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.util.concurrent.Uninterruptibles;
-import io.atomix.protocols.raft.proxy.RaftProxy;
-import io.atomix.protocols.raft.service.RaftService;
+import io.atomix.primitive.PrimitiveType;
+import io.atomix.primitive.proxy.PartitionProxy;
 import org.junit.Test;
 import org.onlab.util.Tools;
 import org.onosproject.store.service.Task;
@@ -34,6 +34,7 @@ import org.onosproject.store.service.WorkQueueStats;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.WORK_QUEUE;
 
 /**
  * Unit tests for {@link AtomixWorkQueue}.
@@ -43,12 +44,12 @@ public class AtomixWorkQueueTest extends AtomixTestBase<AtomixWorkQueue> {
     private static final byte[] DEFAULT_PAYLOAD = "hello world".getBytes();
 
     @Override
-    protected RaftService createService() {
-        return new AtomixWorkQueueService();
+    protected PrimitiveType primitiveType() {
+        return WORK_QUEUE;
     }
 
     @Override
-    protected AtomixWorkQueue createPrimitive(RaftProxy proxy) {
+    protected AtomixWorkQueue createPrimitive(PartitionProxy proxy) {
         return new AtomixWorkQueue(proxy);
     }
 

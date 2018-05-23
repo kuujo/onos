@@ -15,7 +15,6 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import java.util.Collection;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -23,7 +22,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import io.atomix.protocols.raft.cluster.MemberId;
+import io.atomix.cluster.MemberId;
+import io.atomix.primitive.session.SessionId;
 import io.atomix.protocols.raft.protocol.CloseSessionRequest;
 import io.atomix.protocols.raft.protocol.CloseSessionResponse;
 import io.atomix.protocols.raft.protocol.CommandRequest;
@@ -41,7 +41,6 @@ import io.atomix.protocols.raft.protocol.QueryRequest;
 import io.atomix.protocols.raft.protocol.QueryResponse;
 import io.atomix.protocols.raft.protocol.RaftClientProtocol;
 import io.atomix.protocols.raft.protocol.ResetRequest;
-import io.atomix.protocols.raft.session.SessionId;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
 import org.onosproject.store.service.Serializer;
@@ -99,7 +98,7 @@ public class RaftClientCommunicator extends RaftCommunicator implements RaftClie
     }
 
     @Override
-    public void reset(Collection<MemberId> members, ResetRequest request) {
+    public void reset(Set<MemberId> members, ResetRequest request) {
         Set<NodeId> nodes = members.stream().map(m -> NodeId.nodeId(m.id())).collect(Collectors.toSet());
         clusterCommunicator.multicast(
                 request,

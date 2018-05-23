@@ -15,8 +15,8 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
-import io.atomix.protocols.raft.operation.OperationId;
-import io.atomix.protocols.raft.operation.OperationType;
+import io.atomix.primitive.operation.OperationId;
+import io.atomix.primitive.operation.OperationType;
 import org.onlab.util.KryoNamespace;
 import org.onosproject.store.serializers.KryoNamespaces;
 

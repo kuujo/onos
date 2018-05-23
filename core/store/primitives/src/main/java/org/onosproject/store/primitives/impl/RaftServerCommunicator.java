@@ -20,7 +20,8 @@ import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import io.atomix.protocols.raft.cluster.MemberId;
+import io.atomix.cluster.MemberId;
+import io.atomix.primitive.session.SessionId;
 import io.atomix.protocols.raft.protocol.AppendRequest;
 import io.atomix.protocols.raft.protocol.AppendResponse;
 import io.atomix.protocols.raft.protocol.CloseSessionRequest;
@@ -56,7 +57,6 @@ import io.atomix.protocols.raft.protocol.TransferRequest;
 import io.atomix.protocols.raft.protocol.TransferResponse;
 import io.atomix.protocols.raft.protocol.VoteRequest;
 import io.atomix.protocols.raft.protocol.VoteResponse;
-import io.atomix.protocols.raft.session.SessionId;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
 import org.onosproject.store.service.Serializer;

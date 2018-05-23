@@ -17,12 +17,11 @@ package org.onosproject.store.primitives.impl;
 
 import java.util.Arrays;
 
-import io.atomix.protocols.raft.proxy.RaftProxy;
-import io.atomix.protocols.raft.service.RaftService;
+import io.atomix.primitive.PrimitiveType;
+import io.atomix.primitive.proxy.PartitionProxy;
 import org.junit.Test;
 import org.onlab.util.Tools;
 import org.onosproject.store.primitives.resources.impl.AtomixConsistentMap;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapService;
 import org.onosproject.store.primitives.resources.impl.AtomixTestBase;
 import org.onosproject.store.service.AsyncConsistentMap;
 
@@ -30,6 +29,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.CONSISTENT_MAP;
 
 /**
  * Unit tests for {@link AtomixConsistentMap}.
@@ -37,12 +37,12 @@ import static org.junit.Assert.assertTrue;
 public class NotNullConsistentMapTest extends AtomixTestBase<AtomixConsistentMap> {
 
     @Override
-    protected RaftService createService() {
-        return new AtomixConsistentMapService();
+    protected PrimitiveType primitiveType() {
+        return CONSISTENT_MAP;
     }
 
     @Override
-    protected AtomixConsistentMap createPrimitive(RaftProxy proxy) {
+    protected AtomixConsistentMap createPrimitive(PartitionProxy proxy) {
         return new AtomixConsistentMap(proxy);
     }
 

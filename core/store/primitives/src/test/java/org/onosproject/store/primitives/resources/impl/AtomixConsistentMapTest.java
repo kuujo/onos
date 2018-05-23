@@ -15,9 +15,17 @@
  */
 package org.onosproject.store.primitives.resources.impl;
 
+import java.util.Arrays;
+import java.util.ConcurrentModificationException;
+import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletionException;
+import java.util.stream.Collectors;
+
 import com.google.common.collect.Sets;
-import io.atomix.protocols.raft.proxy.RaftProxy;
-import io.atomix.protocols.raft.service.RaftService;
+import io.atomix.primitive.PrimitiveType;
+import io.atomix.primitive.proxy.PartitionProxy;
 import org.junit.Test;
 import org.onlab.util.HexString;
 import org.onlab.util.Tools;
@@ -34,14 +42,6 @@ import org.onosproject.store.service.TransactionLog;
 import org.onosproject.store.service.Version;
 import org.onosproject.store.service.Versioned;
 
-import java.util.Arrays;
-import java.util.ConcurrentModificationException;
-import java.util.List;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletionException;
-import java.util.stream.Collectors;
-
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -51,6 +51,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.onosproject.store.primitives.resources.impl.AtomixPrimitiveTypes.CONSISTENT_MAP;
 
 /**
  * Unit tests for {@link AtomixConsistentMap}.
@@ -58,12 +59,12 @@ import static org.junit.Assert.fail;
 public class AtomixConsistentMapTest extends AtomixTestBase<AtomixConsistentMap> {
 
     @Override
-    protected RaftService createService() {
-        return new AtomixConsistentMapService();
+    protected PrimitiveType primitiveType() {
+        return CONSISTENT_MAP;
     }
 
     @Override
-    protected AtomixConsistentMap createPrimitive(RaftProxy proxy) {
+    protected AtomixConsistentMap createPrimitive(PartitionProxy proxy) {
         return new AtomixConsistentMap(proxy);
     }
 

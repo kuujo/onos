@@ -26,6 +26,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -33,14 +34,20 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import com.google.common.collect.Lists;
+import io.atomix.cluster.ClusterMembershipEventListener;
+import io.atomix.cluster.ClusterMembershipService;
+import io.atomix.cluster.Member;
+import io.atomix.cluster.MemberConfig;
+import io.atomix.cluster.MemberId;
+import io.atomix.primitive.PrimitiveType;
+import io.atomix.primitive.partition.PartitionId;
+import io.atomix.primitive.proxy.PartitionProxy;
+import io.atomix.primitive.service.ServiceConfig;
 import io.atomix.protocols.raft.RaftClient;
 import io.atomix.protocols.raft.RaftServer;
 import io.atomix.protocols.raft.ReadConsistency;
-import io.atomix.protocols.raft.cluster.MemberId;
 import io.atomix.protocols.raft.cluster.RaftMember;
 import io.atomix.protocols.raft.proxy.CommunicationStrategy;
-import io.atomix.protocols.raft.proxy.RaftProxy;
-import io.atomix.protocols.raft.service.RaftService;
 import io.atomix.protocols.raft.storage.RaftStorage;
 import io.atomix.storage.StorageLevel;
 import org.junit.After;
@@ -69,7 +76,7 @@ public abstract class AtomixTestBase<T extends AbstractRaftPrimitive> {
      *
      * @return the primitive service
      */
-    protected abstract RaftService createService();
+    protected abstract PrimitiveType primitiveType();
 
     /**
      * Creates a new primitive.
@@ -79,13 +86,11 @@ public abstract class AtomixTestBase<T extends AbstractRaftPrimitive> {
      */
     protected T newPrimitive(String name) {
         RaftClient client = createClient();
-        RaftProxy proxy = client.newProxyBuilder()
-                .withName(name)
-                .withServiceType("test")
+        PartitionProxy proxy = client.proxyBuilder(name, primitiveType(), new ServiceConfig())
                 .withReadConsistency(readConsistency())
                 .withCommunicationStrategy(communicationStrategy())
                 .build()
-                .open()
+                .connect()
                 .join();
         return createPrimitive(proxy);
     }
@@ -96,7 +101,7 @@ public abstract class AtomixTestBase<T extends AbstractRaftPrimitive> {
      * @param proxy the primitive proxy
      * @return the primitive instance
      */
-    protected abstract T createPrimitive(RaftProxy proxy);
+    protected abstract T createPrimitive(PartitionProxy proxy);
 
     /**
      * Returns the proxy read consistency.
@@ -221,7 +226,7 @@ public abstract class AtomixTestBase<T extends AbstractRaftPrimitive> {
      * Creates a Raft server.
      */
     private RaftServer createServer(RaftMember member) {
-        RaftServer.Builder builder = RaftServer.newBuilder(member.memberId())
+        RaftServer.Builder builder = RaftServer.builder(member.memberId())
                 .withType(member.getType())
                 .withProtocol(new RaftServerCommunicator(
                         "partition-1",
@@ -233,7 +238,8 @@ public abstract class AtomixTestBase<T extends AbstractRaftPrimitive> {
                         .withSerializer(new AtomixSerializerAdapter(Serializer.using(StorageNamespaces.RAFT_STORAGE)))
                         .withMaxSegmentSize(1024 * 1024)
                         .build())
-                .addService("test", this::createService);
+                .withMembershipService(new TestMembershipService(member))
+                .addPrimitiveType(primitiveType());
 
         RaftServer server = builder.build();
         servers.add(server);
@@ -247,6 +253,7 @@ public abstract class AtomixTestBase<T extends AbstractRaftPrimitive> {
         MemberId memberId = nextMemberId();
         RaftClient client = RaftClient.newBuilder()
                 .withMemberId(memberId)
+                .withPartitionId(PartitionId.from("", 0))
                 .withProtocol(new RaftClientCommunicator(
                         "partition-1",
                         Serializer.using(StorageNamespaces.RAFT_PROTOCOL),
@@ -256,6 +263,54 @@ public abstract class AtomixTestBase<T extends AbstractRaftPrimitive> {
         client.connect(members.stream().map(RaftMember::memberId).collect(Collectors.toList())).join();
         clients.add(client);
         return client;
+    }
+
+    private class TestMembershipService implements ClusterMembershipService {
+        private final RaftMember member;
+
+        TestMembershipService(RaftMember member) {
+            this.member = member;
+        }
+
+        @Override
+        public Member getLocalMember() {
+            return new Member(new MemberConfig()
+                .setId(member.memberId())
+                .setAddress("localhost:" + Math.abs(member.hash())));
+        }
+
+        @Override
+        public Set<Member> getMembers() {
+            return members.stream()
+                .map(member -> new Member(new MemberConfig()
+                    .setId(member.memberId())
+                    .setAddress("localhost:" + Math.abs(member.hash()))))
+                .collect(Collectors.toSet());
+        }
+
+        @Override
+        public Member getMember(MemberId memberId) {
+            RaftMember member = members.stream()
+                .filter(m -> m.memberId().equals(memberId))
+                .findFirst()
+                .orElse(null);
+            if (member == null) {
+                return null;
+            }
+            return new Member(new MemberConfig()
+                .setId(member.memberId())
+                .setAddress("localhost:" + Math.abs(member.hash())));
+        }
+
+        @Override
+        public void addListener(ClusterMembershipEventListener listener) {
+
+        }
+
+        @Override
+        public void removeListener(ClusterMembershipEventListener listener) {
+
+        }
     }
 
     /**

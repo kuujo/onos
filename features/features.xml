@@ -21,7 +21,7 @@
     <feature name="onos-thirdparty-base" version="@FEATURE-VERSION"
              description="ONOS 3rd party dependencies">
         <bundle>mvn:commons-lang/commons-lang/2.6</bundle>
-        <bundle>mvn:org.apache.commons/commons-lang3/3.5</bundle>
+        <bundle>mvn:org.apache.commons/commons-lang3/3.7</bundle>
         <bundle>mvn:commons-configuration/commons-configuration/1.10</bundle>
         <bundle>mvn:com.google.guava/guava/22.0</bundle>
         <bundle>mvn:io.netty/netty/3.10.5.Final</bundle>
@@ -59,7 +59,13 @@
         <bundle>mvn:com.typesafe/config/1.2.1</bundle>
         <bundle>mvn:com.googlecode.concurrent-trees/concurrent-trees/2.6.0</bundle>
         <bundle>mvn:commons-io/commons-io/2.4</bundle>
-        <bundle>mvn:io.atomix/atomix/2.0.20</bundle>
+        <bundle>mvn:io.atomix/atomix/2.1.0-rc1</bundle>
+        <bundle>mvn:io.atomix/atomix-cluster/2.1.0-rc1</bundle>
+        <bundle>mvn:io.atomix/atomix-messaging/2.1.0-rc1</bundle>
+        <bundle>mvn:io.atomix/atomix-storage/2.1.0-rc1</bundle>
+        <bundle>mvn:io.atomix/atomix-primitive/2.1.0-rc1</bundle>
+        <bundle>mvn:io.atomix/atomix-raft/2.1.0-rc1</bundle>
+        <bundle>mvn:io.atomix/atomix-utils/2.1.0-rc1</bundle>
 
         <bundle>mvn:org.glassfish.jersey.core/jersey-client/2.26</bundle>
 
