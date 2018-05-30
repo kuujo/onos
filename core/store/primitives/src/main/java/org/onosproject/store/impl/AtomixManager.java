@@ -17,8 +17,8 @@ package org.onosproject.store.impl;
 
 import java.util.stream.Collectors;
 
-import io.atomix.cluster.AtomixCluster;
 import io.atomix.cluster.Member;
+import io.atomix.core.Atomix;
 import io.atomix.utils.net.Address;
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
@@ -27,7 +27,7 @@ import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
 import org.onosproject.cluster.ClusterMetadataService;
-import org.onosproject.cluster.ControllerNode;
+import org.onosproject.cluster.Node;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,14 +43,14 @@ public class AtomixManager {
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected ClusterMetadataService metadataService;
 
-    private AtomixCluster atomix;
+    private Atomix atomix;
 
     /**
      * Returns the Atomix instance.
      *
      * @return the Atomix instance
      */
-    public AtomixCluster getAtomix() {
+    public Atomix getAtomix() {
         return atomix;
     }
 
@@ -67,19 +67,28 @@ public class AtomixManager {
         log.info("Stopped");
     }
 
-    private Member toMember(ControllerNode node) {
+    private static Member toLocalMember(Node node) {
+        return Member.builder()
+            .withId(node.id().id())
+            .withAddress(Address.from(node.ip().toString(), node.tcpPort()))
+            .addMetadata("type", "onos")
+            .build();
+    }
+
+    private static Member toMember(Node node) {
         return Member.builder()
             .withId(node.id().id())
             .withAddress(Address.from(node.ip().toString(), node.tcpPort()))
             .build();
     }
 
-    private AtomixCluster createAtomix() {
-        return AtomixCluster.builder()
-            .withLocalMember(toMember(metadataService.getLocalNode()))
-            .withMembers(metadataService.getClusterMetadata().getNodes()
+    private Atomix createAtomix() {
+        return Atomix.builder(getClass().getClassLoader())
+            .withClusterName(metadataService.getClusterMetadata().getName())
+            .withLocalMember(toLocalMember(metadataService.getLocalNode()))
+            .withMembers(metadataService.getClusterMetadata().getConsensusNodes()
                 .stream()
-                .map(this::toMember)
+                .map(AtomixManager::toMember)
                 .collect(Collectors.toList()))
             .build();
     }

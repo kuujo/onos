@@ -43,7 +43,7 @@ case $2 in
     start)
         # Execute the remote commands
         for node in $nodes; do
-            ssh -tt $ONOS_USER@${node} "sudo nohup $ATOMIX_INSTALL_DIR/atomix &>/dev/null &"
+            ssh $ONOS_USER@${node} "nohup $ATOMIX_INSTALL_DIR/atomix >> $ATOMIX_INSTALL_DIR/log 2>&1 &"
         done
     ;;
     stop)

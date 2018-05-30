@@ -38,6 +38,7 @@ import org.onosproject.cluster.ClusterStoreDelegate;
 import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.ControllerNode.State;
 import org.onosproject.cluster.DefaultControllerNode;
+import org.onosproject.cluster.Node;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.core.Version;
 import org.onosproject.core.VersionService;
@@ -214,6 +215,11 @@ public class DistributedClusterStore
     @Override
     public Set<ControllerNode> getNodes() {
         return ImmutableSet.copyOf(allNodes.values());
+    }
+
+    @Override
+    public Set<Node> getConsensusNodes() {
+        return ImmutableSet.of();
     }
 
     @Override

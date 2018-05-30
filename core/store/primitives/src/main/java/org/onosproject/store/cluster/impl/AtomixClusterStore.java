@@ -17,13 +17,14 @@ package org.onosproject.store.cluster.impl;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.google.common.collect.Maps;
-import io.atomix.cluster.AtomixCluster;
 import io.atomix.cluster.ClusterMembershipEvent;
 import io.atomix.cluster.ClusterMembershipEventListener;
+import io.atomix.cluster.ClusterMembershipService;
 import io.atomix.cluster.Member;
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
@@ -33,15 +34,14 @@ import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
 import org.onlab.packet.IpAddress;
 import org.onosproject.cluster.ClusterEvent;
-import org.onosproject.cluster.ClusterMetadataEvent;
-import org.onosproject.cluster.ClusterMetadataEventListener;
-import org.onosproject.cluster.ClusterMetadataService;
 import org.onosproject.cluster.ClusterStore;
 import org.onosproject.cluster.ClusterStoreDelegate;
 import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.DefaultControllerNode;
+import org.onosproject.cluster.Node;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.core.Version;
+import org.onosproject.core.VersionService;
 import org.onosproject.store.AbstractStore;
 import org.onosproject.store.impl.AtomixManager;
 import org.slf4j.Logger;
@@ -56,6 +56,9 @@ import static com.google.common.base.Preconditions.checkNotNull;
 @Service
 public class AtomixClusterStore extends AbstractStore<ClusterEvent, ClusterStoreDelegate> implements ClusterStore {
     private static final String INSTANCE_ID_NULL = "Instance ID cannot be null";
+    
+    private static final String STATE_KEY = "state";
+    private static final String VERSION_KEY = "version";
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -63,90 +66,89 @@ public class AtomixClusterStore extends AbstractStore<ClusterEvent, ClusterStore
     protected AtomixManager atomixManager;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected ClusterMetadataService metadataService;
+    protected VersionService versionService;
 
-    private AtomixCluster atomix;
+    private ClusterMembershipService membershipService;
     private ControllerNode localNode;
     private final Map<NodeId, ControllerNode> nodes = Maps.newConcurrentMap();
     private final Map<NodeId, ControllerNode.State> states = Maps.newConcurrentMap();
     private final Map<NodeId, Version> versions = Maps.newConcurrentMap();
     private final Map<NodeId, Instant> updates = Maps.newConcurrentMap();
-    private final ClusterMetadataEventListener metadataEventListener = this::changeMetadata;
     private final ClusterMembershipEventListener membershipEventListener = this::changeMembership;
 
     @Activate
     public void activate() {
-        metadataService.addListener(metadataEventListener);
-        this.atomix = atomixManager.getAtomix();
-        atomix.membershipService().addListener(membershipEventListener);
-        metadataService.getClusterMetadata().getNodes().forEach(node -> {
+        membershipService = atomixManager.getAtomix().getMembershipService();
+        membershipService.addListener(membershipEventListener);
+        membershipService.getMembers().forEach(member -> {
+            ControllerNode node = toControllerNode(member);
             nodes.put(node.id(), node);
-            updates.put(node.id(), Instant.now());
+            updateState(node, member);
+            updateVersion(node, member);
         });
-        localNode = metadataService.getLocalNode();
+        membershipService.getLocalMember().metadata().put(STATE_KEY, ControllerNode.State.ACTIVE.name());
+        membershipService.getLocalMember().metadata().put(VERSION_KEY, versionService.version().toString());
+        localNode = toControllerNode(membershipService.getLocalMember());
+        states.put(localNode.id(), ControllerNode.State.ACTIVE);
+        versions.put(localNode.id(), versionService.version());
         log.info("Started");
     }
 
     @Deactivate
     public void deactivate() {
-        metadataService.removeListener(metadataEventListener);
-        atomix.membershipService().removeListener(membershipEventListener);
+        membershipService.removeListener(membershipEventListener);
         log.info("Stopped");
-    }
-
-    private void changeMetadata(ClusterMetadataEvent event) {
-        event.subject().getNodes().forEach(node -> nodes.putIfAbsent(node.id(), node));
-        nodes.entrySet().removeIf(entry -> !event.subject().getNodes().contains(entry.getValue()));
     }
 
     private void changeMembership(ClusterMembershipEvent event) {
         ControllerNode node = nodes.get(NodeId.nodeId(event.subject().id().id()));
-        if (node != null) {
-            switch (event.type()) {
-                case MEMBER_ADDED:
-                case MEMBER_UPDATED:
-                    updateState(node, event.subject());
-                    updateVersion(node, event.subject());
-                    break;
-                case MEMBER_REMOVED:
-                    if (states.put(node.id(), ControllerNode.State.INACTIVE) != ControllerNode.State.INACTIVE) {
-                        notifyDelegate(new ClusterEvent(ClusterEvent.Type.INSTANCE_DEACTIVATED, node));
-                    }
-                    break;
-                default:
-                    break;
-            }
+        switch (event.type()) {
+            case MEMBER_ADDED:
+            case MEMBER_UPDATED:
+                if (node == null) {
+                    node = toControllerNode(event.subject());
+                    nodes.put(node.id(), node);
+                    notifyDelegate(new ClusterEvent(ClusterEvent.Type.INSTANCE_ADDED, node));
+                }
+                updateVersion(node, event.subject());
+                updateState(node, event.subject());
+                break;
+            case MEMBER_REMOVED:
+                if (node != null
+                    && states.put(node.id(), ControllerNode.State.INACTIVE) != ControllerNode.State.INACTIVE) {
+                    notifyDelegate(new ClusterEvent(ClusterEvent.Type.INSTANCE_DEACTIVATED, node));
+                    notifyDelegate(new ClusterEvent(ClusterEvent.Type.INSTANCE_REMOVED, node));
+                }
+                break;
+            default:
+                break;
         }
     }
 
     private void updateState(ControllerNode node, Member member) {
-        String state = member.metadata().get("state");
-        if (state != null) {
-            if (state.equals(ControllerNode.State.ACTIVE.name())) {
-                if (states.put(node.id(), ControllerNode.State.ACTIVE) != ControllerNode.State.ACTIVE) {
-                    markUpdated(node.id());
-                    notifyDelegate(new ClusterEvent(ClusterEvent.Type.INSTANCE_ACTIVATED, node));
-                }
-            } else if (state.equals(ControllerNode.State.READY.name())) {
-                if (states.put(node.id(), ControllerNode.State.READY) != ControllerNode.State.READY) {
-                    notifyDelegate(new ClusterEvent(ClusterEvent.Type.INSTANCE_READY, node));
-                }
-            } else {
-                if (states.put(node.id(), ControllerNode.State.ACTIVE) != ControllerNode.State.ACTIVE) {
-                    notifyDelegate(new ClusterEvent(ClusterEvent.Type.INSTANCE_ACTIVATED, node));
-                }
+        String state = member.metadata().get(STATE_KEY);
+        if (state == null || !state.equals(ControllerNode.State.READY.name())) {
+            if (states.put(node.id(), ControllerNode.State.ACTIVE) != ControllerNode.State.ACTIVE) {
+                log.info("Updated node {} state to {}", node.id(), ControllerNode.State.ACTIVE);
+                markUpdated(node.id());
+                notifyDelegate(new ClusterEvent(ClusterEvent.Type.INSTANCE_ACTIVATED, node));
             }
         } else {
-            if (states.put(node.id(), ControllerNode.State.ACTIVE) != ControllerNode.State.ACTIVE) {
-                notifyDelegate(new ClusterEvent(ClusterEvent.Type.INSTANCE_ACTIVATED, node));
+            if (states.put(node.id(), ControllerNode.State.READY) != ControllerNode.State.READY) {
+                log.info("Updated node {} state to {}", node.id(), ControllerNode.State.READY);
+                markUpdated(node.id());
+                notifyDelegate(new ClusterEvent(ClusterEvent.Type.INSTANCE_READY, node));
             }
         }
     }
 
     private void updateVersion(ControllerNode node, Member member) {
-        String version = member.metadata().get("version");
-        if (version != null) {
-            versions.put(node.id(), Version.version(version));
+        String versionString = member.metadata().get(VERSION_KEY);
+        if (versionString != null) {
+            Version version = Version.version(versionString);
+            if (!Objects.equals(versions.put(node.id(), version), version)) {
+                log.info("Updated node {} version to {}", node.id(), version);
+            }
         }
     }
 
@@ -154,7 +156,7 @@ public class AtomixClusterStore extends AbstractStore<ClusterEvent, ClusterStore
         updates.put(nodeId, Instant.now());
     }
 
-    private ControllerNode toNode(Member member) {
+    private ControllerNode toControllerNode(Member member) {
         return new DefaultControllerNode(
             NodeId.nodeId(member.id().id()),
             IpAddress.valueOf(member.address().address()),
@@ -163,18 +165,31 @@ public class AtomixClusterStore extends AbstractStore<ClusterEvent, ClusterStore
 
     @Override
     public ControllerNode getLocalNode() {
-        return toNode(atomix.membershipService().getLocalMember());
+        return toControllerNode(membershipService.getLocalMember());
+    }
+
+    @Override
+    public Set<Node> getConsensusNodes() {
+        return membershipService.getMembers()
+            .stream()
+            .filter(member -> !Objects.equals(member.metadata().get("type"), "onos"))
+            .map(this::toControllerNode)
+            .collect(Collectors.toSet());
     }
 
     @Override
     public Set<ControllerNode> getNodes() {
-        return atomix.membershipService().getMembers().stream().map(this::toNode).collect(Collectors.toSet());
+        return membershipService.getMembers()
+            .stream()
+            .filter(member -> Objects.equals(member.metadata().get("type"), "onos"))
+            .map(this::toControllerNode)
+            .collect(Collectors.toSet());
     }
 
     @Override
     public ControllerNode getNode(NodeId nodeId) {
-        Member member = atomix.membershipService().getMember(nodeId.id());
-        return member != null ? toNode(member) : null;
+        Member member = membershipService.getMember(nodeId.id());
+        return member != null ? toControllerNode(member) : null;
     }
 
     @Override
@@ -199,7 +214,7 @@ public class AtomixClusterStore extends AbstractStore<ClusterEvent, ClusterStore
     public void markFullyStarted(boolean started) {
         ControllerNode.State state = started ? ControllerNode.State.READY : ControllerNode.State.ACTIVE;
         states.put(localNode.id(), state);
-        atomix.membershipService().getLocalMember().metadata().put("state", state.name());
+        membershipService.getLocalMember().metadata().put(STATE_KEY, state.name());
     }
 
     @Override
@@ -209,7 +224,7 @@ public class AtomixClusterStore extends AbstractStore<ClusterEvent, ClusterStore
         nodes.put(node.id(), node);
         ControllerNode.State state = node.equals(localNode)
             ? ControllerNode.State.ACTIVE : ControllerNode.State.INACTIVE;
-        atomix.membershipService().getMember(node.id().id()).metadata().put("state", state.name());
+        membershipService.getMember(node.id().id()).metadata().put(STATE_KEY, state.name());
         notifyDelegate(new ClusterEvent(ClusterEvent.Type.INSTANCE_ADDED, node));
         return node;
     }

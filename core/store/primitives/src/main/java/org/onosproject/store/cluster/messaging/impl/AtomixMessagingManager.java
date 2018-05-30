@@ -50,7 +50,7 @@ public class AtomixMessagingManager implements MessagingService {
 
     @Activate
     public void activate() {
-        messagingService = atomixManager.getAtomix().messagingService();
+        messagingService = atomixManager.getAtomix().getMessagingService();
         log.info("Started");
     }
 

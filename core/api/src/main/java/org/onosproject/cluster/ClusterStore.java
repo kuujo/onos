@@ -37,6 +37,13 @@ public interface ClusterStore extends Store<ClusterEvent, ClusterStoreDelegate> 
     ControllerNode getLocalNode();
 
     /**
+     * Returns the set of consensus members.
+     *
+     * @return set of consensus members
+     */
+    Set<Node> getConsensusNodes();
+
+    /**
      * Returns the set of current cluster members.
      *
      * @return set of cluster members

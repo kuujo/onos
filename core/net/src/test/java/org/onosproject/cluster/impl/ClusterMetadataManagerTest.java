@@ -15,6 +15,10 @@
  */
 package org.onosproject.cluster.impl;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.URL;
+
 import com.google.common.collect.ImmutableSet;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
@@ -27,12 +31,7 @@ import org.onosproject.cluster.ClusterMetadata;
 import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.Partition;
 import org.onosproject.common.event.impl.TestEventDispatcher;
-import org.onosproject.core.VersionServiceAdapter;
 import org.slf4j.helpers.MessageFormatter;
-
-import java.io.File;
-import java.io.IOException;
-import java.net.URL;
 
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
@@ -89,7 +88,6 @@ public class ClusterMetadataManagerTest {
 
         defaultProvider = new DefaultClusterMetadataProvider();
         defaultProvider.providerRegistry = mgr;
-        defaultProvider.versionService = new VersionServiceAdapter();
 
         mgr.activate();
         defaultProvider.activate();
@@ -191,10 +189,8 @@ public class ClusterMetadataManagerTest {
         assertThat(partition.getMembers(), hasSize(1));
         assertThat(partition.getMembers().iterator().next().id(), is(NODE_ID));
 
-        ClusterMetadata newMetadata = new ClusterMetadata(metadata.providerId(),
-                "NewMetadata",
-                ImmutableSet.of(node),
-                ImmutableSet.of(partition));
+        ClusterMetadata newMetadata = new ClusterMetadata(
+            metadata.providerId(), "NewMetadata", node, ImmutableSet.of());
         mgr.setClusterMetadata(newMetadata);
 
         assertThat(fileProvider.getClusterMetadata().value(), equalTo(newMetadata));
