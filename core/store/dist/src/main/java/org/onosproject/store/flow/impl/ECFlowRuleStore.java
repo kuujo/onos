@@ -30,6 +30,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
@@ -97,6 +98,7 @@ import static org.onlab.util.Tools.groupedThreads;
 import static org.onosproject.net.flow.FlowRuleEvent.Type.RULE_REMOVED;
 import static org.onosproject.store.flow.ReplicaInfoEvent.Type.MASTER_CHANGED;
 import static org.onosproject.store.flow.impl.ECFlowRuleStoreMessageSubjects.APPLY_BATCH_FLOWS;
+import static org.onosproject.store.flow.impl.ECFlowRuleStoreMessageSubjects.FLOW_TABLE_ANTI_ENTROPY;
 import static org.onosproject.store.flow.impl.ECFlowRuleStoreMessageSubjects.FLOW_TABLE_BACKUP;
 import static org.onosproject.store.flow.impl.ECFlowRuleStoreMessageSubjects.GET_DEVICE_FLOW_ENTRIES;
 import static org.onosproject.store.flow.impl.ECFlowRuleStoreMessageSubjects.GET_FLOW_ENTRY;
@@ -119,6 +121,7 @@ public class ECFlowRuleStore
     private static final int DEFAULT_MAX_BACKUP_COUNT = 2;
     private static final boolean DEFAULT_PERSISTENCE_ENABLED = false;
     private static final int DEFAULT_BACKUP_PERIOD_MILLIS = 2000;
+    private static final int DEFAULT_ANTI_ENTROPY_PERIOD_MILLIS = 5000;
     private static final long FLOW_RULE_STORE_TIMEOUT_MILLIS = 5000;
     private static final int NUM_BUCKETS = 1024;
 
@@ -127,8 +130,13 @@ public class ECFlowRuleStore
     private int msgHandlerPoolSize = MESSAGE_HANDLER_THREAD_POOL_SIZE;
 
     @Property(name = "backupPeriod", intValue = DEFAULT_BACKUP_PERIOD_MILLIS,
-            label = "Delay in ms between successive backup runs")
+        label = "Delay in ms between successive backup runs")
     private int backupPeriod = DEFAULT_BACKUP_PERIOD_MILLIS;
+
+    @Property(name = "antiEntropyPeriod", intValue = DEFAULT_ANTI_ENTROPY_PERIOD_MILLIS,
+        label = "Delay in ms between anti-entropy runs")
+    private int antiEntropyPeriod = DEFAULT_ANTI_ENTROPY_PERIOD_MILLIS;
+
     @Property(name = "persistenceEnabled", boolValue = false,
             label = "Indicates whether or not changes in the flow table should be persisted to disk.")
     private boolean persistenceEnabled = DEFAULT_PERSISTENCE_ENABLED;
@@ -168,6 +176,7 @@ public class ECFlowRuleStore
     private ExecutorService eventHandler;
 
     private ScheduledFuture<?> backupTask;
+    private ScheduledFuture<?> antiEntropyTask;
     private final ScheduledExecutorService backupSenderExecutor =
             Executors.newSingleThreadScheduledExecutor(groupedThreads("onos/flow", "backup-sender", log));
 
@@ -214,6 +223,11 @@ public class ECFlowRuleStore
                 flowTable::backup,
                 0,
                 backupPeriod,
+                TimeUnit.MILLISECONDS);
+        antiEntropyTask = backupSenderExecutor.scheduleWithFixedDelay(
+                flowTable::recover,
+                0,
+                antiEntropyPeriod,
                 TimeUnit.MILLISECONDS);
 
         flowCounts = storageService.<BucketId, Integer>eventuallyConsistentMapBuilder()
@@ -262,6 +276,7 @@ public class ECFlowRuleStore
         int newPoolSize;
         int newBackupPeriod;
         int newBackupCount;
+        int newAntiEntropyPeriod;
         try {
             String s = get(properties, "msgHandlerPoolSize");
             newPoolSize = isNullOrEmpty(s) ? msgHandlerPoolSize : Integer.parseInt(s.trim());
@@ -271,18 +286,29 @@ public class ECFlowRuleStore
 
             s = get(properties, "backupCount");
             newBackupCount = isNullOrEmpty(s) ? backupCount : Integer.parseInt(s.trim());
+
+            s = get(properties, "antiEntropyPeriod");
+            newAntiEntropyPeriod = isNullOrEmpty(s) ? antiEntropyPeriod : Integer.parseInt(s.trim());
         } catch (NumberFormatException | ClassCastException e) {
             newPoolSize = MESSAGE_HANDLER_THREAD_POOL_SIZE;
             newBackupPeriod = DEFAULT_BACKUP_PERIOD_MILLIS;
             newBackupCount = DEFAULT_MAX_BACKUP_COUNT;
+            newAntiEntropyPeriod = DEFAULT_ANTI_ENTROPY_PERIOD_MILLIS;
         }
 
         boolean restartBackupTask = false;
+        boolean restartAntiEntropyTask = false;
 
         if (newBackupPeriod != backupPeriod) {
             backupPeriod = newBackupPeriod;
             restartBackupTask = true;
         }
+
+        if (newAntiEntropyPeriod != antiEntropyPeriod) {
+            antiEntropyPeriod = newAntiEntropyPeriod;
+            restartAntiEntropyTask = true;
+        }
+
         if (restartBackupTask) {
             if (backupTask != null) {
                 // cancel previously running task
@@ -294,6 +320,19 @@ public class ECFlowRuleStore
                     backupPeriod,
                     TimeUnit.MILLISECONDS);
         }
+
+        if (restartAntiEntropyTask) {
+            if (antiEntropyTask != null) {
+                // cancel previously running task
+                antiEntropyTask.cancel(false);
+            }
+            antiEntropyTask = backupSenderExecutor.scheduleWithFixedDelay(
+                    flowTable::recover,
+                    0,
+                    antiEntropyPeriod,
+                    TimeUnit.MILLISECONDS);
+        }
+
         if (newPoolSize != msgHandlerPoolSize) {
             msgHandlerPoolSize = newPoolSize;
             ExecutorService oldMsgHandler = messageHandlingExecutor;
@@ -304,6 +343,7 @@ public class ECFlowRuleStore
             registerMessageHandlers(messageHandlingExecutor);
             oldMsgHandler.shutdown();
         }
+
         if (backupCount != newBackupCount) {
             backupCount = newBackupCount;
         }
@@ -322,7 +362,9 @@ public class ECFlowRuleStore
         clusterCommunicator.addSubscriber(
                 REMOVE_FLOW_ENTRY, serializer::decode, this::removeFlowRuleInternal, serializer::encode, executor);
         clusterCommunicator.addSubscriber(
-                FLOW_TABLE_BACKUP, serializer::decode, flowTable::onBackup, serializer::encode, executor);
+            FLOW_TABLE_BACKUP, serializer::decode, flowTable::onBackup, serializer::encode, executor);
+        clusterCommunicator.addSubscriber(
+            FLOW_TABLE_ANTI_ENTROPY, serializer::decode, flowTable::onAntiEntropy, serializer::encode, executor);
     }
 
     private void unregisterMessageHandlers() {
@@ -332,6 +374,7 @@ public class ECFlowRuleStore
         clusterCommunicator.removeSubscriber(APPLY_BATCH_FLOWS);
         clusterCommunicator.removeSubscriber(REMOTE_APPLY_COMPLETED);
         clusterCommunicator.removeSubscriber(FLOW_TABLE_BACKUP);
+        clusterCommunicator.removeSubscriber(FLOW_TABLE_ANTI_ENTROPY);
     }
 
     private void logConfig(String prefix) {
@@ -733,6 +776,7 @@ public class ECFlowRuleStore
     private class FlowBucket {
         private final BucketId bucketId;
         private final Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>> table;
+        private final long timestamp;
 
         BucketId bucketId() {
             return bucketId;
@@ -742,9 +786,46 @@ public class ECFlowRuleStore
             return table;
         }
 
-        FlowBucket(BucketId bucketId, Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>> table) {
+        long timestamp() {
+            return timestamp;
+        }
+
+        FlowBucket(BucketId bucketId, Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>> table, long timestamp) {
             this.bucketId = bucketId;
             this.table = table;
+            this.timestamp = timestamp;
+        }
+    }
+
+    /**
+     * Flow bucket digest.
+     */
+    private class FlowBucketDigest {
+        private final BucketId bucketId;
+        private final long timestamp;
+
+        FlowBucketDigest(BucketId bucketId, long timestamp) {
+            this.bucketId = bucketId;
+            this.timestamp = timestamp;
+        }
+
+        BucketId bucketId() {
+            return bucketId;
+        }
+
+        long timestamp() {
+            return timestamp;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(bucketId);
+        }
+
+        @Override
+        public boolean equals(Object object) {
+            return object instanceof FlowBucketDigest
+                && ((FlowBucketDigest) object).bucketId.equals(bucketId);
         }
     }
 
@@ -777,49 +858,69 @@ public class ECFlowRuleStore
         }
 
         /**
+         * Returns the set of devices in the flow table.
+         *
+         * @return the set of devices in the flow table
+         */
+        private Set<DeviceId> getDevices() {
+            return flowEntries.keySet();
+        }
+
+        /**
+         * Returns the digests for all buckets in the flow table for the given device.
+         *
+         * @param deviceId the device for which to return digests
+         * @return the set of digests for all buckets for the given device
+         */
+        private Set<FlowBucketDigest> getDigests(DeviceId deviceId) {
+            return IntStream.range(0, NUM_BUCKETS)
+                .mapToObj(bucket -> {
+                    BucketId bucketId = new BucketId(deviceId, bucket);
+                    long timestamp = lastUpdateTimes.getOrDefault(bucketId, 0L);
+                    return new FlowBucketDigest(bucketId, timestamp);
+                }).collect(Collectors.toSet());
+        }
+
+        /**
          * Returns the flow table for specified device.
          *
          * @param deviceId identifier of the device
          * @return Map representing Flow Table of given device.
          */
         private Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>> getFlowTable(DeviceId deviceId) {
+            // Use an external get/null check to avoid locks.
+            // https://bugs.java.com/bugdatabase/view_bug.do?bug_id=8161372
             if (persistenceEnabled) {
-                return flowEntries.computeIfAbsent(deviceId, id -> persistenceService
-                        .<FlowId, Map<StoredFlowEntry, StoredFlowEntry>>persistentMapBuilder()
+                Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>> flowTable = flowEntries.get(deviceId);
+                return flowTable != null ? flowTable
+                    : flowEntries.computeIfAbsent(deviceId, id ->
+                    persistenceService.<FlowId, Map<StoredFlowEntry, StoredFlowEntry>>persistentMapBuilder()
                         .withName("FlowTable:" + deviceId.toString())
                         .withSerializer(serializer)
                         .build());
             } else {
-                return flowEntries.computeIfAbsent(deviceId, id -> Maps.newConcurrentMap());
+                Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>> flowTable = flowEntries.get(deviceId);
+                return flowTable != null ? flowTable
+                    : flowEntries.computeIfAbsent(deviceId, id -> Maps.newConcurrentMap());
             }
         }
 
         private FlowBucket getFlowBucket(BucketId bucketId) {
-            if (persistenceEnabled) {
-                return new FlowBucket(bucketId, flowEntries.computeIfAbsent(bucketId.deviceId(), id ->
-                    persistenceService.<FlowId, Map<StoredFlowEntry, StoredFlowEntry>>persistentMapBuilder()
-                        .withName("FlowTable:" + bucketId.deviceId().toString())
-                        .withSerializer(serializer)
-                        .build())
-                    .entrySet()
-                    .stream()
-                    .filter(entry -> isInBucket(entry.getKey(), bucketId.bucket()))
-                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
-            } else {
-                Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>> copy = Maps.newHashMap();
-                flowEntries.computeIfAbsent(bucketId.deviceId(), id -> Maps.newConcurrentMap())
-                    .entrySet()
-                    .stream()
-                    .filter(entry -> isInBucket(entry.getKey(), bucketId.bucket()))
-                    .forEach(entry -> {
-                        copy.put(entry.getKey(), Maps.newHashMap(entry.getValue()));
-                    });
-                return new FlowBucket(bucketId, copy);
-            }
+            long timestamp = lastUpdateTimes.getOrDefault(bucketId, 0L);
+            return new FlowBucket(bucketId, getFlowTable(bucketId.deviceId())
+                .entrySet()
+                .stream()
+                .filter(entry -> isInBucket(entry.getKey(), bucketId.bucket()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)),
+                timestamp);
         }
 
         private Map<StoredFlowEntry, StoredFlowEntry> getFlowEntriesInternal(DeviceId deviceId, FlowId flowId) {
-            return getFlowTable(deviceId).computeIfAbsent(flowId, id -> Maps.newConcurrentMap());
+            // Use an external get/null check to avoid locks.
+            // https://bugs.java.com/bugdatabase/view_bug.do?bug_id=8161372
+            Map<FlowId, Map<StoredFlowEntry, StoredFlowEntry>> flowTable = getFlowTable(deviceId);
+            Map<StoredFlowEntry, StoredFlowEntry> flowEntries = flowTable.get(flowId);
+            return flowEntries != null ? flowEntries : flowTable.computeIfAbsent(flowId, id -> Maps.newConcurrentMap());
         }
 
         private StoredFlowEntry getFlowEntryInternal(FlowRule rule) {
@@ -933,7 +1034,7 @@ public class ECFlowRuleStore
          * Backs up all devices to all backup nodes.
          */
         private void backup() {
-            for (DeviceId deviceId : flowEntries.keySet()) {
+            for (DeviceId deviceId : getDevices()) {
                 backup(deviceId);
             }
         }
@@ -1086,11 +1187,96 @@ public class ECFlowRuleStore
                         .removeIf(entry -> isInBucket(entry.getKey(), flowBucket.bucketId().bucket())
                             && !flowBucket.table().containsKey(entry.getKey()));
                     backedupFlows.addAll(flowBucket.table().keySet());
+                    lastUpdateTimes.put(flowBucket.bucketId(), flowBucket.timestamp());
                 }
             } catch (Exception e) {
                 log.warn("Failure processing backup request", e);
             }
             return backedupFlows;
+        }
+
+        /**
+         * Runs the anti-entropy protocol.
+         */
+        private void recover() {
+            for (DeviceId deviceId : getDevices()) {
+                recover(deviceId);
+            }
+        }
+
+        /**
+         * Runs the anti-entropy protocol for the given device.
+         *
+         * @param deviceId the device for which to run the anti-entropy protocol
+         */
+        private void recover(DeviceId deviceId) {
+            if (!isMasterNode(deviceId)) {
+                return;
+            }
+
+            // Get the set of digests for the node.
+            Set<FlowBucketDigest> digests = getDigests(deviceId);
+
+            // Get a list of backup nodes for the device and compute the real backup count.
+            List<NodeId> backupNodes = replicaInfoManager.getReplicaInfoFor(deviceId).backups();
+            int availableBackupCount = Math.min(backupCount, backupNodes.size());
+
+            // Iterate through backup nodes and run the anti-entropy protocol.
+            for (int index = 0; index < availableBackupCount; index++) {
+                NodeId backupNode = backupNodes.get(index);
+                try {
+                    recover(deviceId, backupNode, digests);
+                } catch (Exception e) {
+                    log.error("Anti-entropy for " + deviceId + " to " + backupNode + " failed", e);
+                }
+            }
+        }
+
+        /**
+         * Sends an anti-entropy advertisement to the given node.
+         *
+         * @param deviceId the device ID for which to send the advertisement
+         * @param nodeId the node to which to send the advertisement
+         * @param digests the digests to send to the given node
+         */
+        private void recover(DeviceId deviceId, NodeId nodeId, Set<FlowBucketDigest> digests) {
+            log.trace("Sending anti-entropy advertisement for device {} to {}", deviceId, nodeId);
+            clusterCommunicator.<Set<FlowBucketDigest>, Set<BucketId>>sendAndReceive(
+                digests,
+                FLOW_TABLE_ANTI_ENTROPY,
+                serializer::encode,
+                serializer::decode,
+                nodeId)
+                .whenComplete((missingBuckets, error) -> {
+                    if (error == null) {
+                        log.debug("Detected {} missing buckets on node {} for device {}",
+                            missingBuckets.size(), nodeId, deviceId);
+                    } else {
+                        log.trace("Anti-entropy advertisement for device {} to {} failed", deviceId, nodeId, error);
+                    }
+                });
+        }
+
+        /**
+         * Handles a flow bucket anti-entropy request from a remote peer.
+         *
+         * @param digests the set of flow bucket digests
+         * @return the set of flow buckets to update
+         */
+        private Set<BucketId> onAntiEntropy(Set<FlowBucketDigest> digests) {
+            Set<BucketId> missingBuckets = new HashSet<>();
+            for (FlowBucketDigest digest : digests) {
+                NodeId master = replicaInfoManager.getReplicaInfoFor(digest.bucketId().deviceId())
+                    .master()
+                    .orElse(null);
+                if (!Objects.equals(master, local)) {
+                    long lastUpdated = lastUpdateTimes.getOrDefault(digest.bucketId(), 0L);
+                    if (lastUpdated < digest.timestamp()) {
+                        missingBuckets.add(digest.bucketId());
+                    }
+                }
+            }
+            return missingBuckets;
         }
 
         /**
