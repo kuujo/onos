@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
@@ -225,7 +226,7 @@ public class ECFlowRuleStore
                 backupPeriod,
                 TimeUnit.MILLISECONDS);
         antiEntropyTask = backupSenderExecutor.scheduleWithFixedDelay(
-                flowTable::recover,
+                flowTable::runAntiEntropy,
                 0,
                 antiEntropyPeriod,
                 TimeUnit.MILLISECONDS);
@@ -327,7 +328,7 @@ public class ECFlowRuleStore
                 antiEntropyTask.cancel(false);
             }
             antiEntropyTask = backupSenderExecutor.scheduleWithFixedDelay(
-                    flowTable::recover,
+                    flowTable::runAntiEntropy,
                     0,
                     antiEntropyPeriod,
                     TimeUnit.MILLISECONDS);
@@ -798,6 +799,38 @@ public class ECFlowRuleStore
     }
 
     /**
+     * Device digest.
+     */
+    private class DeviceDigest {
+        private final DeviceId deviceId;
+        private final Set<FlowBucketDigest> digests;
+
+        DeviceDigest(DeviceId deviceId, Set<FlowBucketDigest> digests) {
+            this.deviceId = deviceId;
+            this.digests = digests;
+        }
+
+        DeviceId deviceId() {
+            return deviceId;
+        }
+
+        Set<FlowBucketDigest> digests() {
+            return digests;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(deviceId, digests);
+        }
+
+        @Override
+        public boolean equals(Object object) {
+            return object instanceof DeviceDigest
+                && ((DeviceDigest) object).deviceId.equals(deviceId);
+        }
+    }
+
+    /**
      * Flow bucket digest.
      */
     private class FlowBucketDigest {
@@ -1143,8 +1176,8 @@ public class ECFlowRuleStore
             FlowBucket flowBucket = getFlowBucket(operation.bucketId());
 
             CompletableFuture<Boolean> future = new CompletableFuture<>();
-            clusterCommunicator.<FlowBucket, Set<FlowId>>
-                sendAndReceive(flowBucket,
+            clusterCommunicator.<FlowBucket, Set<FlowId>>sendAndReceive(
+                flowBucket,
                 FLOW_TABLE_BACKUP,
                 serializer::encode,
                 serializer::decode,
@@ -1198,9 +1231,9 @@ public class ECFlowRuleStore
         /**
          * Runs the anti-entropy protocol.
          */
-        private void recover() {
+        private void runAntiEntropy() {
             for (DeviceId deviceId : getDevices()) {
-                recover(deviceId);
+                runAntiEntropy(deviceId);
             }
         }
 
@@ -1209,7 +1242,7 @@ public class ECFlowRuleStore
          *
          * @param deviceId the device for which to run the anti-entropy protocol
          */
-        private void recover(DeviceId deviceId) {
+        private void runAntiEntropy(DeviceId deviceId) {
             if (!isMasterNode(deviceId)) {
                 return;
             }
@@ -1225,7 +1258,7 @@ public class ECFlowRuleStore
             for (int index = 0; index < availableBackupCount; index++) {
                 NodeId backupNode = backupNodes.get(index);
                 try {
-                    recover(deviceId, backupNode, digests);
+                    runAntiEntropy(deviceId, backupNode, digests);
                 } catch (Exception e) {
                     log.error("Anti-entropy for " + deviceId + " to " + backupNode + " failed", e);
                 }
@@ -1239,7 +1272,7 @@ public class ECFlowRuleStore
          * @param nodeId the node to which to send the advertisement
          * @param digests the digests to send to the given node
          */
-        private void recover(DeviceId deviceId, NodeId nodeId, Set<FlowBucketDigest> digests) {
+        private void runAntiEntropy(DeviceId deviceId, NodeId nodeId, Set<FlowBucketDigest> digests) {
             log.trace("Sending anti-entropy advertisement for device {} to {}", deviceId, nodeId);
             clusterCommunicator.<Set<FlowBucketDigest>, Set<BucketId>>sendAndReceive(
                 digests,
@@ -1258,22 +1291,29 @@ public class ECFlowRuleStore
         }
 
         /**
-         * Handles a flow bucket anti-entropy request from a remote peer.
+         * Handles a device anti-entropy request from a remote peer.
          *
-         * @param digests the set of flow bucket digests
+         * @param digest the device digest
          * @return the set of flow buckets to update
          */
-        private Set<BucketId> onAntiEntropy(Set<FlowBucketDigest> digests) {
+        private Set<BucketId> onAntiEntropy(DeviceDigest digest) {
+            // If the local node is the master, reject the anti-entropy request.
+            // TODO: We really should be using mastership terms in anti-entropy requests to determine whether
+            // this node is a newer master, but that would only reduce the time it takes to resolve missing flows
+            // as a later anti-entropy request will still succeed once this node recognizes it's no longer the master.
+            NodeId master = replicaInfoManager.getReplicaInfoFor(digest.deviceId())
+                .master()
+                .orElse(null);
+            if (Objects.equals(master, local)) {
+                return ImmutableSet.of();
+            }
+
+            // Compute a set of missing BucketIds based on digest times and send them back to the master.
             Set<BucketId> missingBuckets = new HashSet<>();
-            for (FlowBucketDigest digest : digests) {
-                NodeId master = replicaInfoManager.getReplicaInfoFor(digest.bucketId().deviceId())
-                    .master()
-                    .orElse(null);
-                if (!Objects.equals(master, local)) {
-                    long lastUpdated = lastUpdateTimes.getOrDefault(digest.bucketId(), 0L);
-                    if (lastUpdated < digest.timestamp()) {
-                        missingBuckets.add(digest.bucketId());
-                    }
+            for (FlowBucketDigest flowBucketDigest : digest.digests()) {
+                long lastUpdated = lastUpdateTimes.getOrDefault(flowBucketDigest.bucketId(), 0L);
+                if (lastUpdated < flowBucketDigest.timestamp()) {
+                    missingBuckets.add(flowBucketDigest.bucketId());
                 }
             }
             return missingBuckets;
