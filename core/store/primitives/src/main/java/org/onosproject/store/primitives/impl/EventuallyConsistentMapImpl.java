@@ -424,7 +424,8 @@ public class EventuallyConsistentMapImpl<K, V>
                 if (existing == null) {
                     updated.set(tombstone.isPresent());
                 } else {
-                    updated.set(!tombstone.isPresent() || tombstone.get().isNewerThan(existing));
+                    updated.set(!tombstone.isPresent()
+                        || tombstone.get().compareTo(existing) >= 0);
                 }
             }
             if (updated.get()) {
@@ -453,7 +454,7 @@ public class EventuallyConsistentMapImpl<K, V>
                 return mv;
             }
             MapValue<V> newValue = new MapValue<>(newRawValue, timestampProvider.apply(key, newRawValue));
-            if (mv == null || newValue.isNewerThan(mv)) {
+            if (mv == null || newValue.compareTo(mv) >= 0) {
                 updated.set(true);
                 // We return a copy to ensure updates to peers can be serialized.
                 // This prevents replica divergence due to serialization failures.
@@ -526,7 +527,7 @@ public class EventuallyConsistentMapImpl<K, V>
         counter.incrementCount();
         AtomicBoolean updated = new AtomicBoolean(false);
         items.compute(key, (k, existing) -> {
-            if (existing == null || newValue.isNewerThan(existing)) {
+            if (existing == null || newValue.compareTo(existing) >= 0) {
                 updated.set(true);
                 return newValue;
             }
@@ -683,7 +684,7 @@ public class EventuallyConsistentMapImpl<K, V>
         items.forEach((key, localValue) -> {
             locallyUnknown.remove(key);
             MapValue.Digest remoteValueDigest = ad.digest().get(key);
-            if (remoteValueDigest == null || localValue.isNewerThan(remoteValueDigest.timestamp())) {
+            if (remoteValueDigest == null || localValue.digest().compareTo(remoteValueDigest) >= 0) {
                 // local value is more recent, push to sender
                 queueUpdate(new UpdateEntry<>(key, localValue), peers);
             } else if (remoteValueDigest.isNewerThan(localValue.digest()) && remoteValueDigest.isTombstone()) {
@@ -909,7 +910,8 @@ public class EventuallyConsistentMapImpl<K, V>
         public void processItems(List<UpdateEntry<K, V>> items) {
             Map<K, UpdateEntry<K, V>> map = Maps.newHashMap();
             items.forEach(item -> map.compute(item.key(), (key, existing) ->
-                    item.isNewerThan(existing) ? item : existing));
+                    existing == null || existing.value() == null
+                        || (item.value() != null && item.value().compareTo(existing.value()) >= 0) ? item : existing));
             communicationExecutor.execute(() -> {
                 try {
                     clusterCommunicator.unicast(ImmutableList.copyOf(map.values()),

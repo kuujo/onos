@@ -193,7 +193,7 @@ public class MapValue<V> implements Comparable<MapValue<V>> {
     /**
      * Digest or summary of a MapValue for use during Anti-Entropy exchanges.
      */
-    public static class Digest {
+    public static class Digest implements Comparable<Digest> {
         private final Timestamp timestamp;
         private final boolean isTombstone;
 
@@ -212,6 +212,11 @@ public class MapValue<V> implements Comparable<MapValue<V>> {
 
         public boolean isNewerThan(Digest other) {
             return timestamp.isNewerThan(other.timestamp);
+        }
+
+        @Override
+        public int compareTo(Digest o) {
+            return timestamp.compareTo(o.timestamp);
         }
 
         @Override
