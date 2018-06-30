@@ -42,6 +42,7 @@ import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
 import org.onlab.util.KryoNamespace;
+import org.onlab.util.OrderedScheduledExecutorService;
 import org.onlab.util.Tools;
 import org.onosproject.cfg.ComponentConfigService;
 import org.onosproject.cluster.ClusterService;
@@ -175,8 +176,8 @@ public class ECFlowRuleStore
     private ExecutorService messageHandlingExecutor;
     private ExecutorService eventHandler;
 
-    private final ScheduledExecutorService backupSenderExecutor =
-        Executors.newSingleThreadScheduledExecutor(groupedThreads("onos/flow", "backup-sender", log));
+    private final ScheduledExecutorService backupPoolExecutor = Executors.newScheduledThreadPool(
+        Runtime.getRuntime().availableProcessors(), groupedThreads("onos/flow", "backup", log));
 
     private EventuallyConsistentMap<DeviceId, List<TableStatisticsEntry>> deviceTableStats;
     private final EventuallyConsistentMapListener<DeviceId, List<TableStatisticsEntry>> tableStatsListener =
@@ -245,7 +246,7 @@ public class ECFlowRuleStore
         deviceTableStats.destroy();
         eventHandler.shutdownNow();
         messageHandlingExecutor.shutdownNow();
-        backupSenderExecutor.shutdownNow();
+        backupPoolExecutor.shutdownNow();
         log.info("Stopped");
     }
 
@@ -692,7 +693,7 @@ public class ECFlowRuleStore
                 clusterService,
                 clusterCommunicator,
                 new InternalLifecycleManager(id),
-                backupSenderExecutor,
+                new OrderedScheduledExecutorService(backupPoolExecutor),
                 backupPeriod,
                 antiEntropyPeriod));
         }
@@ -728,7 +729,7 @@ public class ECFlowRuleStore
                 clusterService,
                 clusterCommunicator,
                 new InternalLifecycleManager(deviceId),
-                backupSenderExecutor,
+                new OrderedScheduledExecutorService(backupPoolExecutor),
                 backupPeriod,
                 antiEntropyPeriod));
         }

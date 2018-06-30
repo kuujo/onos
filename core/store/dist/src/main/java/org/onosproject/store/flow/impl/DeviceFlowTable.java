@@ -98,11 +98,11 @@ public class DeviceFlowTable {
     private ScheduledFuture<?> backupFuture;
     private ScheduledFuture<?> antiEntropyFuture;
 
-    private final Map<Integer, Queue<Runnable>> flowTasks = Maps.newConcurrentMap();
+    private final Map<Integer, Queue<Runnable>> flowTasks = Maps.newHashMap();
     private final Map<Integer, FlowBucket> flowBuckets = Maps.newConcurrentMap();
 
-    private final Map<BackupOperation, LogicalTimestamp> lastBackupTimes = Maps.newConcurrentMap();
-    private final Set<BackupOperation> inFlightUpdates = Sets.newConcurrentHashSet();
+    private final Map<BackupOperation, LogicalTimestamp> lastBackupTimes = Maps.newHashMap();
+    private final Set<BackupOperation> inFlightUpdates = Sets.newHashSet();
 
     DeviceFlowTable(
         DeviceId deviceId,
@@ -312,24 +312,26 @@ public class DeviceFlowTable {
             return Tools.exceptionalFuture(new IllegalStateException());
         }
 
-        FlowBucket bucket = getBucket(flowId);
+        CompletableFuture<T> future = new CompletableFuture<>();
+        executorService.execute(() -> {
+            FlowBucket bucket = getBucket(flowId);
 
-        // If the master's term is not currently active (has not been synchronized with prior replicas), enqueue
-        // the change to be executed once the master has been synchronized.
-        final long term = replicaInfo.term();
-        if (activeTerm < term) {
-            log.debug("Enqueueing operation for device {}", deviceId);
-            synchronized (flowTasks) {
-                // Double checked lock on the active term.
-                if (activeTerm < term) {
-                    CompletableFuture<T> future = new CompletableFuture<>();
-                    flowTasks.computeIfAbsent(bucket.bucketId().bucket(), b -> new LinkedList<>())
-                        .add(() -> future.complete(function.apply(bucket, term)));
-                    return future;
+            // If the master's term is not currently active (has not been synchronized with prior replicas), enqueue
+            // the change to be executed once the master has been synchronized.
+            final long term = replicaInfo.term();
+            if (activeTerm < term) {
+                log.debug("Enqueueing operation for device {}", deviceId);
+                flowTasks.computeIfAbsent(bucket.bucketId().bucket(), b -> new LinkedList<>())
+                    .add(() -> future.complete(function.apply(bucket, term)));
+            } else {
+                try {
+                    future.complete(function.apply(bucket, term));
+                } catch (Exception e) {
+                    future.completeExceptionally(e);
                 }
             }
-        }
-        return CompletableFuture.completedFuture(function.apply(bucket, term));
+        });
+        return future;
     }
 
     /**
@@ -666,10 +668,7 @@ public class DeviceFlowTable {
      * @param bucket the bucket number to activate
      */
     private void activateBucket(int bucket) {
-        Queue<Runnable> tasks;
-        synchronized (flowTasks) {
-            tasks = flowTasks.remove(bucket);
-        }
+        Queue<Runnable> tasks = flowTasks.remove(bucket);
         if (tasks != null) {
             log.debug("Completing enqueued operations for device {}", deviceId);
             tasks.forEach(task -> task.run());
