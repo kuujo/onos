@@ -29,12 +29,14 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.hash.Hashing;
 import com.google.common.util.concurrent.Futures;
+import org.onlab.util.HexString;
 import org.onosproject.cluster.PartitionId;
 import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.primitives.PartitionService;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.AsyncConsistentMap;
+import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.TransactionException;
@@ -123,14 +125,20 @@ public class TransactionManager {
         Cache<String, CachedMap> mapCache = partitionCache.computeIfAbsent(partitionId, p ->
                 CacheBuilder.newBuilder().maximumSize(cacheSize / partitionService.getNumberOfPartitions()).build());
         try {
-            CachedMap<K, V> cachedMap = mapCache.get(mapName,
-                    () -> new CachedMap<>(partitionService.getDistributedPrimitiveCreator(partitionId)
-                            .newAsyncConsistentMap(mapName, serializer)));
+            CachedMap cachedMap = mapCache.get(mapName,
+                    () -> new CachedMap(partitionService.getDistributedPrimitiveCreator(partitionId)
+                            .newAsyncConsistentMap(mapName, null)));
 
+            AsyncConsistentMap<K, V> asyncMap = DistributedPrimitives.newTranscodingMap(
+                cachedMap.cachedMap,
+                key -> HexString.toHexString(serializer.encode(key)),
+                string -> serializer.decode(HexString.fromHexString(string)),
+                value -> serializer.encode(value),
+                bytes -> serializer.decode(bytes));
             Transaction<MapUpdate<K, V>> transaction = new Transaction<>(
-                    transactionCoordinator.transactionId,
-                    cachedMap.baseMap);
-            return new DefaultTransactionalMapParticipant<>(cachedMap.cachedMap.asConsistentMap(), transaction);
+                transactionCoordinator.transactionId,
+                asyncMap);
+            return new DefaultTransactionalMapParticipant<>(asyncMap.asConsistentMap(), transaction);
         } catch (ExecutionException e) {
             throw new TransactionException(e);
         }
@@ -157,11 +165,11 @@ public class TransactionManager {
         return transactions.remove(transactionId).thenApply(v -> null);
     }
 
-    private static class CachedMap<K, V> {
-        private final AsyncConsistentMap<K, V> baseMap;
-        private final AsyncConsistentMap<K, V> cachedMap;
+    private static class CachedMap {
+        private final AsyncConsistentMap<String, byte[]> baseMap;
+        private final AsyncConsistentMap<String, byte[]> cachedMap;
 
-        public CachedMap(AsyncConsistentMap<K, V> baseMap) {
+        public CachedMap(AsyncConsistentMap<String, byte[]> baseMap) {
             this.baseMap = baseMap;
             this.cachedMap = DistributedPrimitives.newCachingMap(baseMap);
         }
