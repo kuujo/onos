@@ -72,7 +72,24 @@ public interface ControllerNode {
      *
      * @return IP address
      */
-    IpAddress ip();
+    default IpAddress ip() {
+        return ip(false);
+    }
+
+    /**
+     * Returns the IP address of the controller instance.
+     *
+     * @param lookup whether to lookup the host
+     * @return IP address
+     */
+    IpAddress ip(boolean lookup);
+
+    /**
+     * Returns the host name of the controller instance.
+     *
+     * @return the host name of the controller instance
+     */
+    String host();
 
     /**
      * Returns the TCP port on which the node listens for connections.

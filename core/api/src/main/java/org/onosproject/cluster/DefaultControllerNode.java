@@ -17,6 +17,8 @@ package org.onosproject.cluster;
 
 import org.onlab.packet.IpAddress;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Objects;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -30,14 +32,26 @@ public class DefaultControllerNode implements ControllerNode {
     public static final int DEFAULT_PORT = 9876;
 
     private final NodeId id;
-    private final IpAddress ip;
+    private final String host;
     private final int tcpPort;
+    private transient volatile IpAddress ip;
 
     // For serialization
     private DefaultControllerNode() {
         this.id = null;
+        this.host = null;
         this.ip = null;
         this.tcpPort = 0;
+    }
+
+    /**
+     * Creates a new instance with the specified id and IP address.
+     *
+     * @param id instance identifier
+     * @param host instance host name
+     */
+    public DefaultControllerNode(NodeId id, String host) {
+        this(id, host, DEFAULT_PORT);
     }
 
     /**
@@ -47,7 +61,7 @@ public class DefaultControllerNode implements ControllerNode {
      * @param ip instance IP address
      */
     public DefaultControllerNode(NodeId id, IpAddress ip) {
-        this(id, ip, DEFAULT_PORT);
+        this(id, ip != null ? ip.toString() : null, DEFAULT_PORT);
     }
 
     /**
@@ -58,8 +72,19 @@ public class DefaultControllerNode implements ControllerNode {
      * @param tcpPort TCP port
      */
     public DefaultControllerNode(NodeId id, IpAddress ip, int tcpPort) {
+        this(id, ip != null ? ip.toString() : null, tcpPort);
+    }
+
+    /**
+     * Creates a new instance with the specified id and IP address and TCP port.
+     *
+     * @param id instance identifier
+     * @param host instance host name
+     * @param tcpPort TCP port
+     */
+    public DefaultControllerNode(NodeId id, String host, int tcpPort) {
         this.id = checkNotNull(id);
-        this.ip = ip;
+        this.host = host;
         this.tcpPort = tcpPort;
     }
 
@@ -69,8 +94,33 @@ public class DefaultControllerNode implements ControllerNode {
     }
 
     @Override
-    public IpAddress ip() {
+    public IpAddress ip(boolean lookup) {
+        if (lookup) {
+            ip = lookupIp();
+            return ip;
+        }
+
+        if (ip == null) {
+            synchronized (this) {
+                if (ip == null) {
+                    ip = lookupIp();
+                }
+            }
+        }
         return ip;
+    }
+
+    private IpAddress lookupIp() {
+        try {
+            return IpAddress.valueOf(InetAddress.getByName(host));
+        } catch (UnknownHostException e) {
+            return null;
+        }
+    }
+
+    @Override
+    public String host() {
+        return host;
     }
 
     @Override
@@ -97,8 +147,11 @@ public class DefaultControllerNode implements ControllerNode {
 
     @Override
     public String toString() {
-        return toStringHelper(this).add("id", id)
-                .add("ip", ip).add("tcpPort", tcpPort).toString();
+        return toStringHelper(this)
+            .add("id", id)
+            .add("host", host)
+            .add("tcpPort", tcpPort)
+            .toString();
     }
 
 }

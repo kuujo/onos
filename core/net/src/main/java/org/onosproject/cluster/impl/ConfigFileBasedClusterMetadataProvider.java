@@ -32,7 +32,6 @@ import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Deactivate;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
-import org.onlab.packet.IpAddress;
 import org.onosproject.cluster.ClusterMetadata;
 import org.onosproject.cluster.ClusterMetadataProvider;
 import org.onosproject.cluster.ClusterMetadataProviderRegistry;
@@ -74,6 +73,7 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
     private static final String ID = "id";
     private static final String PORT = "port";
     private static final String IP = "ip";
+    private static final String HOST = "host";
 
     private static final String CONFIG_DIR = "../config";
     private static final String CONFIG_FILE_NAME = "cluster.json";
@@ -295,7 +295,7 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
           throws IOException, JsonProcessingException {
             jgen.writeStartObject();
             jgen.writeStringField(ID, node.id().toString());
-            jgen.writeStringField(IP, node.ip().toString());
+            jgen.writeStringField(HOST, node.host());
             jgen.writeNumberField(PORT, node.tcpPort());
             jgen.writeEndObject();
         }
@@ -307,9 +307,12 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
                 throws IOException, JsonProcessingException {
             JsonNode node = jp.getCodec().readTree(jp);
             NodeId nodeId = new NodeId(node.get(ID).textValue());
-            IpAddress ip = IpAddress.valueOf(node.get(IP).textValue());
             int port = node.get(PORT).asInt();
-            return new DefaultControllerNode(nodeId, ip, port);
+            if (node.get(HOST) != null) {
+                return new DefaultControllerNode(nodeId, node.get(HOST).textValue(), port);
+            } else {
+                return new DefaultControllerNode(nodeId, node.get(IP).textValue(), port);
+            }
         }
     }
 

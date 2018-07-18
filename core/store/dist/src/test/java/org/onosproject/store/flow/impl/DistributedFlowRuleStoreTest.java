@@ -126,8 +126,13 @@ public class DistributedFlowRuleStoreTest {
         }
 
         @Override
-        public Ip4Address ip() {
+        public Ip4Address ip(boolean lookup) {
             return Ip4Address.valueOf("127.0.0.1");
+        }
+
+        @Override
+        public String host() {
+            return "127.0.0.1";
         }
 
         @Override

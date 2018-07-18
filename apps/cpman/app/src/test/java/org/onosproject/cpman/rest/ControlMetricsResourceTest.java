@@ -83,7 +83,12 @@ public class ControlMetricsResourceTest extends ResourceTest {
         }
 
         @Override
-        public IpAddress ip() {
+        public IpAddress ip(boolean lookuo) {
+            return null;
+        }
+
+        @Override
+        public String host() {
             return null;
         }
 

@@ -613,7 +613,12 @@ public class OpticalPathProvisionerTest {
                 }
 
                 @Override
-                public IpAddress ip() {
+                public IpAddress ip(boolean lookup) {
+                    return null;
+                }
+
+                @Override
+                public String host() {
                     return null;
                 }
 

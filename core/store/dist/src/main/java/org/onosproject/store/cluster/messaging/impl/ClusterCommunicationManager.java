@@ -15,6 +15,17 @@
  */
 package org.onosproject.store.cluster.messaging.impl;
 
+import java.net.ConnectException;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
 import com.google.common.base.Objects;
 import com.google.common.base.Throwables;
 import org.apache.felix.scr.annotations.Activate;
@@ -37,16 +48,6 @@ import org.onosproject.utils.MeteringAgent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
-import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.onosproject.security.AppGuard.checkPermission;
@@ -58,8 +59,8 @@ public class ClusterCommunicationManager implements ClusterCommunicationService 
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
-    private final MeteringAgent subjectMeteringAgent = new MeteringAgent(PRIMITIVE_NAME, SUBJECT_PREFIX, true);
-    private final MeteringAgent endpointMeteringAgent = new MeteringAgent(PRIMITIVE_NAME, ENDPOINT_PREFIX, true);
+    private final MeteringAgent subjectMeteringAgent;
+    private final MeteringAgent endpointMeteringAgent;
 
     private static final String PRIMITIVE_NAME = "clusterCommunication";
     private static final String SUBJECT_PREFIX = "subject";
@@ -78,6 +79,15 @@ public class ClusterCommunicationManager implements ClusterCommunicationService 
     protected MessagingService messagingService;
 
     private NodeId localNodeId;
+
+    public ClusterCommunicationManager() {
+        this(true);
+    }
+
+    ClusterCommunicationManager(boolean meteringEnabled) {
+        this.subjectMeteringAgent = new MeteringAgent(PRIMITIVE_NAME, SUBJECT_PREFIX, meteringEnabled);
+        this.endpointMeteringAgent = new MeteringAgent(PRIMITIVE_NAME, ENDPOINT_PREFIX, meteringEnabled);
+    }
 
     @Activate
     public void activate() {
@@ -172,26 +182,57 @@ public class ClusterCommunicationManager implements ClusterCommunicationService 
     }
 
     private CompletableFuture<Void> doUnicast(MessageSubject subject, byte[] payload, NodeId toNodeId) {
+        return doUnicast(subject, payload, toNodeId, false, new CompletableFuture<>());
+    }
+
+    private CompletableFuture<Void> doUnicast(
+            MessageSubject subject, byte[] payload, NodeId toNodeId, boolean lookup, CompletableFuture<Void> future) {
         ControllerNode node = clusterService.getNode(toNodeId);
         checkArgument(node != null, "Unknown nodeId: %s", toNodeId);
-        Endpoint nodeEp = new Endpoint(node.ip(), node.tcpPort());
+        Endpoint nodeEp = new Endpoint(node.ip(lookup), node.tcpPort());
         MeteringAgent.Context context = subjectMeteringAgent.startTimer(subject.toString() + ONE_WAY_SUFFIX);
-        return messagingService.sendAsync(nodeEp, subject.toString(), payload).whenComplete((r, e) -> context.stop(e));
+
+        messagingService.sendAsync(nodeEp, subject.toString(), payload)
+            .whenComplete((result, error) -> {
+                context.stop(error);
+                if (error instanceof ConnectException && !lookup) {
+                    doUnicast(subject, payload, toNodeId, true, future);
+                } else if (error != null) {
+                    future.completeExceptionally(error);
+                } else {
+                    future.complete(result);
+                }
+            });
+        return future;
     }
 
     private CompletableFuture<byte[]> sendAndReceive(MessageSubject subject, byte[] payload, NodeId toNodeId) {
+        return sendAndReceive(subject, payload, toNodeId, false, new CompletableFuture<>());
+    }
+
+    private CompletableFuture<byte[]> sendAndReceive(
+            MessageSubject subject, byte[] payload, NodeId toNodeId, boolean lookup, CompletableFuture<byte[]> future) {
         ControllerNode node = clusterService.getNode(toNodeId);
         checkArgument(node != null, "Unknown nodeId: %s", toNodeId);
-        Endpoint nodeEp = new Endpoint(node.ip(), node.tcpPort());
+        Endpoint nodeEp = new Endpoint(node.ip(lookup), node.tcpPort());
         MeteringAgent.Context epContext = endpointMeteringAgent.
                 startTimer(NODE_PREFIX + toNodeId.toString() + ROUND_TRIP_SUFFIX);
         MeteringAgent.Context subjectContext = subjectMeteringAgent.
                 startTimer(subject.toString() + ROUND_TRIP_SUFFIX);
-        return messagingService.sendAndReceive(nodeEp, subject.toString(), payload).
-                whenComplete((bytes, throwable) -> {
-                    subjectContext.stop(throwable);
-                    epContext.stop(throwable);
-                });
+
+        messagingService.sendAndReceive(nodeEp, subject.toString(), payload)
+            .whenComplete((result, error) -> {
+                subjectContext.stop(error);
+                epContext.stop(error);
+                if (error instanceof ConnectException && !lookup) {
+                    sendAndReceive(subject, payload, toNodeId, true, future);
+                } else if (error != null) {
+                    future.completeExceptionally(error);
+                } else {
+                    future.complete(result);
+                }
+            });
+        return future;
     }
 
     @Override

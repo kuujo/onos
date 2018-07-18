@@ -257,8 +257,13 @@ public class NettyMessagingManagerTest {
                     }
 
                     @Override
-                    public IpAddress ip() {
+                    public IpAddress ip(boolean lookup) {
                         return IpAddress.valueOf(ipAddress);
+                    }
+
+                    @Override
+                    public String host() {
+                        return ipAddress;
                     }
 
                     @Override
