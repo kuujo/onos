@@ -82,6 +82,7 @@ public class DefaultClusterMetadataProvider implements ClusterMetadataProvider {
                 ImmutableSet.of(localNode.id()));
         ClusterMetadata metadata = new ClusterMetadata(PROVIDER_ID,
                                         "default",
+                                        null,
                                         ImmutableSet.of(localNode),
                                         ImmutableSet.of(partition));
         long version = System.currentTimeMillis();

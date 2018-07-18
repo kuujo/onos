@@ -172,7 +172,8 @@ public class ClusterManager
             !Sets.intersection(nodes, existingNodes).isEmpty(),
             "Nodes must intersect with current cluster configuration");
 
-        ClusterMetadata metadata = new ClusterMetadata("default", nodes, buildDefaultPartitions(nodes, partitionSize));
+        ClusterMetadata metadata = new ClusterMetadata(
+            "default", null, nodes, buildDefaultPartitions(nodes, partitionSize));
         clusterMetadataAdminService.setClusterMetadata(metadata);
         try {
             log.warn("Shutting down container for cluster reconfiguration!");

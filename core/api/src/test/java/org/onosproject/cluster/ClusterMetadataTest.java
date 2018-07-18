@@ -46,11 +46,11 @@ public class ClusterMetadataTest {
     private final Partition p2 = new DefaultPartition(pid2, Version.version("1.0.0"), ImmutableSet.of(nid1, nid2));
 
     private final ClusterMetadata metadata1 =
-            new ClusterMetadata("foo", ImmutableSet.of(n1), ImmutableSet.of(p1));
+            new ClusterMetadata("foo", null, ImmutableSet.of(n1), ImmutableSet.of(p1));
     private final ClusterMetadata sameAsMetadata1 =
-            new ClusterMetadata("foo", ImmutableSet.of(n1), ImmutableSet.of(p1));
+            new ClusterMetadata("foo", null, ImmutableSet.of(n1), ImmutableSet.of(p1));
     private final ClusterMetadata metadata2 =
-            new ClusterMetadata("bar", ImmutableSet.of(n1, n2), ImmutableSet.of(p1, p2));
+            new ClusterMetadata("bar", null, ImmutableSet.of(n1, n2), ImmutableSet.of(p1, p2));
     private final ProviderId defaultProvider =
             new ProviderId("none", "none");
     /**

@@ -46,6 +46,7 @@ public final class ClusterMetadata implements Provided {
 
     private final ProviderId providerId;
     private final String name;
+    private final ControllerNode localNode;
     private final Set<ControllerNode> nodes;
     private final Set<Partition> partitions;
 
@@ -60,16 +61,19 @@ public final class ClusterMetadata implements Provided {
     private ClusterMetadata() {
         providerId = null;
         name = null;
+        localNode = null;
         nodes = null;
         partitions = null;
     }
 
     public ClusterMetadata(ProviderId providerId,
             String name,
+            ControllerNode localNode,
             Set<ControllerNode> nodes,
             Set<Partition> partitions) {
         this.providerId = checkNotNull(providerId);
         this.name = checkNotNull(name);
+        this.localNode = localNode;
         this.nodes = ImmutableSet.copyOf(checkNotNull(nodes));
         // verify that partitions are constituted from valid cluster nodes.
         boolean validPartitions = Collections2.transform(nodes, ControllerNode::id)
@@ -82,9 +86,10 @@ public final class ClusterMetadata implements Provided {
     }
 
     public ClusterMetadata(String name,
+            ControllerNode localNode,
             Set<ControllerNode> nodes,
             Set<Partition> partitions) {
-        this(new ProviderId("none", "none"), name, nodes, partitions);
+        this(new ProviderId("none", "none"), name, localNode, nodes, partitions);
     }
 
     @Override
@@ -99,6 +104,15 @@ public final class ClusterMetadata implements Provided {
      */
     public String getName() {
         return this.name;
+    }
+
+    /**
+     * Returns the local node.
+     *
+     * @return the local node
+     */
+    public ControllerNode getLocalNode() {
+        return localNode;
     }
 
     /**
@@ -123,6 +137,7 @@ public final class ClusterMetadata implements Provided {
         return MoreObjects.toStringHelper(ClusterMetadata.class)
                 .add("providerId", providerId)
                 .add("name", name)
+                .add("localNode", localNode)
                 .add("nodes", nodes)
                 .add("partitions", partitions)
                 .toString();
@@ -130,7 +145,7 @@ public final class ClusterMetadata implements Provided {
 
     @Override
     public int hashCode() {
-        return Arrays.deepHashCode(new Object[] {providerId, name, nodes, partitions});
+        return Arrays.deepHashCode(new Object[] {providerId, name, localNode, nodes, partitions});
     }
 
     /*
@@ -151,6 +166,7 @@ public final class ClusterMetadata implements Provided {
         ClusterMetadata that = (ClusterMetadata) object;
 
         return Objects.equals(this.name, that.name) &&
+               Objects.equals(this.localNode, that.localNode) &&
                Objects.equals(this.nodes.size(), that.nodes.size()) &&
                Objects.equals(this.partitions.size(), that.partitions.size()) &&
                Sets.symmetricDifference(this.nodes, that.nodes).isEmpty() &&

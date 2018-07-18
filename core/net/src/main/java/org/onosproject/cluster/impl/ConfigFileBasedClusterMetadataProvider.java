@@ -241,6 +241,7 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
             }
             return new Versioned<>(new ClusterMetadata(PROVIDER_ID,
                                                        metadata.getName(),
+                                                       metadata.getLocalNode(),
                                                        Sets.newHashSet(metadata.getNodes()),
                                                        Sets.newHashSet(metadata.getPartitions())),
                                    version);
@@ -307,8 +308,8 @@ public class ConfigFileBasedClusterMetadataProvider implements ClusterMetadataPr
                 throws IOException, JsonProcessingException {
             JsonNode node = jp.getCodec().readTree(jp);
             NodeId nodeId = new NodeId(node.get(ID).textValue());
-            IpAddress ip = IpAddress.valueOf(node.get(IP).textValue());
-            int port = node.get(PORT).asInt();
+            IpAddress ip = node.get(IP) != null ? IpAddress.valueOf(node.get(IP).textValue()) : null;
+            int port = node.get(PORT) != null ? node.get(PORT).asInt() : DefaultControllerNode.DEFAULT_PORT;
             return new DefaultControllerNode(nodeId, ip, port);
         }
     }

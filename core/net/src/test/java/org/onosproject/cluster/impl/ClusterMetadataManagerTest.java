@@ -55,10 +55,11 @@ public class ClusterMetadataManagerTest {
             "{\"nodes\": [" +
             "   {\"ip\": \"{}\", \"id\": \"{}\", \"port\": {}}]," +
                 "\"name\": \"{}\"," +
+                "\"localNode\": {\"ip\": \"{}\", \"id\": \"{}\", \"port\": {}}," +
                 "\"partitions\": [{\"id\": 1, \"members\": [\"{}\"]}]}";
 
-    private static final String CLUSTER_METADATA =
-            format(CLUSTER_METADATA_FORMAT, NODE_IP, NODE_ID, NODE_PORT, CLUSTER_NAME, NODE_ID);
+    private static final String CLUSTER_METADATA = format(
+        CLUSTER_METADATA_FORMAT, NODE_IP, NODE_ID, NODE_PORT, CLUSTER_NAME, NODE_IP, NODE_ID, NODE_PORT, NODE_ID);
 
     private ClusterMetadataManager mgr;
     private ConfigFileBasedClusterMetadataProvider fileProvider;
@@ -181,6 +182,8 @@ public class ClusterMetadataManagerTest {
         assertThat(metadata, notNullValue());
 
         assertThat(metadata.getName(), is(CLUSTER_NAME));
+        assertThat(metadata.getLocalNode().id().id(), is(NODE_ID));
+        assertThat(metadata.getLocalNode().ip().toString(), is(NODE_IP));
 
         ControllerNode node = metadata.getNodes().iterator().next();
         assertThat(node.ip().toString(), is(NODE_IP));
@@ -193,6 +196,7 @@ public class ClusterMetadataManagerTest {
 
         ClusterMetadata newMetadata = new ClusterMetadata(metadata.providerId(),
                 "NewMetadata",
+                null,
                 ImmutableSet.of(node),
                 ImmutableSet.of(partition));
         mgr.setClusterMetadata(newMetadata);

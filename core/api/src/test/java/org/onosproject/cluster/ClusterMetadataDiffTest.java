@@ -37,7 +37,7 @@ public class ClusterMetadataDiffTest {
         NodeId nid1 = NodeId.nodeId("10.0.0.1");
         ControllerNode n1 = new DefaultControllerNode(nid1, IpAddress.valueOf("10.0.0.1"), 9876);
         Partition p1 = new DefaultPartition(pid1, Version.version("1.0.0"), ImmutableSet.of(nid1));
-        ClusterMetadata md1 = new ClusterMetadata("foo", ImmutableSet.of(n1), ImmutableSet.of(p1));
+        ClusterMetadata md1 = new ClusterMetadata("foo", null, ImmutableSet.of(n1), ImmutableSet.of(p1));
         ClusterMetadataDiff diff = new ClusterMetadataDiff(md1, md1);
         assertTrue(diff.nodesAdded().isEmpty());
         assertTrue(diff.nodesRemoved().isEmpty());
@@ -56,8 +56,8 @@ public class ClusterMetadataDiffTest {
         ControllerNode n2 = new DefaultControllerNode(nid2, IpAddress.valueOf("10.0.0.2"), 9876);
         Partition p1 = new DefaultPartition(pid1, Version.version("1.0.0"), ImmutableSet.of(nid1));
         Partition p12 = new DefaultPartition(pid1, Version.version("1.0.0"), ImmutableSet.of(nid1, nid2));
-        ClusterMetadata md1 = new ClusterMetadata("foo", ImmutableSet.of(n1), ImmutableSet.of(p1));
-        ClusterMetadata md12 = new ClusterMetadata("foo", ImmutableSet.of(n1, n2), ImmutableSet.of(p12));
+        ClusterMetadata md1 = new ClusterMetadata("foo", null, ImmutableSet.of(n1), ImmutableSet.of(p1));
+        ClusterMetadata md12 = new ClusterMetadata("foo", null, ImmutableSet.of(n1, n2), ImmutableSet.of(p12));
         ClusterMetadataDiff diff = new ClusterMetadataDiff(md1, md12);
         assertEquals(diff.nodesAdded(), Sets.newHashSet(n2));
         assertTrue(diff.nodesRemoved().isEmpty());
@@ -80,8 +80,8 @@ public class ClusterMetadataDiffTest {
         ControllerNode n2 = new DefaultControllerNode(nid2, IpAddress.valueOf("10.0.0.2"), 9876);
         Partition p1 = new DefaultPartition(pid1, Version.version("1.0.0"), ImmutableSet.of(nid1));
         Partition p12 = new DefaultPartition(pid1, Version.version("1.0.0"), ImmutableSet.of(nid1, nid2));
-        ClusterMetadata md1 = new ClusterMetadata("foo", ImmutableSet.of(n1), ImmutableSet.of(p1));
-        ClusterMetadata md12 = new ClusterMetadata("foo", ImmutableSet.of(n1, n2), ImmutableSet.of(p12));
+        ClusterMetadata md1 = new ClusterMetadata("foo", null, ImmutableSet.of(n1), ImmutableSet.of(p1));
+        ClusterMetadata md12 = new ClusterMetadata("foo", null, ImmutableSet.of(n1, n2), ImmutableSet.of(p12));
         ClusterMetadataDiff diff = new ClusterMetadataDiff(md12, md1);
         assertEquals(diff.nodesRemoved(), Sets.newHashSet(nid2));
         assertTrue(diff.nodesAdded().isEmpty());

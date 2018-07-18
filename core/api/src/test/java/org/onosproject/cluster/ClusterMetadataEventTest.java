@@ -42,11 +42,11 @@ public class ClusterMetadataEventTest {
     private final Partition p2 = new DefaultPartition(pid2, Version.version("1.0.0"), ImmutableSet.of(nid1, nid2));
     private final Partition p3 = new DefaultPartition(pid2, Version.version("1.0.0"), ImmutableSet.of(nid2));
     private final ClusterMetadata metadata1 =
-            new ClusterMetadata("foo", ImmutableSet.of(n1), ImmutableSet.of(p1));
+            new ClusterMetadata("foo", null, ImmutableSet.of(n1), ImmutableSet.of(p1));
     private final ClusterMetadata metadata2 =
-            new ClusterMetadata("bar", ImmutableSet.of(n1, n2), ImmutableSet.of(p1, p2));
+            new ClusterMetadata("bar", null, ImmutableSet.of(n1, n2), ImmutableSet.of(p1, p2));
     private final ClusterMetadata metadata3 =
-            new ClusterMetadata("baz", ImmutableSet.of(n2), ImmutableSet.of(p3));
+            new ClusterMetadata("baz", null, ImmutableSet.of(n2), ImmutableSet.of(p3));
 
     private final ClusterMetadataEvent event1 =
             new ClusterMetadataEvent(ClusterMetadataEvent.Type.METADATA_CHANGED, metadata1, time1);

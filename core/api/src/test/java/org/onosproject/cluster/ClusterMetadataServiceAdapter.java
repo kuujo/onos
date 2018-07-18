@@ -31,6 +31,7 @@ public class ClusterMetadataServiceAdapter implements ClusterMetadataService {
         final IpAddress addr = IpAddress.valueOf(0);
         final Partition p = new DefaultPartition(PartitionId.from(1), Version.version("1.0.0"), Sets.newHashSet(nid));
         return new ClusterMetadata("test-cluster",
+                                   null,
                                    Sets.newHashSet(new DefaultControllerNode(nid, addr)),
                                    Sets.newHashSet(p));
     }

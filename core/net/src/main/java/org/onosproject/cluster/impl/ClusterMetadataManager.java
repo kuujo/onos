@@ -96,7 +96,7 @@ public class ClusterMetadataManager
     public ControllerNode getLocalNode() {
         checkPermission(CLUSTER_READ);
         if (localNode == null) {
-            establishSelfIdentity();
+            localNode = findLocalNode();
         }
         return localNode;
     }
@@ -159,14 +159,32 @@ public class ClusterMetadataManager
         throw new IllegalStateException("Unable to determine local ip");
     }
 
-    private void establishSelfIdentity() {
+    private ControllerNode findLocalNode() {
+        ControllerNode localNode = getClusterMetadata().getLocalNode();
+        if (localNode != null && localNode.id() != null) {
+            NodeId localNodeId = localNode.id();
+            IpAddress localNodeIp = localNode.ip();
+            if (localNodeIp == null) {
+                localNode = getClusterMetadata().getNodes()
+                    .stream()
+                    .filter(node -> node.id().equals(localNodeId))
+                    .findFirst()
+                    .orElse(null);
+                if (localNode != null) {
+                    return localNode;
+                }
+            } else {
+                return localNode;
+            }
+        }
+
         try {
             IpAddress ip = findLocalIp(getClusterMetadata().getNodes());
-            localNode = getClusterMetadata().getNodes()
-                                            .stream()
-                                            .filter(node -> node.ip().equals(ip))
-                                            .findFirst()
-                                            .get();
+            return getClusterMetadata().getNodes()
+                .stream()
+                .filter(node -> node.ip().equals(ip))
+                .findFirst()
+                .get();
         } catch (SocketException e) {
             throw new IllegalStateException("Cannot determine local IP", e);
         }
