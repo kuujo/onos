@@ -23,7 +23,6 @@ import java.util.stream.Collectors;
 
 import com.google.common.collect.Maps;
 import io.atomix.core.Atomix;
-import io.atomix.core.counter.AtomicCounter;
 import io.atomix.core.counter.AtomicCounterType;
 import io.atomix.core.map.AtomicMapType;
 import io.atomix.core.workqueue.WorkQueueType;
@@ -41,11 +40,10 @@ import org.onosproject.cluster.Member;
 import org.onosproject.cluster.MembershipService;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.persistence.PersistenceService;
-import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
 import org.onosproject.store.atomix.impl.AtomixManager;
+import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
 import org.onosproject.store.primitives.PartitionAdminService;
 import org.onosproject.store.primitives.TransactionId;
-import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.AsyncConsistentMultimap;
 import org.onosproject.store.service.AsyncConsistentTreeMap;
 import org.onosproject.store.service.AsyncDocumentTree;
@@ -297,42 +295,26 @@ public class StorageManager implements StorageService, StorageAdminService {
 
     @Override
     public List<MapInfo> getMapInfo() {
-        Serializer serializer = Serializer.using(KryoNamespaces.BASIC);
         return atomix.getPrimitives(AtomicMapType.instance())
             .stream()
-            .map(info -> {
-                io.atomix.core.map.AtomicMap<String, byte[]> map =
-                    atomix.<String, byte[]>atomicMapBuilder(info.name())
-                        .withSerializer(new AtomixSerializerAdapter(serializer))
-                        .build();
-                int size = map.size();
-                map.close();
-                return new MapInfo(info.name(), size);
-            }).collect(Collectors.toList());
+            .map(info -> new MapInfo(info.name(), atomix.getAtomicMap(info.name()).size()))
+            .collect(Collectors.toList());
     }
 
     @Override
     public Map<String, Long> getCounters() {
         return atomix.getPrimitives(AtomicCounterType.instance())
             .stream()
-            .map(info -> {
-                AtomicCounter counter = atomix.atomicCounterBuilder(info.name()).build();
-                long value = counter.get();
-                counter.close();
-                return Maps.immutableEntry(info.name(), value);
-            }).collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
+            .map(info -> Maps.immutableEntry(info.name(), atomix.getAtomicCounter(info.name()).get()))
+            .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
     }
 
     @Override
     public Map<String, WorkQueueStats> getQueueStats() {
-        Serializer serializer = Serializer.using(KryoNamespaces.BASIC);
         return atomix.getPrimitives(WorkQueueType.instance())
             .stream()
             .map(info -> {
-                io.atomix.core.workqueue.WorkQueue queue = atomix.workQueueBuilder(info.name())
-                    .withSerializer(new AtomixSerializerAdapter(serializer))
-                    .build();
-                io.atomix.core.workqueue.WorkQueueStats stats = queue.stats();
+                io.atomix.core.workqueue.WorkQueueStats stats = atomix.getWorkQueue(info.name()).stats();
                 return Maps.immutableEntry(info.name(), WorkQueueStats.builder()
                     .withTotalCompleted(stats.totalCompleted())
                     .withTotalInProgress(stats.totalInProgress())
