@@ -223,6 +223,11 @@ public class DistributedClusterStore
     }
 
     @Override
+    public Set<Node> getProxyNodes() {
+        return ImmutableSet.of();
+    }
+
+    @Override
     public Set<Node> getStorageNodes() {
         return ImmutableSet.of();
     }

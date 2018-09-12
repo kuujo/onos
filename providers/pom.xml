@@ -56,6 +56,7 @@
         <module>tl1</module>
         <module>general</module>
         <module>xmpp</module>
+        <module>proxy</module>
     </modules>
 
     <dependencies>

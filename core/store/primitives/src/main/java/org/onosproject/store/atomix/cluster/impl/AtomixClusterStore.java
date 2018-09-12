@@ -169,10 +169,19 @@ public class AtomixClusterStore extends AbstractStore<ClusterEvent, ClusterStore
     }
 
     @Override
+    public Set<Node> getProxyNodes() {
+        return membershipService.getMembers()
+            .stream()
+            .filter(member -> Objects.equals(member.properties().getProperty("type"), "proxy"))
+            .map(this::toControllerNode)
+            .collect(Collectors.toSet());
+    }
+
+    @Override
     public Set<Node> getStorageNodes() {
         return membershipService.getMembers()
             .stream()
-            .filter(member -> !Objects.equals(member.properties().getProperty("type"), "onos"))
+            .filter(member -> member.properties().getProperty("type") == null)
             .map(this::toControllerNode)
             .collect(Collectors.toSet());
     }

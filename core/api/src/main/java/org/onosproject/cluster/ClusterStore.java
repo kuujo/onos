@@ -37,6 +37,13 @@ public interface ClusterStore extends Store<ClusterEvent, ClusterStoreDelegate> 
     ControllerNode getLocalNode();
 
     /**
+     * Returns a sorted list of proxy nodes.
+     *
+     * @return a sorted list of proxy nodes
+     */
+    Set<Node> getProxyNodes();
+
+    /**
      * Returns the set of storage nodes.
      *
      * @return set of storage nodes

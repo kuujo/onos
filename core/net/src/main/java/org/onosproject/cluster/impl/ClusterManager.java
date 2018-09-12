@@ -95,6 +95,12 @@ public class ClusterManager
     }
 
     @Override
+    public Set<Node> getProxyNodes() {
+        checkPermission(CLUSTER_READ);
+        return store.getProxyNodes();
+    }
+
+    @Override
     public Set<Node> getConsensusNodes() {
         checkPermission(CLUSTER_READ);
         return store.getStorageNodes();

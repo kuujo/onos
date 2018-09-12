@@ -30,6 +30,10 @@ import org.onlab.util.KryoNamespace;
 import org.onlab.util.Tools;
 import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.NodeId;
+import org.onosproject.cluster.ProxyEgressService;
+import org.onosproject.cluster.ProxyFactory;
+import org.onosproject.cluster.ProxyIngressService;
+import org.onosproject.cluster.ProxyService;
 import org.onosproject.incubator.net.config.basics.PortDescriptionsConfig;
 import org.onosproject.mastership.MastershipEvent;
 import org.onosproject.mastership.MastershipListener;
@@ -67,6 +71,7 @@ import org.onosproject.net.device.DeviceStoreDelegate;
 import org.onosproject.net.device.PortDescription;
 import org.onosproject.net.device.PortStatistics;
 import org.onosproject.net.provider.AbstractListenerProviderRegistry;
+import org.onosproject.net.provider.AbstractProvider;
 import org.onosproject.net.provider.AbstractProviderService;
 import org.onosproject.net.provider.Provider;
 import org.onosproject.net.provider.ProviderId;
@@ -156,6 +161,20 @@ public class DeviceManager
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected ClusterCommunicationService communicationService;
 
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected ProxyIngressService proxyIngressService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected ProxyEgressService proxyEgressService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected ProxyService proxyService;
+
+    private ProxyFactory<DeviceProxyService> deviceProxyServiceFactory;
+    private ProxyFactory<DeviceProxy> deviceProxyFactory;
+
+    private ControllerDeviceProvider proxyDeviceProvider;
+
     private ExecutorService portReqeustExecutor;
     /**
      * List of all registered PortConfigOperator.
@@ -201,6 +220,16 @@ public class DeviceManager
 
     @Activate
     public void activate() {
+        deviceProxyFactory = proxyService.getProxyFactory(DeviceProxy.class, SERIALIZER);
+        deviceProxyServiceFactory = proxyService.getProxyFactory(DeviceProxyService.class, SERIALIZER);
+
+        if (proxyEgressService.isProxyEnabled() && proxyEgressService.isControllerNode()) {
+            proxyService.registerProxyService(DeviceProxyService.class, new ControllerDeviceProxyService(), SERIALIZER);
+            proxyDeviceProvider = new ControllerDeviceProvider();
+        } else if (proxyIngressService.isProxyEnabled() && proxyIngressService.isProxyNode()) {
+            proxyService.registerProxyService(DeviceProxy.class, new ProxyDeviceProxy(), SERIALIZER);
+        }
+
         portAnnotationOp = new PortAnnotationOperator(networkConfigService);
         deviceAnnotationOp = new DeviceAnnotationOperator(networkConfigService);
         portOpsIndex.put(PortAnnotationConfig.class, portAnnotationOp);
@@ -235,6 +264,8 @@ public class DeviceManager
 
     @Deactivate
     public void deactivate() {
+        proxyService.unregisterProxyService(DeviceProxy.class);
+        proxyService.unregisterProxyService(DeviceProxyService.class);
         backgroundService.shutdown();
         networkConfigService.removeListener(networkConfigListener);
         store.unsetDelegate(delegate);
@@ -447,9 +478,17 @@ public class DeviceManager
     }
 
     @Override
+    protected synchronized DeviceProvider getProvider(DeviceId deviceId) {
+        return proxyDeviceProvider != null ? proxyDeviceProvider : super.getProvider(deviceId);
+    }
+
+    @Override
     protected DeviceProviderService createProviderService(
             DeviceProvider provider) {
-        return new InternalDeviceProviderService(provider);
+        if (proxyIngressService.isProxyEnabled() && proxyIngressService.isProxyNode()) {
+            return new ProxyDeviceProviderService(provider);
+        }
+        return new ControllerDeviceProviderService(provider);
     }
 
     /**
@@ -512,11 +551,11 @@ public class DeviceManager
     }
 
     // Personalized device provider service issued to the supplied provider.
-    private class InternalDeviceProviderService
+    private class ControllerDeviceProviderService
             extends AbstractProviderService<DeviceProvider>
             implements DeviceProviderService {
 
-        InternalDeviceProviderService(DeviceProvider provider) {
+        ControllerDeviceProviderService(DeviceProvider provider) {
             super(provider);
         }
 
@@ -1240,6 +1279,167 @@ public class DeviceManager
             this.deviceId = null;
             this.portNumber = null;
             this.enable = false;
+        }
+    }
+
+    private interface DeviceProxy {
+        void triggerProbe(DeviceId deviceId);
+        void roleChanged(DeviceId deviceId, MastershipRole newRole);
+        boolean isReachable(DeviceId deviceId);
+        void changePortState(DeviceId deviceId, PortNumber portNumber, boolean enable);
+        void triggerDisconnect(DeviceId deviceId);
+    }
+
+    private interface DeviceProxyService {
+        void deviceConnected(ProviderId providerId, DeviceId deviceId, DeviceDescription deviceDescription);
+        void deviceDisconnected(ProviderId providerId, DeviceId deviceId);
+        void updatePorts(ProviderId providerId, DeviceId deviceId, List<PortDescription> portDescriptions);
+        void deletePort(ProviderId providerId, DeviceId deviceId, PortDescription portDescription);
+        void portStatusChanged(ProviderId providerId, DeviceId deviceId, PortDescription portDescription);
+        void receivedRoleReply(ProviderId providerId, DeviceId deviceId, MastershipRole requested, MastershipRole response);
+        void updatePortStatistics(ProviderId providerId, DeviceId deviceId, Collection<PortStatistics> portStatistics);
+    }
+
+    private class ControllerDeviceProxyService implements DeviceProxyService {
+        @Override
+        public void deviceConnected(ProviderId providerId, DeviceId deviceId, DeviceDescription deviceDescription) {
+            createProviderService(getProvider(providerId)).deviceConnected(deviceId, deviceDescription);
+        }
+
+        @Override
+        public void deviceDisconnected(ProviderId providerId, DeviceId deviceId) {
+            createProviderService(getProvider(providerId)).deviceDisconnected(deviceId);
+        }
+
+        @Override
+        public void updatePorts(ProviderId providerId, DeviceId deviceId, List<PortDescription> portDescriptions) {
+            createProviderService(getProvider(providerId)).updatePorts(deviceId, portDescriptions);
+        }
+
+        @Override
+        public void deletePort(ProviderId providerId, DeviceId deviceId, PortDescription portDescription) {
+            createProviderService(getProvider(providerId)).deletePort(deviceId, portDescription);
+        }
+
+        @Override
+        public void portStatusChanged(ProviderId providerId, DeviceId deviceId, PortDescription portDescription) {
+            createProviderService(getProvider(providerId)).portStatusChanged(deviceId, portDescription);
+        }
+
+        @Override
+        public void receivedRoleReply(ProviderId providerId, DeviceId deviceId, MastershipRole requested, MastershipRole response) {
+            createProviderService(getProvider(providerId)).receivedRoleReply(deviceId, requested, response);
+        }
+
+        @Override
+        public void updatePortStatistics(ProviderId providerId, DeviceId deviceId, Collection<PortStatistics> portStatistics) {
+            createProviderService(getProvider(providerId)).updatePortStatistics(deviceId, portStatistics);
+        }
+    }
+
+    private class ControllerDeviceProvider extends AbstractProvider implements DeviceProvider {
+        ControllerDeviceProvider() {
+            super(ProviderId.NONE);
+        }
+
+        @Override
+        public void triggerProbe(DeviceId deviceId) {
+            deviceProxyFactory.getProxyFor(proxyEgressService.getProxyNode()).triggerProbe(deviceId);
+        }
+
+        @Override
+        public void triggerDisconnect(DeviceId deviceId) {
+            deviceProxyFactory.getProxyFor(proxyEgressService.getProxyNode()).triggerDisconnect(deviceId);
+        }
+
+        @Override
+        public void roleChanged(DeviceId deviceId, MastershipRole newRole) {
+            deviceProxyFactory.getProxyFor(proxyEgressService.getProxyNode()).roleChanged(deviceId, newRole);
+        }
+
+        @Override
+        public boolean isReachable(DeviceId deviceId) {
+            return deviceProxyFactory.getProxyFor(proxyEgressService.getProxyNode()).isReachable(deviceId);
+        }
+
+        @Override
+        public void changePortState(DeviceId deviceId, PortNumber portNumber, boolean enable) {
+            deviceProxyFactory.getProxyFor(proxyEgressService.getProxyNode()).changePortState(deviceId, portNumber, enable);
+        }
+    }
+
+    private class ProxyDeviceProviderService extends AbstractProviderService<DeviceProvider> implements DeviceProviderService {
+        ProxyDeviceProviderService(DeviceProvider provider) {
+            super(provider);
+        }
+
+        @Override
+        public void deviceConnected(DeviceId deviceId, DeviceDescription deviceDescription) {
+            deviceProxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
+                .deviceConnected(provider().id(), deviceId, deviceDescription);
+        }
+
+        @Override
+        public void deviceDisconnected(DeviceId deviceId) {
+            deviceProxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
+                .deviceDisconnected(provider().id(), deviceId);
+        }
+
+        @Override
+        public void updatePorts(DeviceId deviceId, List<PortDescription> portDescriptions) {
+            deviceProxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
+                .updatePorts(provider().id(), deviceId, portDescriptions);
+        }
+
+        @Override
+        public void deletePort(DeviceId deviceId, PortDescription portDescription) {
+            deviceProxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
+                .deletePort(provider().id(), deviceId, portDescription);
+        }
+
+        @Override
+        public void portStatusChanged(DeviceId deviceId, PortDescription portDescription) {
+            deviceProxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
+                .portStatusChanged(provider().id(), deviceId, portDescription);
+        }
+
+        @Override
+        public void receivedRoleReply(DeviceId deviceId, MastershipRole requested, MastershipRole response) {
+            deviceProxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
+                .receivedRoleReply(provider().id(), deviceId, requested, response);
+        }
+
+        @Override
+        public void updatePortStatistics(DeviceId deviceId, Collection<PortStatistics> portStatistics) {
+            deviceProxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
+                .updatePortStatistics(provider().id(), deviceId, portStatistics);
+        }
+    }
+
+    private class ProxyDeviceProxy implements DeviceProxy {
+        @Override
+        public void triggerProbe(DeviceId deviceId) {
+            getProvider(deviceId).triggerProbe(deviceId);
+        }
+
+        @Override
+        public void roleChanged(DeviceId deviceId, MastershipRole newRole) {
+            getProvider(deviceId).roleChanged(deviceId, newRole);
+        }
+
+        @Override
+        public boolean isReachable(DeviceId deviceId) {
+            return getProvider(deviceId).isReachable(deviceId);
+        }
+
+        @Override
+        public void changePortState(DeviceId deviceId, PortNumber portNumber, boolean enable) {
+            getProvider(deviceId).changePortState(deviceId, portNumber, enable);
+        }
+
+        @Override
+        public void triggerDisconnect(DeviceId deviceId) {
+            getProvider(deviceId).triggerDisconnect(deviceId);
         }
     }
 }

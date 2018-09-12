@@ -40,7 +40,11 @@ import org.slf4j.LoggerFactory;
 @Component(immediate = true)
 @Service(value = AtomixManager.class)
 public class AtomixManager {
+
+    private static final boolean PROXY_ENABLED = Boolean.parseBoolean(System.getProperty("onos.proxy.enabled", "false"));
+    private static final String NODE_TYPE = System.getProperty("onos.proxy.node.type") != null ? "proxy" : "onos";
     private static final String LOCAL_DATA_DIR = System.getProperty("karaf.data") + "/db/partitions/";
+
     private final Logger log = LoggerFactory.getLogger(getClass());
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
@@ -79,7 +83,7 @@ public class AtomixManager {
                 .withClusterId(metadata.getName())
                 .withMemberId(metadataService.getLocalNode().id().id())
                 .withAddress(metadataService.getLocalNode().ip().toString(), metadataService.getLocalNode().tcpPort())
-                .withProperty("type", "onos")
+                .withProperty("type", PROXY_ENABLED ? NODE_TYPE : "onos")
                 .withMembershipProvider(BootstrapDiscoveryProvider.builder()
                     .withNodes(metadata.getStorageNodes().stream()
                         .map(node -> io.atomix.cluster.Node.builder()
@@ -104,7 +108,7 @@ public class AtomixManager {
                 .withClusterId(metadata.getName())
                 .withMemberId(metadataService.getLocalNode().id().id())
                 .withAddress(metadataService.getLocalNode().ip().toString(), metadataService.getLocalNode().tcpPort())
-                .withProperty("type", "onos")
+                .withProperty("type", PROXY_ENABLED ? NODE_TYPE : "onos")
                 .withMembershipProvider(BootstrapDiscoveryProvider.builder()
                     .withNodes(metadata.getControllerNodes().stream()
                         .map(node -> io.atomix.cluster.Node.builder()
