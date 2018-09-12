@@ -22,9 +22,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -175,6 +177,8 @@ public class DeviceManager
     // not part of portOps. must be executed at the end
     private PortAnnotationOperator portAnnotationOp;
     private DeviceAnnotationOperator deviceAnnotationOp;
+
+    private final Map<DeviceId, Queue<NodeId>> roleRequests = Maps.newConcurrentMap();
 
     private static final MessageSubject PORT_UPDOWN_SUBJECT =
             new MessageSubject("port-updown-req");
@@ -1281,7 +1285,7 @@ public class DeviceManager
 
     interface DeviceProxy {
         void triggerProbe(DeviceId deviceId);
-        void roleChanged(DeviceId deviceId, MastershipRole newRole);
+        void roleChanged(NodeId nodeId, DeviceId deviceId, MastershipRole newRole);
         boolean isReachable(DeviceId deviceId);
         void changePortState(DeviceId deviceId, PortNumber portNumber, boolean enable);
         void triggerDisconnect(DeviceId deviceId);
@@ -1351,7 +1355,7 @@ public class DeviceManager
 
         @Override
         public void roleChanged(DeviceId deviceId, MastershipRole newRole) {
-            proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).roleChanged(deviceId, newRole);
+            proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).roleChanged(localNodeId, deviceId, newRole);
         }
 
         @Override
@@ -1380,6 +1384,7 @@ public class DeviceManager
 
         @Override
         public void deviceDisconnected(DeviceId deviceId) {
+            roleRequests.remove(deviceId);
             for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
                 proxyServiceFactory.getProxyFor(nodeId)
                     .deviceDisconnected(provider().id(), deviceId);
@@ -1421,12 +1426,13 @@ public class DeviceManager
 
         @Override
         public void receivedRoleReply(DeviceId deviceId, MastershipRole requested, MastershipRole response) {
-            NodeId master = mastershipService.getMasterFor(deviceId);
-            if (master != null) {
-                proxyServiceFactory.getProxyFor(master)
-                    .receivedRoleReply(provider().id(), deviceId, requested, response);
-            } else {
-                log.warn("Failed receivedRoleReply by proxy: no master found for device {}", deviceId);
+            Queue<NodeId> requests = roleRequests.get(deviceId);
+            if (requests != null) {
+                NodeId nodeId = requests.poll();
+                if (nodeId != null) {
+                    proxyServiceFactory.getProxyFor(nodeId)
+                        .receivedRoleReply(provider().id(), deviceId, requested, response);
+                }
             }
         }
 
@@ -1449,7 +1455,9 @@ public class DeviceManager
         }
 
         @Override
-        public void roleChanged(DeviceId deviceId, MastershipRole newRole) {
+        public void roleChanged(NodeId nodeId, DeviceId deviceId, MastershipRole newRole) {
+            roleRequests.computeIfAbsent(deviceId, id -> new ConcurrentLinkedQueue<>())
+                .add(nodeId);
             getProvider(deviceId).roleChanged(deviceId, newRole);
         }
 
