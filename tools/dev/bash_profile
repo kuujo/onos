@@ -165,7 +165,12 @@ function topos {
 
 # Sets the primary instance to the specified instance number.
 function setPrimaryInstance {
-    export ONOS_INSTANCES=$(env | grep 'OC[0-9]*=' | sort | cut -d= -f2)
+    if [ -z $(env | grep -q 'OP[0-9]*=') ]
+    then
+        export ONOS_INSTANCES=$(env | grep 'OP[0-9]*=' | sort | cut -d= -f2)
+    else
+        export ONOS_INSTANCES=$(env | grep 'OC[0-9]*=' | sort | cut -d= -f2)
+    fi
 
     if [ -z "${OCC1-}" ]; then
         aux=/tmp/cell-$$.aux

@@ -41,7 +41,6 @@ import org.slf4j.LoggerFactory;
 public class ProxyEgressManager implements ProxyEgressService {
 
     private static final String NODE_TYPE = System.getProperty("onos.node.type", "onos");
-    private static final boolean PROXY_ENABLED = Boolean.parseBoolean(System.getProperty("onos.proxy.enabled", "false"));
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -59,6 +58,7 @@ public class ProxyEgressManager implements ProxyEgressService {
             || NODE_TYPE.equals("controller");
         isControllerNode = clusterService.getNodes().stream()
             .anyMatch(node -> node.id().equals(localNodeId));
+        log.info("isControllerNode: {}", isControllerNode);
         log.info("Started");
     }
 
@@ -69,7 +69,7 @@ public class ProxyEgressManager implements ProxyEgressService {
 
     @Override
     public boolean isProxyEnabled() {
-        return PROXY_ENABLED;
+        return proxyEnabled;
     }
 
     @Override
@@ -91,6 +91,6 @@ public class ProxyEgressManager implements ProxyEgressService {
             .sorted(Comparator.comparing(NodeId::id))
             .collect(Collectors.toList());
 
-        return proxyNodeIds.get(Math.abs(proxyNodeIds.size() % localNodeId.id().hashCode()));
+        return proxyNodeIds.get(Math.abs(localNodeId.id().hashCode() % proxyNodeIds.size()));
     }
 }

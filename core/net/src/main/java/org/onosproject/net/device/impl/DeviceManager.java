@@ -33,6 +33,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
@@ -1371,44 +1372,73 @@ public class DeviceManager
 
         @Override
         public void deviceConnected(DeviceId deviceId, DeviceDescription deviceDescription) {
-            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
-                .deviceConnected(provider().id(), deviceId, deviceDescription);
+            for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
+                proxyServiceFactory.getProxyFor(nodeId)
+                    .deviceConnected(provider().id(), deviceId, deviceDescription);
+            }
         }
 
         @Override
         public void deviceDisconnected(DeviceId deviceId) {
-            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
-                .deviceDisconnected(provider().id(), deviceId);
+            for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
+                proxyServiceFactory.getProxyFor(nodeId)
+                    .deviceDisconnected(provider().id(), deviceId);
+            }
         }
 
         @Override
         public void updatePorts(DeviceId deviceId, List<PortDescription> portDescriptions) {
-            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
-                .updatePorts(provider().id(), deviceId, portDescriptions);
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .updatePorts(provider().id(), deviceId, ImmutableList.copyOf(portDescriptions));
+            } else {
+                log.warn("Failed updatePorts by proxy: no master found for device {}", deviceId);
+            }
         }
 
         @Override
         public void deletePort(DeviceId deviceId, PortDescription portDescription) {
-            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
-                .deletePort(provider().id(), deviceId, portDescription);
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .deletePort(provider().id(), deviceId, portDescription);
+            } else {
+                log.warn("Failed deletePort by proxy: no master found for device {}", deviceId);
+            }
         }
 
         @Override
         public void portStatusChanged(DeviceId deviceId, PortDescription portDescription) {
-            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
-                .portStatusChanged(provider().id(), deviceId, portDescription);
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .portStatusChanged(provider().id(), deviceId, portDescription);
+            } else {
+                log.warn("Failed portStatusChanged by proxy: no master found for device {}", deviceId);
+            }
         }
 
         @Override
         public void receivedRoleReply(DeviceId deviceId, MastershipRole requested, MastershipRole response) {
-            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
-                .receivedRoleReply(provider().id(), deviceId, requested, response);
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .receivedRoleReply(provider().id(), deviceId, requested, response);
+            } else {
+                log.warn("Failed receivedRoleReply by proxy: no master found for device {}", deviceId);
+            }
         }
 
         @Override
         public void updatePortStatistics(DeviceId deviceId, Collection<PortStatistics> portStatistics) {
-            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
-                .updatePortStatistics(provider().id(), deviceId, portStatistics);
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .updatePortStatistics(provider().id(), deviceId, ImmutableSet.copyOf(portStatistics));
+            } else {
+                log.warn("Failed receivedRoleReply by proxy: no master found for device {}", deviceId);
+            }
         }
     }
 

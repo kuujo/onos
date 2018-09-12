@@ -622,8 +622,14 @@ public class PacketManager
             if (device == null) {
                 return;
             }
-            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(device.id()))
-                .processPacket(provider().id(), context);
+
+            NodeId master = mastershipService.getMasterFor(device.id());
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .processPacket(provider().id(), context);
+            } else {
+                log.warn("Failed processPacket by proxy: no master found for device {}", device.id());
+            }
         }
     }
 

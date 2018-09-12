@@ -60,6 +60,7 @@ public class ProxyIngressManager implements ProxyIngressService {
             || NODE_TYPE.equals("controller");
         isProxyNode = clusterService.getProxyNodes().stream()
             .anyMatch(node -> node.id().equals(localNodeId));
+        log.info("isProxyNode: {}", isProxyNode);
         log.info("Started");
     }
 
@@ -96,7 +97,7 @@ public class ProxyIngressManager implements ProxyIngressService {
         return clusterService.getNodes()
             .stream()
             .map(ControllerNode::id)
-            .filter(id -> proxyNodeIds.get(Math.abs(proxyNodeIds.size() % localNodeId.id().hashCode())).equals(localNodeId))
+            .filter(id -> proxyNodeIds.get(Math.abs(localNodeId.id().hashCode() % proxyNodeIds.size())).equals(localNodeId))
             .collect(Collectors.toSet());
     }
 }

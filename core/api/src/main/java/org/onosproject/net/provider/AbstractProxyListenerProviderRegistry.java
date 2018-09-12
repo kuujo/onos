@@ -26,6 +26,8 @@ import org.onosproject.event.Event;
 import org.onosproject.event.EventListener;
 import org.onosproject.net.DeviceId;
 import org.onosproject.store.service.Serializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Abstract proxy provider registry.
@@ -34,6 +36,8 @@ import org.onosproject.store.service.Serializer;
 public abstract class AbstractProxyListenerProviderRegistry<E extends Event, L extends EventListener<E>,
     P extends Provider, S extends ProviderService<P>, X, C>
     extends AbstractListenerProviderRegistry<E, L, P, S> {
+
+    private final Logger log = LoggerFactory.getLogger(getClass());
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected ProxyIngressService proxyIngressService;

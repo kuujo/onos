@@ -16,6 +16,7 @@
 package org.onosproject.net.flow.impl;
 
 import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -31,6 +32,7 @@ import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
 import org.onlab.util.Tools;
 import org.onosproject.cfg.ComponentConfigService;
+import org.onosproject.cluster.NodeId;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
 import org.onosproject.core.IdGenerator;
@@ -867,32 +869,57 @@ public class FlowRuleManager
 
         @Override
         public void flowRemoved(FlowEntry flowEntry) {
-            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(flowEntry.deviceId()))
-                .flowRemoved(provider().id(), flowEntry);
+            NodeId master = mastershipService.getMasterFor(flowEntry.deviceId());
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .flowRemoved(provider().id(), flowEntry);
+            } else {
+                log.warn("Failed flowRemoved by proxy: no master found for device {}", flowEntry.deviceId());
+            }
         }
 
         @Override
         public void pushFlowMetrics(DeviceId deviceId, Iterable<FlowEntry> flowEntries) {
-            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
-                .pushFlowMetrics(provider().id(), deviceId, flowEntries);
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .pushFlowMetrics(provider().id(), deviceId, ImmutableList.copyOf(flowEntries));
+            } else {
+                log.warn("Failed pushFlowMetrics by proxy: no master found for device {}", deviceId);
+            }
         }
 
         @Override
         public void pushFlowMetricsWithoutFlowMissing(DeviceId deviceId, Iterable<FlowEntry> flowEntries) {
-            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
-                .pushFlowMetricsWithoutFlowMissing(provider().id(), deviceId, flowEntries);
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .pushFlowMetricsWithoutFlowMissing(provider().id(), deviceId, ImmutableList.copyOf(flowEntries));
+            } else {
+                log.warn("Failed pushFlowMetricsWithoutFlowMissing by proxy: no master found for device {}", deviceId);
+            }
         }
 
         @Override
         public void pushTableStatistics(DeviceId deviceId, List<TableStatisticsEntry> tableStatsEntries) {
-            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
-                .pushTableStatistics(provider().id(), deviceId, tableStatsEntries);
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .pushTableStatistics(provider().id(), deviceId, ImmutableList.copyOf(tableStatsEntries));
+            } else {
+                log.warn("Failed pushTableStatistics by proxy: no master found for device {}", deviceId);
+            }
         }
 
         @Override
         public void batchOperationCompleted(long batchId, CompletedBatchOperation operation) {
-            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(operation.deviceId()))
-                .batchOperationCompleted(provider().id(), batchId, operation);
+            NodeId master = mastershipService.getMasterFor(operation.deviceId());
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .batchOperationCompleted(provider().id(), batchId, operation);
+            } else {
+                log.warn("Failed batchOperationCompleted by proxy: no master found for device {}", operation.deviceId());
+            }
         }
     }
 
