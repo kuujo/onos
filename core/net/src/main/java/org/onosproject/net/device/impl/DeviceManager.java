@@ -73,6 +73,7 @@ import org.onosproject.net.device.PortStatistics;
 import org.onosproject.net.provider.AbstractListenerProviderRegistry;
 import org.onosproject.net.provider.AbstractProvider;
 import org.onosproject.net.provider.AbstractProviderService;
+import org.onosproject.net.provider.AbstractProxyProviderRegistry;
 import org.onosproject.net.provider.Provider;
 import org.onosproject.net.provider.ProviderId;
 import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
@@ -119,7 +120,8 @@ import static org.slf4j.LoggerFactory.getLogger;
 @Component(immediate = true)
 @Service
 public class DeviceManager
-        extends AbstractListenerProviderRegistry<DeviceEvent, DeviceListener, DeviceProvider, DeviceProviderService>
+        extends AbstractProxyProviderRegistry<DeviceEvent, DeviceListener, DeviceProvider, DeviceProviderService,
+        DeviceManager.DeviceProxy, DeviceManager.DeviceProxyService>
         implements DeviceService, DeviceAdminService, DeviceProviderRegistry, PortConfigOperatorRegistry {
 
     private static final String DEVICE_ID_NULL = "Device ID cannot be null";
@@ -218,6 +220,10 @@ public class DeviceManager
     private final Map<DeviceId, LocalStatus> deviceLocalStatus =
             Maps.newConcurrentMap();
 
+    public DeviceManager() {
+        super(DeviceProxy.class, DeviceProxyService.class);
+    }
+
     @Activate
     public void activate() {
         deviceProxyFactory = proxyService.getProxyFactory(DeviceProxy.class, SERIALIZER);
@@ -274,6 +280,36 @@ public class DeviceManager
         communicationService.removeSubscriber(PORT_UPDOWN_SUBJECT);
         portReqeustExecutor.shutdown();
         log.info("Stopped");
+    }
+
+    @Override
+    protected Serializer getProxySerializer() {
+        return SERIALIZER;
+    }
+
+    @Override
+    protected DeviceProviderService createProxyProviderService(DeviceProvider provider) {
+        return new ProxyDeviceProviderService(provider);
+    }
+
+    @Override
+    protected DeviceProviderService createControllerProviderService(DeviceProvider provider) {
+        return new ControllerDeviceProviderService(provider);
+    }
+
+    @Override
+    protected DeviceProvider createControllerProvider() {
+        return new ControllerDeviceProvider();
+    }
+
+    @Override
+    protected DeviceProxy createProxy() {
+        return new ProxyDeviceProxy();
+    }
+
+    @Override
+    protected DeviceProxyService createProxyService() {
+        return new ControllerDeviceProxyService();
     }
 
     @Override
@@ -475,20 +511,6 @@ public class DeviceManager
         } else {
             changePortStateAtMaster(deviceId, portNumber, enable);
         }
-    }
-
-    @Override
-    protected synchronized DeviceProvider getProvider(DeviceId deviceId) {
-        return proxyDeviceProvider != null ? proxyDeviceProvider : super.getProvider(deviceId);
-    }
-
-    @Override
-    protected DeviceProviderService createProviderService(
-            DeviceProvider provider) {
-        if (proxyIngressService.isProxyEnabled() && proxyIngressService.isProxyNode()) {
-            return new ProxyDeviceProviderService(provider);
-        }
-        return new ControllerDeviceProviderService(provider);
     }
 
     /**
@@ -1282,7 +1304,7 @@ public class DeviceManager
         }
     }
 
-    private interface DeviceProxy {
+    interface DeviceProxy {
         void triggerProbe(DeviceId deviceId);
         void roleChanged(DeviceId deviceId, MastershipRole newRole);
         boolean isReachable(DeviceId deviceId);
@@ -1290,7 +1312,7 @@ public class DeviceManager
         void triggerDisconnect(DeviceId deviceId);
     }
 
-    private interface DeviceProxyService {
+    interface DeviceProxyService {
         void deviceConnected(ProviderId providerId, DeviceId deviceId, DeviceDescription deviceDescription);
         void deviceDisconnected(ProviderId providerId, DeviceId deviceId);
         void updatePorts(ProviderId providerId, DeviceId deviceId, List<PortDescription> portDescriptions);
