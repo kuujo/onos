@@ -139,6 +139,7 @@ public class PacketManager
 
     @Activate
     public void activate() {
+        activateProxy();
         eventHandlingExecutor = Executors.newSingleThreadExecutor(
                 groupedThreads("onos/net/packet", "event-handler", log));
         localNodeId = clusterService.getLocalNode().id();
@@ -163,6 +164,7 @@ public class PacketManager
 
     @Deactivate
     public void deactivate() {
+        deactivateProxy();
         store.unsetDelegate(delegate);
         deviceService.removeListener(deviceListener);
         eventHandlingExecutor.shutdown();
@@ -636,14 +638,7 @@ public class PacketManager
     private class ProxyPacketProxy implements PacketProxy {
         @Override
         public void emit(OutboundPacket packet) {
-            Device device = deviceService.getDevice(packet.sendThrough());
-            if (device == null) {
-                return;
-            }
-            PacketProvider provider = getProvider(device.id());
-            if (provider != null) {
-                provider.emit(packet);
-            }
+            localEmit(packet);
         }
     }
 }

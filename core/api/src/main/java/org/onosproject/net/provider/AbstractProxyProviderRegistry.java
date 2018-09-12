@@ -127,6 +127,11 @@ public abstract class AbstractProxyProviderRegistry<P extends Provider, S extend
     }
 
     @Override
+    protected synchronized P getProvider(ProviderId providerId) {
+        return proxyProvider != null ? proxyProvider : super.getProvider(providerId);
+    }
+
+    @Override
     protected S createProviderService(P provider) {
         if (proxyIngressService.isProxyEnabled() && proxyIngressService.isProxyNode()) {
             return createProxyProviderService(provider);
