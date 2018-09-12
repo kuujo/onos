@@ -624,7 +624,7 @@ public class HostManager
 
         @Override
         public void triggerProbe(Host host) {
-            proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).triggerProbe(host);
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).triggerProbe(host);
         }
     }
 
@@ -635,35 +635,35 @@ public class HostManager
 
         @Override
         public void hostDetected(HostId hostId, HostDescription hostDescription, boolean replaceIps) {
-            for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
+            for (NodeId nodeId : proxyRoleService.getControllerNodes()) {
                 proxyServiceFactory.getProxyFor(nodeId).hostDetected(provider().id(), hostId, hostDescription, replaceIps);
             }
         }
 
         @Override
         public void hostVanished(HostId hostId) {
-            for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
+            for (NodeId nodeId : proxyRoleService.getControllerNodes()) {
                 proxyServiceFactory.getProxyFor(nodeId).hostVanished(provider().id(), hostId);
             }
         }
 
         @Override
         public void removeIpFromHost(HostId hostId, IpAddress ipAddress) {
-            for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
+            for (NodeId nodeId : proxyRoleService.getControllerNodes()) {
                 proxyServiceFactory.getProxyFor(nodeId).removeIpFromHost(provider().id(), hostId, ipAddress);
             }
         }
 
         @Override
         public void addLocationToHost(HostId hostId, HostLocation location) {
-            for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
+            for (NodeId nodeId : proxyRoleService.getControllerNodes()) {
                 proxyServiceFactory.getProxyFor(nodeId).addLocationToHost(provider().id(), hostId, location);
             }
         }
 
         @Override
         public void removeLocationFromHost(HostId hostId, HostLocation location) {
-            for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
+            for (NodeId nodeId : proxyRoleService.getControllerNodes()) {
                 proxyServiceFactory.getProxyFor(nodeId).removeLocationFromHost(provider().id(), hostId, location);
             }
         }

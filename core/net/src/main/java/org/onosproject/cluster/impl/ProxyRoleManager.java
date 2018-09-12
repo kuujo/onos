@@ -31,16 +31,16 @@ import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.Node;
 import org.onosproject.cluster.NodeId;
-import org.onosproject.cluster.ProxyIngressService;
+import org.onosproject.cluster.ProxyRoleService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Proxy ingress manager.
+ * Proxy egress manager.
  */
 @Component(immediate = true)
 @Service
-public class ProxyIngressManager implements ProxyIngressService {
+public class ProxyRoleManager implements ProxyRoleService {
 
     private static final String NODE_TYPE = System.getProperty("onos.node.type", "onos");
 
@@ -51,6 +51,7 @@ public class ProxyIngressManager implements ProxyIngressService {
 
     private NodeId localNodeId;
     private boolean proxyEnabled;
+    private boolean isControllerNode;
     private boolean isProxyNode;
 
     @Activate
@@ -58,9 +59,11 @@ public class ProxyIngressManager implements ProxyIngressService {
         localNodeId = clusterService.getLocalNode().id();
         proxyEnabled = NODE_TYPE.equalsIgnoreCase("proxy")
             || NODE_TYPE.equals("controller");
+        isControllerNode = clusterService.getNodes().stream()
+            .anyMatch(node -> node.id().equals(localNodeId));
         isProxyNode = clusterService.getProxyNodes().stream()
             .anyMatch(node -> node.id().equals(localNodeId));
-        log.info("isProxyNode: {}", isProxyNode);
+        log.info("isControllerNode: {}", isControllerNode);
         log.info("Started");
     }
 
@@ -72,6 +75,11 @@ public class ProxyIngressManager implements ProxyIngressService {
     @Override
     public boolean isProxyEnabled() {
         return proxyEnabled;
+    }
+
+    @Override
+    public boolean isControllerNode() {
+        return isControllerNode;
     }
 
     @Override
@@ -99,5 +107,22 @@ public class ProxyIngressManager implements ProxyIngressService {
             .map(ControllerNode::id)
             .filter(id -> proxyNodeIds.get(Math.abs(localNodeId.id().hashCode() % proxyNodeIds.size())).equals(localNodeId))
             .collect(Collectors.toSet());
+    }
+
+    @Override
+    public NodeId getProxyNode() {
+        if (!proxyEnabled || !isControllerNode) {
+            return null;
+        }
+
+        // TODO: This computation should be done each time a node joins/leaves the cluster.
+        Set<Node> proxyNodes = clusterService.getProxyNodes();
+
+        List<NodeId> proxyNodeIds = proxyNodes.stream()
+            .map(Node::id)
+            .sorted(Comparator.comparing(NodeId::id))
+            .collect(Collectors.toList());
+
+        return proxyNodeIds.get(Math.abs(localNodeId.id().hashCode() % proxyNodeIds.size()));
     }
 }

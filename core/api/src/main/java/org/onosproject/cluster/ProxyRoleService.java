@@ -18,9 +18,9 @@ package org.onosproject.cluster;
 import java.util.Set;
 
 /**
- * Proxy ingress service.
+ * Proxy egress service.
  */
-public interface ProxyIngressService {
+public interface ProxyRoleService {
 
     /**
      * Returns whether proxying is enabled.
@@ -28,6 +28,13 @@ public interface ProxyIngressService {
      * @return whether proxying is enabled
      */
     boolean isProxyEnabled();
+
+    /**
+     * Returns whether this node is a controller node.
+     *
+     * @return whether this node is a controller node
+     */
+    boolean isControllerNode();
 
     /**
      * Returns whether this node is a proxy node.
@@ -42,5 +49,12 @@ public interface ProxyIngressService {
      * @return the set of controller nodes assigned to this proxy
      */
     Set<NodeId> getControllerNodes();
+
+    /**
+     * Returns the proxy node ID.
+     *
+     * @return the proxy node ID
+     */
+    NodeId getProxyNode();
 
 }

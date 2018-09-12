@@ -1345,27 +1345,27 @@ public class DeviceManager
 
         @Override
         public void triggerProbe(DeviceId deviceId) {
-            proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).triggerProbe(deviceId);
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).triggerProbe(deviceId);
         }
 
         @Override
         public void triggerDisconnect(DeviceId deviceId) {
-            proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).triggerDisconnect(deviceId);
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).triggerDisconnect(deviceId);
         }
 
         @Override
         public void roleChanged(DeviceId deviceId, MastershipRole newRole) {
-            proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).roleChanged(localNodeId, deviceId, newRole);
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).roleChanged(localNodeId, deviceId, newRole);
         }
 
         @Override
         public boolean isReachable(DeviceId deviceId) {
-            return proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).isReachable(deviceId);
+            return proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).isReachable(deviceId);
         }
 
         @Override
         public void changePortState(DeviceId deviceId, PortNumber portNumber, boolean enable) {
-            proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).changePortState(deviceId, portNumber, enable);
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).changePortState(deviceId, portNumber, enable);
         }
     }
 
@@ -1376,7 +1376,7 @@ public class DeviceManager
 
         @Override
         public void deviceConnected(DeviceId deviceId, DeviceDescription deviceDescription) {
-            for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
+            for (NodeId nodeId : proxyRoleService.getControllerNodes()) {
                 proxyServiceFactory.getProxyFor(nodeId)
                     .deviceConnected(provider().id(), deviceId, deviceDescription);
             }
@@ -1385,7 +1385,7 @@ public class DeviceManager
         @Override
         public void deviceDisconnected(DeviceId deviceId) {
             roleRequests.remove(deviceId);
-            for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
+            for (NodeId nodeId : proxyRoleService.getControllerNodes()) {
                 proxyServiceFactory.getProxyFor(nodeId)
                     .deviceDisconnected(provider().id(), deviceId);
             }

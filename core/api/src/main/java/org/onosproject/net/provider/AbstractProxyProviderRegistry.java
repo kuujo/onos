@@ -18,9 +18,8 @@ package org.onosproject.net.provider;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
-import org.onosproject.cluster.ProxyEgressService;
 import org.onosproject.cluster.ProxyFactory;
-import org.onosproject.cluster.ProxyIngressService;
+import org.onosproject.cluster.ProxyRoleService;
 import org.onosproject.cluster.ProxyService;
 import org.onosproject.net.DeviceId;
 import org.onosproject.store.service.Serializer;
@@ -33,10 +32,7 @@ public abstract class AbstractProxyProviderRegistry<P extends Provider, S extend
     extends AbstractProviderRegistry<P, S> {
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected ProxyIngressService proxyIngressService;
-
-    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected ProxyEgressService proxyEgressService;
+    protected ProxyRoleService proxyRoleService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected ProxyService proxyService;
@@ -105,10 +101,10 @@ public abstract class AbstractProxyProviderRegistry<P extends Provider, S extend
         proxyFactory = proxyService.getProxyFactory(proxyInterface, getProxySerializer());
         proxyServiceFactory = proxyService.getProxyFactory(serviceInterface, getProxySerializer());
 
-        if (proxyEgressService.isProxyEnabled() && proxyEgressService.isControllerNode()) {
+        if (proxyRoleService.isProxyEnabled() && proxyRoleService.isControllerNode()) {
             proxyService.registerProxyService(serviceInterface, createProxyService(), getProxySerializer());
             proxyProvider = createControllerProvider();
-        } else if (proxyIngressService.isProxyEnabled() && proxyIngressService.isProxyNode()) {
+        } else if (proxyRoleService.isProxyEnabled() && proxyRoleService.isProxyNode()) {
             proxyService.registerProxyService(proxyInterface, createProxy(), getProxySerializer());
         }
     }
@@ -133,7 +129,7 @@ public abstract class AbstractProxyProviderRegistry<P extends Provider, S extend
 
     @Override
     protected S createProviderService(P provider) {
-        if (proxyIngressService.isProxyEnabled() && proxyIngressService.isProxyNode()) {
+        if (proxyRoleService.isProxyEnabled() && proxyRoleService.isProxyNode()) {
             return createProxyProviderService(provider);
         }
         return createControllerProviderService(provider);

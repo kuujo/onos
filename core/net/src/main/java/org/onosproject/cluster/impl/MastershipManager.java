@@ -34,6 +34,7 @@ import org.onosproject.cfg.ConfigProperty;
 import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.ControllerNode;
 import org.onosproject.cluster.NodeId;
+import org.onosproject.cluster.ProxyRoleService;
 import org.onosproject.cluster.RoleInfo;
 import org.onosproject.core.MetricsHelper;
 import org.onosproject.event.AbstractListenerManager;
@@ -73,6 +74,8 @@ import static java.util.concurrent.CompletableFuture.allOf;
 import static org.onlab.metrics.MetricsUtil.startTimer;
 import static org.onlab.metrics.MetricsUtil.stopTimer;
 import static org.onosproject.net.MastershipRole.MASTER;
+import static org.onosproject.net.MastershipRole.NONE;
+import static org.onosproject.net.MastershipRole.STANDBY;
 import static org.onosproject.security.AppGuard.checkPermission;
 import static org.onosproject.security.AppPermission.Type.CLUSTER_READ;
 import static org.onosproject.security.AppPermission.Type.CLUSTER_WRITE;
@@ -115,6 +118,9 @@ public class MastershipManager
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected UpgradeService upgradeService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected ProxyRoleService proxyRoleService;
 
     private NodeId localNodeId;
     private Timer requestRoleTimer;
@@ -194,6 +200,26 @@ public class MastershipManager
         checkPermission(CLUSTER_READ);
 
         checkNotNull(deviceId, DEVICE_ID_NULL);
+
+        // If this is a proxy node, expose the role as MASTER if one of the proxy's controller node is the master.
+        // Otherwise, return STANDBY if at least one node is a standby. Otherwise, NONE.
+        if (proxyRoleService.isProxyEnabled() && proxyRoleService.isProxyNode()) {
+            MastershipInfo mastership = store.getMastership(deviceId);
+            NodeId master = mastership.master().orElse(null);
+            Set<NodeId> controllerNodes = proxyRoleService.getControllerNodes();
+            if (master != null) {
+                if (controllerNodes.contains(master)) {
+                    return MASTER;
+                }
+            }
+
+            for (NodeId nodeId : mastership.backups()) {
+                if (controllerNodes.contains(nodeId)) {
+                    return STANDBY;
+                }
+            }
+            return NONE;
+        }
         return store.getRole(clusterService.getLocalNode().id(), deviceId);
     }
 

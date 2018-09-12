@@ -843,22 +843,22 @@ public class FlowRuleManager
 
         @Override
         public void applyFlowRule(FlowRule... flowRules) {
-            proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).applyFlowRule(flowRules);
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).applyFlowRule(flowRules);
         }
 
         @Override
         public void removeFlowRule(FlowRule... flowRules) {
-            proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).removeFlowRule(flowRules);
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).removeFlowRule(flowRules);
         }
 
         @Override
         public void removeRulesById(ApplicationId id, FlowRule... flowRules) {
-            proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).removeRulesById(id, flowRules);
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).removeRulesById(id, flowRules);
         }
 
         @Override
         public void executeBatch(FlowRuleBatchOperation batch) {
-            proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).executeBatch(batch);
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).executeBatch(batch);
         }
     }
 

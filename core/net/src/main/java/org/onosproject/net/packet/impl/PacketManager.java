@@ -609,7 +609,7 @@ public class PacketManager
 
         @Override
         public void emit(OutboundPacket packet) {
-            proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).emit(packet);
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).emit(packet);
         }
     }
 
