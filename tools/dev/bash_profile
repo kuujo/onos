@@ -216,6 +216,7 @@ function clearCell {
     unset ONOS_USER ONOS_GROUP ONOS_WEB_USER ONOS_WEB_PASS
     unset $(env | sed -n 's:\(^OC[0-9]\{1,\}\)=.*:\1 :g p')
     unset $(env | sed -n 's:\(^OCC[0-9]\{1,\}\)=.*:\1 :g p')
+    unset $(env | sed -n 's:\(^OP[0-9]\{1,\}\)=.*:\1 :g p')
     unset $(env | sed -n 's:\(^OCMI[0-9]\{1,\}\)=.*:\1 :g p')
     unset $(env | sed -n 's:\(^OCMA[0-9]\{1,\}\)=.*:\1 :g p')
 }
@@ -255,6 +256,7 @@ function cell {
         env | egrep "^ONOS_CELL"
         env | egrep "^OCC[0-9]+" | sort
         env | egrep "^OC[0-9]+" | sort
+        env | egrep "^OP[0-9]+" | sort
         env | egrep "^OC[INT]" | sort
         env | egrep "^ONOS_" | egrep -v 'ONOS_ROOT|ONOS_CELL|ONOS_INSTANCES|ONOS_CORES|ONOS_DEVICES|ONOS_HOSTS' | sort
         ;;

@@ -66,6 +66,8 @@ public class AtomixManager {
         log.info("{}", metadataService.getClusterMetadata());
         atomix = createAtomix();
         atomix.start().join();
+        log.info("Proxy is {}", PROXY_ENABLED ? "enabled" : "disabled");
+        log.info("Node type {}", NODE_TYPE);
         log.info("Started");
     }
 
