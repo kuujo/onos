@@ -56,7 +56,7 @@ import org.onosproject.net.host.HostStoreDelegate;
 import org.onosproject.net.packet.PacketService;
 import org.onosproject.net.provider.AbstractProvider;
 import org.onosproject.net.provider.AbstractProviderService;
-import org.onosproject.net.provider.AbstractProxyProviderRegistry;
+import org.onosproject.net.provider.AbstractProxyListenerProviderRegistry;
 import org.onosproject.net.provider.ProviderId;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.Serializer;
@@ -80,7 +80,7 @@ import static org.slf4j.LoggerFactory.getLogger;
 @Component(immediate = true)
 @Service
 public class HostManager
-        extends AbstractProxyProviderRegistry<HostEvent, HostListener, HostProvider, HostProviderService, HostManager.HostProxy, HostManager.HostProxyService>
+        extends AbstractProxyListenerProviderRegistry<HostEvent, HostListener, HostProvider, HostProviderService, HostManager.HostProxy, HostManager.HostProxyService>
         implements HostService, HostAdminService, HostProviderRegistry {
 
     private final Logger log = getLogger(getClass());
@@ -138,6 +138,7 @@ public class HostManager
 
     @Activate
     public void activate(ComponentContext context) {
+        activateProxy();
         store.setDelegate(delegate);
         eventDispatcher.addSink(HostEvent.class, listenerRegistry);
         cfgService.registerProperties(getClass());
@@ -152,6 +153,7 @@ public class HostManager
 
     @Deactivate
     public void deactivate() {
+        deactivateProxy();
         store.unsetDelegate(delegate);
         eventDispatcher.removeSink(HostEvent.class);
         networkConfigService.removeListener(networkConfigListener);

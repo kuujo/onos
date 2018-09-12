@@ -31,10 +31,6 @@ import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
 import org.onlab.util.Tools;
 import org.onosproject.cfg.ComponentConfigService;
-import org.onosproject.cluster.ProxyEgressService;
-import org.onosproject.cluster.ProxyFactory;
-import org.onosproject.cluster.ProxyIngressService;
-import org.onosproject.cluster.ProxyService;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
 import org.onosproject.core.IdGenerator;
@@ -44,7 +40,6 @@ import org.onosproject.net.DeviceId;
 import org.onosproject.net.device.DeviceEvent;
 import org.onosproject.net.device.DeviceListener;
 import org.onosproject.net.device.DeviceService;
-import org.onosproject.net.device.impl.DeviceManager;
 import org.onosproject.net.driver.DriverService;
 import org.onosproject.net.flow.CompletedBatchOperation;
 import org.onosproject.net.flow.DefaultFlowEntry;
@@ -66,10 +61,9 @@ import org.onosproject.net.flow.FlowRuleService;
 import org.onosproject.net.flow.FlowRuleStore;
 import org.onosproject.net.flow.FlowRuleStoreDelegate;
 import org.onosproject.net.flow.TableStatisticsEntry;
-import org.onosproject.net.provider.AbstractListenerProviderRegistry;
 import org.onosproject.net.provider.AbstractProvider;
 import org.onosproject.net.provider.AbstractProviderService;
-import org.onosproject.net.provider.AbstractProxyProviderRegistry;
+import org.onosproject.net.provider.AbstractProxyListenerProviderRegistry;
 import org.onosproject.net.provider.ProviderId;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.Serializer;
@@ -104,9 +98,9 @@ import static org.slf4j.LoggerFactory.getLogger;
 @Component(immediate = true)
 @Service
 public class FlowRuleManager
-        extends AbstractProxyProviderRegistry<FlowRuleEvent, FlowRuleListener,
-                FlowRuleProvider, FlowRuleProviderService,
-                FlowRuleManager.FlowRuleProxy, FlowRuleManager.FlowRuleProxyService>
+        extends AbstractProxyListenerProviderRegistry<FlowRuleEvent, FlowRuleListener,
+                        FlowRuleProvider, FlowRuleProviderService,
+                        FlowRuleManager.FlowRuleProxy, FlowRuleManager.FlowRuleProxyService>
         implements FlowRuleService, FlowRuleProviderRegistry {
 
     private final Logger log = getLogger(getClass());
@@ -169,7 +163,7 @@ public class FlowRuleManager
 
     @Activate
     public void activate(ComponentContext context) {
-        initializeProxy();
+        activateProxy();
         modified(context);
         store.setDelegate(delegate);
         eventDispatcher.addSink(FlowRuleEvent.class, listenerRegistry);
@@ -181,6 +175,7 @@ public class FlowRuleManager
 
     @Deactivate
     public void deactivate() {
+        deactivateProxy();
         driverProvider.terminate();
         deviceService.removeListener(deviceListener);
         cfgService.unregisterProperties(getClass(), false);

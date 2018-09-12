@@ -22,6 +22,8 @@ import org.onosproject.cluster.ProxyEgressService;
 import org.onosproject.cluster.ProxyFactory;
 import org.onosproject.cluster.ProxyIngressService;
 import org.onosproject.cluster.ProxyService;
+import org.onosproject.event.Event;
+import org.onosproject.event.EventListener;
 import org.onosproject.net.DeviceId;
 import org.onosproject.store.service.Serializer;
 
@@ -29,8 +31,9 @@ import org.onosproject.store.service.Serializer;
  * Abstract proxy provider registry.
  */
 @Component
-public abstract class AbstractProxyProviderRegistry<P extends Provider, S extends ProviderService<P>, X, C>
-    extends AbstractProviderRegistry<P, S> {
+public abstract class AbstractProxyListenerProviderRegistry<E extends Event, L extends EventListener<E>,
+    P extends Provider, S extends ProviderService<P>, X, C>
+    extends AbstractListenerProviderRegistry<E, L, P, S> {
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected ProxyIngressService proxyIngressService;
@@ -49,7 +52,7 @@ public abstract class AbstractProxyProviderRegistry<P extends Provider, S extend
     private final Class<X> proxyInterface;
     private final Class<C> serviceInterface;
 
-    protected AbstractProxyProviderRegistry(Class<X> proxyInterface, Class<C> serviceInterface) {
+    protected AbstractProxyListenerProviderRegistry(Class<X> proxyInterface, Class<C> serviceInterface) {
         this.proxyInterface = proxyInterface;
         this.serviceInterface = serviceInterface;
     }

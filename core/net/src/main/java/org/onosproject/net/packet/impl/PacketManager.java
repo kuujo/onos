@@ -27,6 +27,7 @@ import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
+import org.onosproject.mastership.MastershipService;
 import org.onosproject.net.Device;
 import org.onosproject.net.DeviceId;
 import org.onosproject.net.device.DeviceEvent;
@@ -57,8 +58,12 @@ import org.onosproject.net.packet.PacketRequest;
 import org.onosproject.net.packet.PacketService;
 import org.onosproject.net.packet.PacketStore;
 import org.onosproject.net.packet.PacketStoreDelegate;
-import org.onosproject.net.provider.AbstractProviderRegistry;
+import org.onosproject.net.provider.AbstractProvider;
 import org.onosproject.net.provider.AbstractProviderService;
+import org.onosproject.net.provider.AbstractProxyProviderRegistry;
+import org.onosproject.net.provider.ProviderId;
+import org.onosproject.store.serializers.KryoNamespaces;
+import org.onosproject.store.service.Serializer;
 import org.slf4j.Logger;
 
 import java.util.List;
@@ -80,7 +85,8 @@ import static org.slf4j.LoggerFactory.getLogger;
 @Component(immediate = true)
 @Service
 public class PacketManager
-        extends AbstractProviderRegistry<PacketProvider, PacketProviderService>
+        extends AbstractProxyProviderRegistry<PacketProvider, PacketProviderService,
+                PacketManager.PacketProxy, PacketManager.PacketProxyService>
         implements PacketService, PacketProviderRegistry {
 
     private final Logger log = getLogger(getClass());
@@ -90,6 +96,8 @@ public class PacketManager
     private static final String ERROR_NULL_APP_ID = "Application ID cannot be null";
     private static final String ERROR_NULL_DEVICE_ID = "Device ID cannot be null";
     private static final String SUPPORT_PACKET_REQUEST_PROPERTY = "supportPacketRequest";
+
+    private static final Serializer SERIALIZER = Serializer.using(KryoNamespaces.API);
 
     private final PacketStoreDelegate delegate = new InternalStoreDelegate();
 
@@ -109,6 +117,9 @@ public class PacketManager
     protected PacketStore store;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected MastershipService mastershipService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected FlowObjectiveService objectiveService;
 
     private ExecutorService eventHandlingExecutor;
@@ -121,6 +132,10 @@ public class PacketManager
 
     private ApplicationId appId;
     private NodeId localNodeId;
+
+    public PacketManager() {
+        super(PacketProxy.class, PacketProxyService.class);
+    }
 
     @Activate
     public void activate() {
@@ -380,18 +395,43 @@ public class PacketManager
     }
 
     @Override
-    protected PacketProviderService createProviderService(PacketProvider provider) {
-        return new InternalPacketProviderService(provider);
+    protected Serializer getProxySerializer() {
+        return SERIALIZER;
+    }
+
+    @Override
+    protected PacketProviderService createProxyProviderService(PacketProvider provider) {
+        return new ProxyPacketProviderService(provider);
+    }
+
+    @Override
+    protected PacketProviderService createControllerProviderService(PacketProvider provider) {
+        return new ControllerPacketProviderService(provider);
+    }
+
+    @Override
+    protected PacketProvider createControllerProvider() {
+        return new ControllerPacketProvider();
+    }
+
+    @Override
+    protected PacketProxy createProxy() {
+        return new ProxyPacketProxy();
+    }
+
+    @Override
+    protected PacketProxyService createProxyService() {
+        return new ControllerPacketProxyService();
     }
 
     /**
      * Personalized packet provider service issued to the supplied provider.
      */
-    private class InternalPacketProviderService
+    private class ControllerPacketProviderService
             extends AbstractProviderService<PacketProvider>
             implements PacketProviderService {
 
-        protected InternalPacketProviderService(PacketProvider provider) {
+        protected ControllerPacketProviderService(PacketProvider provider) {
             super(provider);
         }
 
@@ -542,6 +582,62 @@ public class PacketManager
         void addNanos(long nanos) {
             this.nanos += nanos;
             this.invocations++;
+        }
+    }
+
+    interface PacketProxy {
+        void emit(OutboundPacket packet);
+    }
+
+    interface PacketProxyService {
+        void processPacket(ProviderId providerId, PacketContext context);
+    }
+
+    private class ControllerPacketProxyService implements PacketProxyService {
+        @Override
+        public void processPacket(ProviderId providerId, PacketContext context) {
+            createProviderService(getProvider(providerId)).processPacket(context);
+        }
+    }
+
+    private class ControllerPacketProvider extends AbstractProvider implements PacketProvider {
+        ControllerPacketProvider() {
+            super(ProviderId.NONE);
+        }
+
+        @Override
+        public void emit(OutboundPacket packet) {
+            proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).emit(packet);
+        }
+    }
+
+    private class ProxyPacketProviderService extends AbstractProviderService<PacketProvider> implements PacketProviderService {
+        ProxyPacketProviderService(PacketProvider provider) {
+            super(provider);
+        }
+
+        @Override
+        public void processPacket(PacketContext context) {
+            Device device = deviceService.getDevice(context.outPacket().sendThrough());
+            if (device == null) {
+                return;
+            }
+            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(device.id()))
+                .processPacket(provider().id(), context);
+        }
+    }
+
+    private class ProxyPacketProxy implements PacketProxy {
+        @Override
+        public void emit(OutboundPacket packet) {
+            Device device = deviceService.getDevice(packet.sendThrough());
+            if (device == null) {
+                return;
+            }
+            PacketProvider provider = getProvider(device.id());
+            if (provider != null) {
+                provider.emit(packet);
+            }
         }
     }
 }
