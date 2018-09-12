@@ -390,12 +390,6 @@ public class FlowRuleManager
         operationsService.execute(new FlowOperationsProcessor(ops));
     }
 
-    @Override
-    protected synchronized FlowRuleProvider getProvider(ProviderId pid) {
-        log.warn("should not be calling getProvider(ProviderId)");
-        return super.getProvider(pid);
-    }
-
     /**
      * {@inheritDoc}
      * if the Device does not support {@link FlowRuleProgrammable}.

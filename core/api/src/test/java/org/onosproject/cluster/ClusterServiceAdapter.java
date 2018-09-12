@@ -46,6 +46,11 @@ public class ClusterServiceAdapter implements ClusterService {
     }
 
     @Override
+    public Set<Node> getProxyNodes() {
+        return null;
+    }
+
+    @Override
     public Set<Node> getConsensusNodes() {
         return null;
     }

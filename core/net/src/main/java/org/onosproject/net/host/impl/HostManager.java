@@ -29,11 +29,11 @@ import org.onlab.packet.MacAddress;
 import org.onlab.packet.VlanId;
 import org.onlab.util.Tools;
 import org.onosproject.cfg.ComponentConfigService;
+import org.onosproject.cluster.NodeId;
 import org.onosproject.net.intf.Interface;
 import org.onosproject.net.intf.InterfaceService;
 import org.onosproject.net.HostLocation;
 import org.onosproject.net.edge.EdgePortService;
-import org.onosproject.net.provider.AbstractListenerProviderRegistry;
 import org.onosproject.net.config.NetworkConfigEvent;
 import org.onosproject.net.config.NetworkConfigListener;
 import org.onosproject.net.config.NetworkConfigService;
@@ -54,7 +54,12 @@ import org.onosproject.net.host.HostService;
 import org.onosproject.net.host.HostStore;
 import org.onosproject.net.host.HostStoreDelegate;
 import org.onosproject.net.packet.PacketService;
+import org.onosproject.net.provider.AbstractProvider;
 import org.onosproject.net.provider.AbstractProviderService;
+import org.onosproject.net.provider.AbstractProxyProviderRegistry;
+import org.onosproject.net.provider.ProviderId;
+import org.onosproject.store.serializers.KryoNamespaces;
+import org.onosproject.store.service.Serializer;
 import org.osgi.service.component.ComponentContext;
 import org.slf4j.Logger;
 
@@ -75,12 +80,14 @@ import static org.slf4j.LoggerFactory.getLogger;
 @Component(immediate = true)
 @Service
 public class HostManager
-        extends AbstractListenerProviderRegistry<HostEvent, HostListener, HostProvider, HostProviderService>
+        extends AbstractProxyProviderRegistry<HostEvent, HostListener, HostProvider, HostProviderService, HostManager.HostProxy, HostManager.HostProxyService>
         implements HostService, HostAdminService, HostProviderRegistry {
 
     private final Logger log = getLogger(getClass());
 
     public static final String HOST_ID_NULL = "Host ID cannot be null";
+
+    private static final Serializer SERIALIZER = Serializer.using(KryoNamespaces.API);
 
     private final NetworkConfigListener networkConfigListener = new InternalNetworkConfigListener();
 
@@ -125,6 +132,9 @@ public class HostManager
 
     private HostMonitor monitor;
 
+    public HostManager() {
+        super(HostProxy.class, HostProxyService.class);
+    }
 
     @Activate
     public void activate(ComponentContext context) {
@@ -240,9 +250,39 @@ public class HostManager
     }
 
     @Override
+    protected Serializer getProxySerializer() {
+        return SERIALIZER;
+    }
+
+    @Override
+    protected HostProviderService createProxyProviderService(HostProvider provider) {
+        return new ProxyHostProviderService(provider);
+    }
+
+    @Override
+    protected HostProviderService createControllerProviderService(HostProvider provider) {
+        return new ControllerHostProviderService(provider);
+    }
+
+    @Override
+    protected HostProvider createControllerProvider() {
+        return new ControllerHostProvider();
+    }
+
+    @Override
+    protected HostProxy createProxy() {
+        return new ProxyHostProxy();
+    }
+
+    @Override
+    protected HostProxyService createProxyService() {
+        return new ControllerHostProxyService();
+    }
+
+    @Override
     protected HostProviderService createProviderService(HostProvider provider) {
         monitor.registerHostProvider(provider);
-        return new InternalHostProviderService(provider);
+        return super.createProviderService(provider);
     }
 
     @Override
@@ -322,10 +362,10 @@ public class HostManager
     }
 
     // Personalized host provider service issued to the supplied provider.
-    private class InternalHostProviderService
+    private class ControllerHostProviderService
             extends AbstractProviderService<HostProvider>
             implements HostProviderService {
-        InternalHostProviderService(HostProvider provider) {
+        ControllerHostProviderService(HostProvider provider) {
             super(provider);
         }
 
@@ -533,6 +573,104 @@ public class HostManager
         Host badHost = getHost(hostId);
         if (badHost != null) {
             removeHost(hostId);
+        }
+    }
+
+    interface HostProxy {
+        void triggerProbe(Host host);
+    }
+
+    interface HostProxyService {
+        void hostDetected(ProviderId providerId, HostId hostId, HostDescription hostDescription, boolean replaceIps);
+        void hostVanished(ProviderId providerId, HostId hostId);
+        void removeIpFromHost(ProviderId providerId, HostId hostId, IpAddress ipAddress);
+        void addLocationToHost(ProviderId providerId, HostId hostId, HostLocation location);
+        void removeLocationFromHost(ProviderId providerId, HostId hostId, HostLocation location);
+    }
+
+    private class ControllerHostProxyService implements HostProxyService {
+        @Override
+        public void hostDetected(ProviderId providerId, HostId hostId, HostDescription hostDescription, boolean replaceIps) {
+            createProviderService(getProvider(providerId)).hostDetected(hostId, hostDescription, replaceIps);
+        }
+
+        @Override
+        public void hostVanished(ProviderId providerId, HostId hostId) {
+            createProviderService(getProvider(providerId)).hostVanished(hostId);
+        }
+
+        @Override
+        public void removeIpFromHost(ProviderId providerId, HostId hostId, IpAddress ipAddress) {
+            createProviderService(getProvider(providerId)).removeIpFromHost(hostId, ipAddress);
+        }
+
+        @Override
+        public void addLocationToHost(ProviderId providerId, HostId hostId, HostLocation location) {
+            createProviderService(getProvider(providerId)).addLocationToHost(hostId, location);
+        }
+
+        @Override
+        public void removeLocationFromHost(ProviderId providerId, HostId hostId, HostLocation location) {
+            createProviderService(getProvider(providerId)).removeLocationFromHost(hostId, location);
+        }
+    }
+
+    private class ControllerHostProvider extends AbstractProvider implements HostProvider {
+        ControllerHostProvider() {
+            super(ProviderId.NONE);
+        }
+
+        @Override
+        public void triggerProbe(Host host) {
+            proxyFactory.getProxyFor(proxyEgressService.getProxyNode()).triggerProbe(host);
+        }
+    }
+
+    private class ProxyHostProviderService extends AbstractProviderService<HostProvider> implements HostProviderService {
+        ProxyHostProviderService(HostProvider provider) {
+            super(provider);
+        }
+
+        @Override
+        public void hostDetected(HostId hostId, HostDescription hostDescription, boolean replaceIps) {
+            for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
+                proxyServiceFactory.getProxyFor(nodeId).hostDetected(provider().id(), hostId, hostDescription, replaceIps);
+            }
+        }
+
+        @Override
+        public void hostVanished(HostId hostId) {
+            for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
+                proxyServiceFactory.getProxyFor(nodeId).hostVanished(provider().id(), hostId);
+            }
+        }
+
+        @Override
+        public void removeIpFromHost(HostId hostId, IpAddress ipAddress) {
+            for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
+                proxyServiceFactory.getProxyFor(nodeId).removeIpFromHost(provider().id(), hostId, ipAddress);
+            }
+        }
+
+        @Override
+        public void addLocationToHost(HostId hostId, HostLocation location) {
+            for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
+                proxyServiceFactory.getProxyFor(nodeId).addLocationToHost(provider().id(), hostId, location);
+            }
+        }
+
+        @Override
+        public void removeLocationFromHost(HostId hostId, HostLocation location) {
+            for (NodeId nodeId : proxyIngressService.getControllerNodes()) {
+                proxyServiceFactory.getProxyFor(nodeId).removeLocationFromHost(provider().id(), hostId, location);
+            }
+        }
+    }
+
+    private class ProxyHostProxy implements HostProxy {
+        @Override
+        public void triggerProbe(Host host) {
+            getProvider(host.providerId()).triggerProbe(host);
         }
     }
 }
