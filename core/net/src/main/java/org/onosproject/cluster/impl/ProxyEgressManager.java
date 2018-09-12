@@ -40,6 +40,7 @@ import org.slf4j.LoggerFactory;
 @Service
 public class ProxyEgressManager implements ProxyEgressService {
 
+    private static final String NODE_TYPE = System.getProperty("onos.node.type", "onos");
     private static final boolean PROXY_ENABLED = Boolean.parseBoolean(System.getProperty("onos.proxy.enabled", "false"));
 
     private final Logger log = LoggerFactory.getLogger(getClass());
@@ -48,11 +49,14 @@ public class ProxyEgressManager implements ProxyEgressService {
     protected ClusterService clusterService;
 
     private NodeId localNodeId;
+    private boolean proxyEnabled;
     private boolean isControllerNode;
 
     @Activate
     public void activate() {
         localNodeId = clusterService.getLocalNode().id();
+        proxyEnabled = NODE_TYPE.equalsIgnoreCase("proxy")
+            || NODE_TYPE.equals("controller");
         isControllerNode = clusterService.getNodes().stream()
             .anyMatch(node -> node.id().equals(localNodeId));
         log.info("Started");
@@ -75,7 +79,7 @@ public class ProxyEgressManager implements ProxyEgressService {
 
     @Override
     public NodeId getProxyNode() {
-        if (!isControllerNode) {
+        if (!proxyEnabled || !isControllerNode) {
             return null;
         }
 

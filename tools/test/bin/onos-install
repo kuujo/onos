@@ -95,12 +95,12 @@ ssh -tt $remote "
 
     if [ ! -z "$controller" ]
     then
-        echo -e 'export JAVA_OPTS="${JAVA_OPTS:--Donos.proxy.enabled=true -Donos.proxy.node.type=controller}"' >> $ONOS_INSTALL_DIR/options
+        echo -e 'export JAVA_OPTS="${JAVA_OPTS:--Donos.node.type=controller}"' >> $ONOS_INSTALL_DIR/options
     fi
 
     if [ ! -z "$proxy" ]
     then
-        echo -e 'export JAVA_OPTS="${JAVA_OPTS:--Donos.proxy.enabled=true -Donos.proxy.node.type=proxy}"' >> $ONOS_INSTALL_DIR/options
+        echo -e 'export JAVA_OPTS="${JAVA_OPTS:--Donos.node.type=proxy}"' >> $ONOS_INSTALL_DIR/options
     fi
 
     # Set up correct user to run onos-service

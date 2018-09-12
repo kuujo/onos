@@ -190,7 +190,10 @@ public class AtomixClusterStore extends AbstractStore<ClusterEvent, ClusterStore
     public Set<ControllerNode> getNodes() {
         return membershipService.getMembers()
             .stream()
-            .filter(member -> Objects.equals(member.properties().getProperty("type"), "onos"))
+            .filter(member -> {
+                String type = member.properties().getProperty("type");
+                return type != null && (type.equalsIgnoreCase("onos") || type.equalsIgnoreCase("controller"));
+            })
             .map(this::toControllerNode)
             .collect(Collectors.toSet());
     }
