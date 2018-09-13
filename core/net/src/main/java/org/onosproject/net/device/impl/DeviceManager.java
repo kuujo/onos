@@ -48,10 +48,14 @@ import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
 import org.onlab.util.KryoNamespace;
 import org.onlab.util.Tools;
+import org.onosproject.cluster.ClusterEvent;
+import org.onosproject.cluster.ClusterEventListener;
 import org.onosproject.cluster.ClusterService;
+import org.onosproject.cluster.Node;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.incubator.net.config.basics.PortDescriptionsConfig;
 import org.onosproject.mastership.MastershipEvent;
+import org.onosproject.mastership.MastershipInfo;
 import org.onosproject.mastership.MastershipListener;
 import org.onosproject.mastership.MastershipService;
 import org.onosproject.mastership.MastershipTerm;
@@ -179,6 +183,8 @@ public class DeviceManager
     private DeviceAnnotationOperator deviceAnnotationOp;
 
     private final Map<DeviceId, Queue<NodeId>> roleRequests = Maps.newConcurrentMap();
+    private final Map<NodeId, Map<DeviceId, MastershipRole>> nodeRoles = Maps.newConcurrentMap();
+    private final ClusterEventListener clusterEventListener = new InternalClusterEventListener();
 
     private static final MessageSubject PORT_UPDOWN_SUBJECT =
             new MessageSubject("port-updown-req");
@@ -226,6 +232,7 @@ public class DeviceManager
         eventDispatcher.addSink(DeviceEvent.class, listenerRegistry);
         mastershipService.addListener(mastershipListener);
         networkConfigService.addListener(networkConfigListener);
+        clusterService.addListener(clusterEventListener);
 
         backgroundService.scheduleWithFixedDelay(() -> {
             try {
@@ -255,6 +262,7 @@ public class DeviceManager
         networkConfigService.removeListener(networkConfigListener);
         store.unsetDelegate(delegate);
         mastershipService.removeListener(mastershipListener);
+        clusterService.removeListener(clusterEventListener);
         eventDispatcher.removeSink(DeviceEvent.class);
         communicationService.removeSubscriber(PORT_UPDOWN_SUBJECT);
         portReqeustExecutor.shutdown();
@@ -543,11 +551,12 @@ public class DeviceManager
                 continue;
             }
 
-            log.info("{} is reachable but did not have a valid role, reasserting", deviceId);
-
             // isReachable but was not MASTER or STANDBY, get a role and apply
             // Note: NONE triggers request to MastershipService
-            reassertRole(deviceId, NONE);
+            if (!proxyRoleService.isProxyEnabled() || proxyRoleService.isControllerNode()) {
+                log.info("{} is reachable but did not have a valid role, reasserting", deviceId);
+                reassertRole(deviceId, NONE);
+            }
         }
     }
 
@@ -1458,7 +1467,21 @@ public class DeviceManager
         public void roleChanged(NodeId nodeId, DeviceId deviceId, MastershipRole newRole) {
             roleRequests.computeIfAbsent(deviceId, id -> new ConcurrentLinkedQueue<>())
                 .add(nodeId);
-            getProvider(deviceId).roleChanged(deviceId, newRole);
+
+            nodeRoles.computeIfAbsent(nodeId, nid -> Maps.newConcurrentMap()).put(deviceId, newRole);
+
+            // Determine the aggregate role for this proxy node.
+            MastershipRole aggregateRole = MastershipRole.NONE;
+            for (NodeId controllerNodeId : proxyRoleService.getControllerNodes()) {
+                Map<DeviceId, MastershipRole> deviceRoles = nodeRoles.get(controllerNodeId);
+                if (deviceRoles != null) {
+                    MastershipRole deviceRole = deviceRoles.get(deviceId);
+                    if (deviceRole != null && deviceRole.ordinal() < aggregateRole.ordinal()) {
+                        aggregateRole = deviceRole;
+                    }
+                }
+            }
+            getProvider(deviceId).roleChanged(deviceId, aggregateRole);
         }
 
         @Override
@@ -1474,6 +1497,47 @@ public class DeviceManager
         @Override
         public void triggerDisconnect(DeviceId deviceId) {
             getProvider(deviceId).triggerDisconnect(deviceId);
+        }
+    }
+
+    private class InternalClusterEventListener implements ClusterEventListener {
+        @Override
+        public void event(ClusterEvent event) {
+            if (event.type() == ClusterEvent.Type.INSTANCE_REMOVED) {
+                nodeRoles.remove(event.subject().id());
+            }
+
+            // If this is a proxy node, update controller node roles.
+            if (proxyRoleService.isProxyEnabled() && proxyRoleService.isProxyNode()) {
+                Set<NodeId> controllerNodeIds = proxyRoleService.getControllerNodes();
+
+                // First, remove all the reassigned controller nodes from local node roles.
+                for (Node node : clusterService.getNodes()) {
+                    if (!controllerNodeIds.contains(node.id())) {
+                        nodeRoles.remove(node.id());
+                    }
+                }
+
+                // Then iterate through devices and update roles for all controller nodes.
+                for (Device device : getDevices()) {
+                    MastershipInfo mastership = mastershipService.getMastershipFor(device.id());
+                    NodeId standby = null;
+                    for (NodeId backupId : mastership.backups()) {
+                        if (controllerNodeIds.contains(backupId)) {
+                            nodeRoles.computeIfAbsent(backupId, id -> Maps.newConcurrentMap()).put(device.id(), STANDBY);
+                            standby = backupId;
+                        }
+                    }
+
+                    // If a master node is set and is assigned to this proxy, reassert the proxy role.
+                    // Otherwise, downgrade the proxy role to standby.
+                    if (mastership.master().isPresent() && controllerNodeIds.contains(mastership.master().get())) {
+                        createProxy().roleChanged(mastership.master().get(), device.id(), MASTER);
+                    } else if (standby != null) {
+                        createProxy().roleChanged(standby, device.id(), STANDBY);
+                    }
+                }
+            }
         }
     }
 }
