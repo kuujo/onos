@@ -53,6 +53,8 @@ import org.onlab.packet.IGMPGroup;
 import org.onlab.packet.IGMPMembership;
 import org.onlab.packet.IGMPQuery;
 import org.onlab.packet.IP;
+import org.onlab.packet.IPv4;
+import org.onlab.packet.IPv6;
 import org.onlab.packet.LLC;
 import org.onlab.packet.LLDP;
 import org.onlab.packet.LLDPOrganizationalTLV;
@@ -146,10 +148,10 @@ public class PacketManager
     private static final String ERROR_NULL_DEVICE_ID = "Device ID cannot be null";
     private static final String SUPPORT_PACKET_REQUEST_PROPERTY = "supportPacketRequest";
 
-    private static final Serializer SERIALIZER = Serializer.using(KryoNamespace.newBuilder()
+    private final Serializer serializer = Serializer.using(KryoNamespace.newBuilder()
         .register(KryoNamespaces.API)
         .nextId(KryoNamespaces.BEGIN_USER_CUSTOM_ID)
-        .register(CorrelatedPacketContext.class)
+        .register(new CorrelatedPacketContextSerializer(), CorrelatedPacketContext.class)
         .register(DefaultTrafficTreatment.Builder.class)
         .register(new DefaultInboundPacketSerializer(), DefaultInboundPacket.class)
         .register(
@@ -171,6 +173,8 @@ public class PacketManager
             IGMPMembership.class,
             IGMPQuery.class,
             IP.class,
+            IPv4.class,
+            IPv6.class,
             LLC.class,
             LLDP.class,
             LLDPOrganizationalTLV.class,
@@ -494,7 +498,7 @@ public class PacketManager
 
     @Override
     protected Serializer getProxySerializer() {
-        return SERIALIZER;
+        return serializer;
     }
 
     @Override
@@ -785,6 +789,27 @@ public class PacketManager
             ByteBuffer unparsed = ByteBuffer.wrap(kryo.readObject(input, byte[].class));
             Optional<Long> cookie = Optional.ofNullable(kryo.readObjectOrNull(input, Long.class));
             return new DefaultInboundPacket(receivedFrom, parsed, unparsed, cookie);
+        }
+    }
+
+    private class CorrelatedPacketContextSerializer extends com.esotericsoftware.kryo.Serializer<CorrelatedPacketContext> {
+        @Override
+        public void write(Kryo kryo, Output output, CorrelatedPacketContext context) {
+            kryo.writeObject(output, context.correlationId);
+            kryo.writeObject(output, context.time());
+            kryo.writeClassAndObject(output, context.inPacket());
+            kryo.writeClassAndObject(output, context.outPacket());
+            kryo.writeObject(output, context.block());
+        }
+
+        @Override
+        public CorrelatedPacketContext read(Kryo kryo, Input input, Class<CorrelatedPacketContext> type) {
+            long correlationId = kryo.readObject(input, Long.TYPE);
+            long time = kryo.readObject(input, Long.TYPE);
+            InboundPacket inboundPacket = (InboundPacket) kryo.readClassAndObject(input);
+            OutboundPacket outboundPacket = (OutboundPacket) kryo.readClassAndObject(input);
+            boolean block = kryo.readObject(input, Boolean.TYPE);
+            return new CorrelatedPacketContext(time, inboundPacket, outboundPacket, block, correlationId);
         }
     }
 }
