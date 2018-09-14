@@ -182,7 +182,7 @@ public class DeviceManager
     private PortAnnotationOperator portAnnotationOp;
     private DeviceAnnotationOperator deviceAnnotationOp;
 
-    private final Map<DeviceId, Queue<NodeId>> roleRequests = Maps.newConcurrentMap();
+    private final Map<DeviceId, Queue<RoleRequest>> roleRequests = Maps.newConcurrentMap();
     private final Map<NodeId, Map<DeviceId, MastershipRole>> nodeRoles = Maps.newConcurrentMap();
     private final ClusterEventListener clusterEventListener = new InternalClusterEventListener();
 
@@ -925,13 +925,7 @@ public class DeviceManager
         MastershipRole myNextRole = nextRole;
         if (myNextRole == NONE && upgradeService.isLocalActive()) {
             try {
-                mastershipService.requestRoleFor(did).get();
-                MastershipTerm term = termService.getMastershipTerm(did);
-                if (term != null && localNodeId.equals(term.master())) {
-                    myNextRole = MASTER;
-                } else {
-                    myNextRole = STANDBY;
-                }
+                myNextRole = mastershipService.requestRoleFor(did).get();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.error("Interrupted waiting for Mastership", e);
@@ -1435,12 +1429,13 @@ public class DeviceManager
 
         @Override
         public void receivedRoleReply(DeviceId deviceId, MastershipRole requested, MastershipRole response) {
-            Queue<NodeId> requests = roleRequests.get(deviceId);
+            Queue<RoleRequest> requests = roleRequests.get(deviceId);
             if (requests != null) {
-                NodeId nodeId = requests.poll();
-                if (nodeId != null) {
-                    proxyServiceFactory.getProxyFor(nodeId)
-                        .receivedRoleReply(provider().id(), deviceId, requested, response);
+                RoleRequest request = requests.poll();
+                if (request != null) {
+                    MastershipRole role = MastershipRole.values()[Math.max(request.role.ordinal(), response.ordinal())];
+                    proxyServiceFactory.getProxyFor(request.nodeId)
+                        .receivedRoleReply(provider().id(), deviceId, request.role, role);
                 }
             }
         }
@@ -1466,12 +1461,12 @@ public class DeviceManager
         @Override
         public void roleChanged(NodeId nodeId, DeviceId deviceId, MastershipRole newRole) {
             roleRequests.computeIfAbsent(deviceId, id -> new ConcurrentLinkedQueue<>())
-                .add(nodeId);
+                .add(new RoleRequest(nodeId, newRole));
 
             nodeRoles.computeIfAbsent(nodeId, nid -> Maps.newConcurrentMap()).put(deviceId, newRole);
 
             // Determine the aggregate role for this proxy node.
-            MastershipRole aggregateRole = MastershipRole.NONE;
+            MastershipRole aggregateRole = newRole;
             for (NodeId controllerNodeId : proxyRoleService.getControllerNodes()) {
                 Map<DeviceId, MastershipRole> deviceRoles = nodeRoles.get(controllerNodeId);
                 if (deviceRoles != null) {
@@ -1497,6 +1492,16 @@ public class DeviceManager
         @Override
         public void triggerDisconnect(DeviceId deviceId) {
             getProvider(deviceId).triggerDisconnect(deviceId);
+        }
+    }
+
+    private static class RoleRequest {
+        private final NodeId nodeId;
+        private final MastershipRole role;
+
+        RoleRequest(NodeId nodeId, MastershipRole role) {
+            this.nodeId = nodeId;
+            this.role = role;
         }
     }
 
