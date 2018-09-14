@@ -105,7 +105,7 @@ public class ProxyRoleManager implements ProxyRoleService {
         return clusterService.getNodes()
             .stream()
             .map(ControllerNode::id)
-            .filter(id -> proxyNodeIds.get(Math.abs(localNodeId.id().hashCode() % proxyNodeIds.size())).equals(localNodeId))
+            .filter(id -> proxyNodeIds.get(Math.abs(id.id().hashCode() % proxyNodeIds.size())).equals(localNodeId))
             .collect(Collectors.toSet());
     }
 
