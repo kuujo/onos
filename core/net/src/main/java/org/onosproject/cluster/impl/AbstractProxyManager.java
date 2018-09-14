@@ -88,6 +88,7 @@ public abstract class AbstractProxyManager {
             this.instance = instance;
             this.method = method;
             this.operation = operation;
+            method.setAccessible(true);
         }
 
         /**
@@ -217,6 +218,7 @@ public abstract class AbstractProxyManager {
             this.name = name;
             this.method = method;
             this.subject = new MessageSubject(String.format("%s-%s-%s", prefix, service, name));
+            method.setAccessible(true);
         }
 
         /**

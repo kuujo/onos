@@ -16,6 +16,7 @@
 package org.onosproject.net.flow.impl;
 
 import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -31,6 +32,7 @@ import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
 import org.onlab.util.Tools;
 import org.onosproject.cfg.ComponentConfigService;
+import org.onosproject.cluster.NodeId;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
 import org.onosproject.core.IdGenerator;
@@ -61,9 +63,12 @@ import org.onosproject.net.flow.FlowRuleService;
 import org.onosproject.net.flow.FlowRuleStore;
 import org.onosproject.net.flow.FlowRuleStoreDelegate;
 import org.onosproject.net.flow.TableStatisticsEntry;
-import org.onosproject.net.provider.AbstractListenerProviderRegistry;
+import org.onosproject.net.provider.AbstractProvider;
 import org.onosproject.net.provider.AbstractProviderService;
+import org.onosproject.net.provider.AbstractProxyListenerProviderRegistry;
 import org.onosproject.net.provider.ProviderId;
+import org.onosproject.store.serializers.KryoNamespaces;
+import org.onosproject.store.service.Serializer;
 import org.osgi.service.component.ComponentContext;
 import org.slf4j.Logger;
 
@@ -95,8 +100,9 @@ import static org.slf4j.LoggerFactory.getLogger;
 @Component(immediate = true)
 @Service
 public class FlowRuleManager
-        extends AbstractListenerProviderRegistry<FlowRuleEvent, FlowRuleListener,
-                                                 FlowRuleProvider, FlowRuleProviderService>
+        extends AbstractProxyListenerProviderRegistry<FlowRuleEvent, FlowRuleListener,
+                        FlowRuleProvider, FlowRuleProviderService,
+                        FlowRuleManager.FlowRuleProxy, FlowRuleManager.FlowRuleProxyService>
         implements FlowRuleService, FlowRuleProviderRegistry {
 
     private final Logger log = getLogger(getClass());
@@ -104,6 +110,8 @@ public class FlowRuleManager
     private static final String DEVICE_ID_NULL = "Device ID cannot be null";
     private static final String FLOW_RULE_NULL = "FlowRule cannot be null";
     private static final boolean ALLOW_EXTRANEOUS_RULES = false;
+
+    private static final Serializer SERIALIZER = Serializer.using(KryoNamespaces.API);
 
     @Property(name = "allowExtraneousRules", boolValue = ALLOW_EXTRANEOUS_RULES,
             label = "Allow flow rules in switch not installed by ONOS")
@@ -151,8 +159,13 @@ public class FlowRuleManager
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected DriverService driverService;
 
+    public FlowRuleManager() {
+        super(FlowRuleProxy.class, FlowRuleProxyService.class);
+    }
+
     @Activate
     public void activate(ComponentContext context) {
+        activateProxy();
         modified(context);
         store.setDelegate(delegate);
         eventDispatcher.addSink(FlowRuleEvent.class, listenerRegistry);
@@ -164,6 +177,7 @@ public class FlowRuleManager
 
     @Deactivate
     public void deactivate() {
+        deactivateProxy();
         driverProvider.terminate();
         deviceService.removeListener(deviceListener);
         cfgService.unregisterProperties(getClass(), false);
@@ -179,8 +193,38 @@ public class FlowRuleManager
         if (context != null) {
             readComponentConfiguration(context);
         }
-        driverProvider.init(new InternalFlowRuleProviderService(driverProvider),
+        driverProvider.init(createControllerProviderService(driverProvider),
                              deviceService, mastershipService, fallbackFlowPollFrequency);
+    }
+
+    @Override
+    protected Serializer getProxySerializer() {
+        return SERIALIZER;
+    }
+
+    @Override
+    protected FlowRuleProviderService createProxyProviderService(FlowRuleProvider provider) {
+        return new ProxyFlowRuleProviderService(provider);
+    }
+
+    @Override
+    protected FlowRuleProviderService createControllerProviderService(FlowRuleProvider provider) {
+        return new ControllerFlowRuleProviderService(provider);
+    }
+
+    @Override
+    protected FlowRuleProvider createControllerProvider() {
+        return new ControllerFlowRuleProvider();
+    }
+
+    @Override
+    protected FlowRuleProxy createProxy() {
+        return new ProxyFlowRuleProxy();
+    }
+
+    @Override
+    protected FlowRuleProxyService createProxyService() {
+        return new ControllerFlowRuleProxyService();
     }
 
     @Override
@@ -343,18 +387,6 @@ public class FlowRuleManager
         operationsService.execute(new FlowOperationsProcessor(ops));
     }
 
-    @Override
-    protected FlowRuleProviderService createProviderService(
-            FlowRuleProvider provider) {
-        return new InternalFlowRuleProviderService(provider);
-    }
-
-    @Override
-    protected synchronized FlowRuleProvider getProvider(ProviderId pid) {
-        log.warn("should not be calling getProvider(ProviderId)");
-        return super.getProvider(pid);
-    }
-
     /**
      * {@inheritDoc}
      * if the Device does not support {@link FlowRuleProgrammable}.
@@ -370,7 +402,7 @@ public class FlowRuleManager
                         .orElseGet(() -> super.getProvider(deviceId));
     }
 
-    private class InternalFlowRuleProviderService
+    private class ControllerFlowRuleProviderService
             extends AbstractProviderService<FlowRuleProvider>
             implements FlowRuleProviderService {
 
@@ -378,7 +410,7 @@ public class FlowRuleManager
         final Map<FlowEntry, Long> lastSeen = Maps.newConcurrentMap();
 
 
-        protected InternalFlowRuleProviderService(FlowRuleProvider provider) {
+        protected ControllerFlowRuleProviderService(FlowRuleProvider provider) {
             super(provider);
         }
 
@@ -759,6 +791,163 @@ public class FlowRuleManager
                 default:
                     break;
             }
+        }
+    }
+
+    interface FlowRuleProxy {
+        void applyFlowRule(FlowRule... flowRules);
+        void removeFlowRule(FlowRule... flowRules);
+        void removeRulesById(ApplicationId id, FlowRule... flowRules);
+        void executeBatch(FlowRuleBatchOperation batch);
+    }
+
+    interface FlowRuleProxyService {
+        void flowRemoved(ProviderId providerId, FlowEntry flowEntry);
+        void pushFlowMetrics(ProviderId providerId, DeviceId deviceId, Iterable<FlowEntry> flowEntries);
+        void pushFlowMetricsWithoutFlowMissing(ProviderId providerId, DeviceId deviceId, Iterable<FlowEntry> flowEntries);
+        void pushTableStatistics(ProviderId providerId, DeviceId deviceId, List<TableStatisticsEntry> tableStatsEntries);
+        void batchOperationCompleted(ProviderId providerId, long batchId, CompletedBatchOperation operation);
+    }
+
+    private class ControllerFlowRuleProxyService implements FlowRuleProxyService {
+        @Override
+        public void flowRemoved(ProviderId providerId, FlowEntry flowEntry) {
+            createProviderService(getProvider(providerId)).flowRemoved(flowEntry);
+        }
+
+        @Override
+        public void pushFlowMetrics(ProviderId providerId, DeviceId deviceId, Iterable<FlowEntry> flowEntries) {
+            createProviderService(getProvider(providerId)).pushFlowMetrics(deviceId, flowEntries);
+        }
+
+        @Override
+        public void pushFlowMetricsWithoutFlowMissing(ProviderId providerId, DeviceId deviceId, Iterable<FlowEntry> flowEntries) {
+            createProviderService(getProvider(providerId)).pushFlowMetricsWithoutFlowMissing(deviceId, flowEntries);
+        }
+
+        @Override
+        public void pushTableStatistics(ProviderId providerId, DeviceId deviceId, List<TableStatisticsEntry> tableStatsEntries) {
+            createProviderService(getProvider(providerId)).pushTableStatistics(deviceId, tableStatsEntries);
+        }
+
+        @Override
+        public void batchOperationCompleted(ProviderId providerId, long batchId, CompletedBatchOperation operation) {
+            createProviderService(getProvider(providerId)).batchOperationCompleted(batchId, operation);
+        }
+    }
+
+    private class ControllerFlowRuleProvider extends AbstractProvider implements FlowRuleProvider {
+        ControllerFlowRuleProvider() {
+            super(ProviderId.NONE);
+        }
+
+        @Override
+        public void applyFlowRule(FlowRule... flowRules) {
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).applyFlowRule(flowRules);
+        }
+
+        @Override
+        public void removeFlowRule(FlowRule... flowRules) {
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).removeFlowRule(flowRules);
+        }
+
+        @Override
+        public void removeRulesById(ApplicationId id, FlowRule... flowRules) {
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).removeRulesById(id, flowRules);
+        }
+
+        @Override
+        public void executeBatch(FlowRuleBatchOperation batch) {
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).executeBatch(batch);
+        }
+    }
+
+    private class ProxyFlowRuleProviderService extends AbstractProviderService<FlowRuleProvider> implements FlowRuleProviderService {
+        ProxyFlowRuleProviderService(FlowRuleProvider provider) {
+            super(provider);
+        }
+
+        @Override
+        public void flowRemoved(FlowEntry flowEntry) {
+            NodeId master = mastershipService.getMasterFor(flowEntry.deviceId());
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .flowRemoved(provider().id(), flowEntry);
+            } else {
+                log.warn("Failed flowRemoved by proxy: no master found for device {}", flowEntry.deviceId());
+            }
+        }
+
+        @Override
+        public void pushFlowMetrics(DeviceId deviceId, Iterable<FlowEntry> flowEntries) {
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .pushFlowMetrics(provider().id(), deviceId, ImmutableList.copyOf(flowEntries));
+            } else {
+                log.warn("Failed pushFlowMetrics by proxy: no master found for device {}", deviceId);
+            }
+        }
+
+        @Override
+        public void pushFlowMetricsWithoutFlowMissing(DeviceId deviceId, Iterable<FlowEntry> flowEntries) {
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .pushFlowMetricsWithoutFlowMissing(provider().id(), deviceId, ImmutableList.copyOf(flowEntries));
+            } else {
+                log.warn("Failed pushFlowMetricsWithoutFlowMissing by proxy: no master found for device {}", deviceId);
+            }
+        }
+
+        @Override
+        public void pushTableStatistics(DeviceId deviceId, List<TableStatisticsEntry> tableStatsEntries) {
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .pushTableStatistics(provider().id(), deviceId, ImmutableList.copyOf(tableStatsEntries));
+            } else {
+                log.warn("Failed pushTableStatistics by proxy: no master found for device {}", deviceId);
+            }
+        }
+
+        @Override
+        public void batchOperationCompleted(long batchId, CompletedBatchOperation operation) {
+            NodeId master = mastershipService.getMasterFor(operation.deviceId());
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .batchOperationCompleted(provider().id(), batchId, operation);
+            } else {
+                log.warn("Failed batchOperationCompleted by proxy: no master found for device {}", operation.deviceId());
+            }
+        }
+    }
+
+    private class ProxyFlowRuleProxy implements FlowRuleProxy {
+        @Override
+        public void applyFlowRule(FlowRule... flowRules) {
+            for (FlowRule flowRule : flowRules) {
+                getProvider(flowRule.deviceId()).applyFlowRule(flowRule);
+            }
+        }
+
+        @Override
+        public void removeFlowRule(FlowRule... flowRules) {
+            for (FlowRule flowRule : flowRules) {
+                getProvider(flowRule.deviceId()).removeFlowRule(flowRule);
+            }
+        }
+
+        @Override
+        public void removeRulesById(ApplicationId id, FlowRule... flowRules) {
+            for (FlowRule flowRule : flowRules) {
+                getProvider(flowRule.deviceId()).removeRulesById(id, flowRule);
+            }
+        }
+
+        @Override
+        public void executeBatch(FlowRuleBatchOperation batch) {
+            getProvider(batch.deviceId()).executeBatch(batch);
         }
     }
 }

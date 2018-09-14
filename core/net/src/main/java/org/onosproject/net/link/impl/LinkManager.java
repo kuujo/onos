@@ -15,27 +15,28 @@
  */
 package org.onosproject.net.link.impl;
 
+import java.util.Optional;
+import java.util.Set;
+
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.Sets;
-
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Deactivate;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
-import org.onosproject.net.provider.AbstractListenerProviderRegistry;
-import org.onosproject.net.provider.ProviderId;
-import org.onosproject.net.config.NetworkConfigEvent;
-import org.onosproject.net.config.NetworkConfigListener;
-import org.onosproject.net.config.NetworkConfigService;
-import org.onosproject.net.config.basics.BasicLinkConfig;
+import org.onosproject.mastership.MastershipService;
 import org.onosproject.net.ConnectPoint;
 import org.onosproject.net.DeviceId;
 import org.onosproject.net.Link;
 import org.onosproject.net.Link.State;
 import org.onosproject.net.LinkKey;
 import org.onosproject.net.MastershipRole;
+import org.onosproject.net.config.NetworkConfigEvent;
+import org.onosproject.net.config.NetworkConfigListener;
+import org.onosproject.net.config.NetworkConfigService;
+import org.onosproject.net.config.basics.BasicLinkConfig;
 import org.onosproject.net.device.DeviceEvent;
 import org.onosproject.net.device.DeviceListener;
 import org.onosproject.net.device.DeviceService;
@@ -49,17 +50,19 @@ import org.onosproject.net.link.LinkProviderService;
 import org.onosproject.net.link.LinkService;
 import org.onosproject.net.link.LinkStore;
 import org.onosproject.net.link.LinkStoreDelegate;
+import org.onosproject.net.provider.AbstractProvider;
 import org.onosproject.net.provider.AbstractProviderService;
+import org.onosproject.net.provider.AbstractProxyListenerProviderRegistry;
+import org.onosproject.net.provider.ProviderId;
+import org.onosproject.store.serializers.KryoNamespaces;
+import org.onosproject.store.service.Serializer;
 import org.slf4j.Logger;
-
-import java.util.Optional;
-import java.util.Set;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.onosproject.net.LinkKey.linkKey;
 import static org.onosproject.security.AppGuard.checkPermission;
+import static org.onosproject.security.AppPermission.Type.LINK_READ;
 import static org.slf4j.LoggerFactory.getLogger;
-import static org.onosproject.security.AppPermission.Type.*;
 
 
 /**
@@ -68,12 +71,14 @@ import static org.onosproject.security.AppPermission.Type.*;
 @Component(immediate = true)
 @Service
 public class LinkManager
-        extends AbstractListenerProviderRegistry<LinkEvent, LinkListener, LinkProvider, LinkProviderService>
+        extends AbstractProxyListenerProviderRegistry<LinkEvent, LinkListener, LinkProvider, LinkProviderService, LinkManager.LinkProxy, LinkManager.LinkProxyService>
         implements LinkService, LinkAdminService, LinkProviderRegistry {
 
     private static final String DEVICE_ID_NULL = "Device ID cannot be null";
     private static final String LINK_DESC_NULL = "Link description cannot be null";
     private static final String CONNECT_POINT_NULL = "Connection point cannot be null";
+
+    private static final Serializer SERIALIZER = Serializer.using(KryoNamespaces.API);
 
     private final Logger log = getLogger(getClass());
 
@@ -92,8 +97,16 @@ public class LinkManager
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected NetworkConfigService networkConfigService;
 
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected MastershipService mastershipService;
+
+    public LinkManager() {
+        super(LinkProxy.class, LinkProxyService.class);
+    }
+
     @Activate
     public void activate() {
+        activateProxy();
         store.setDelegate(delegate);
         eventDispatcher.addSink(LinkEvent.class, listenerRegistry);
         deviceService.addListener(deviceListener);
@@ -103,11 +116,42 @@ public class LinkManager
 
     @Deactivate
     public void deactivate() {
+        deactivateProxy();
         store.unsetDelegate(delegate);
         eventDispatcher.removeSink(LinkEvent.class);
         deviceService.removeListener(deviceListener);
         networkConfigService.removeListener(networkConfigListener);
         log.info("Stopped");
+    }
+
+    @Override
+    protected Serializer getProxySerializer() {
+        return SERIALIZER;
+    }
+
+    @Override
+    protected LinkProviderService createProxyProviderService(LinkProvider provider) {
+        return new ProxyLinkProviderService(provider);
+    }
+
+    @Override
+    protected LinkProviderService createControllerProviderService(LinkProvider provider) {
+        return new ControllerLinkProviderService(provider);
+    }
+
+    @Override
+    protected LinkProvider createControllerProvider() {
+        return new ControllerLinkProvider();
+    }
+
+    @Override
+    protected LinkProxy createProxy() {
+        return new ProxyLinkProxy();
+    }
+
+    @Override
+    protected LinkProxyService createProxyService() {
+        return new ControllerLinkProxyService();
     }
 
     @Override
@@ -220,17 +264,12 @@ public class LinkManager
         }
     }
 
-    @Override
-    protected LinkProviderService createProviderService(LinkProvider provider) {
-        return new InternalLinkProviderService(provider);
-    }
-
     // Personalized link provider service issued to the supplied provider.
-    private class InternalLinkProviderService
+    private class ControllerLinkProviderService
             extends AbstractProviderService<LinkProvider>
             implements LinkProviderService {
 
-        InternalLinkProviderService(LinkProvider provider) {
+        ControllerLinkProviderService(LinkProvider provider) {
             super(provider);
         }
 
@@ -388,5 +427,76 @@ public class LinkManager
                     .orElse(ProviderId.NONE);
             store.createOrUpdateLink(pid, desc);
         }
+    }
+
+    interface LinkProxy {
+    }
+
+    interface LinkProxyService {
+        void linkDetected(ProviderId providerId, LinkDescription linkDescription);
+        void linkVanished(ProviderId providerId, LinkDescription linkDescription);
+        void connectPointVanished(ProviderId providerId, ConnectPoint connectPoint);
+        void deviceVanished(ProviderId providerId, DeviceId deviceId);
+    }
+
+    private class ControllerLinkProxyService implements LinkProxyService {
+        @Override
+        public void linkDetected(ProviderId providerId, LinkDescription linkDescription) {
+            createProviderService(getProvider(providerId)).linkDetected(linkDescription);
+        }
+
+        @Override
+        public void linkVanished(ProviderId providerId, LinkDescription linkDescription) {
+            createProviderService(getProvider(providerId)).linkVanished(linkDescription);
+        }
+
+        @Override
+        public void connectPointVanished(ProviderId providerId, ConnectPoint connectPoint) {
+            createProviderService(getProvider(providerId)).linksVanished(connectPoint);
+        }
+
+        @Override
+        public void deviceVanished(ProviderId providerId, DeviceId deviceId) {
+            createProviderService(getProvider(providerId)).linksVanished(deviceId);
+        }
+    }
+
+    private class ControllerLinkProvider extends AbstractProvider implements LinkProvider {
+        ControllerLinkProvider() {
+            super(ProviderId.NONE);
+        }
+    }
+
+    private class ProxyLinkProviderService extends AbstractProviderService<LinkProvider> implements LinkProviderService {
+        ProxyLinkProviderService(LinkProvider provider) {
+            super(provider);
+        }
+
+        @Override
+        public void linkDetected(LinkDescription linkDescription) {
+            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(linkDescription.dst().deviceId()))
+                .linkDetected(provider().id(), linkDescription);
+        }
+
+        @Override
+        public void linkVanished(LinkDescription linkDescription) {
+            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(linkDescription.dst().deviceId()))
+                .linkVanished(provider().id(), linkDescription);
+        }
+
+        @Override
+        public void linksVanished(ConnectPoint connectPoint) {
+            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(connectPoint.deviceId()))
+                .connectPointVanished(provider().id(), connectPoint);
+        }
+
+        @Override
+        public void linksVanished(DeviceId deviceId) {
+            proxyServiceFactory.getProxyFor(mastershipService.getMasterFor(deviceId))
+                .deviceVanished(provider().id(), deviceId);
+        }
+    }
+
+    private class ProxyLinkProxy implements LinkProxy {
     }
 }

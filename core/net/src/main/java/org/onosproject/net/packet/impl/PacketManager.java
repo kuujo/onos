@@ -15,18 +15,72 @@
  */
 package org.onosproject.net.packet.impl;
 
+import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
+
+import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.io.Input;
+import com.esotericsoftware.kryo.io.Output;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Deactivate;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
+import org.onlab.packet.ARP;
+import org.onlab.packet.ChassisId;
+import org.onlab.packet.DHCP;
+import org.onlab.packet.DHCP6;
+import org.onlab.packet.Data;
+import org.onlab.packet.DscpClass;
+import org.onlab.packet.EAP;
+import org.onlab.packet.EAPOL;
+import org.onlab.packet.EthType;
+import org.onlab.packet.Ethernet;
+import org.onlab.packet.ICMP;
+import org.onlab.packet.ICMP6;
+import org.onlab.packet.ICMPEcho;
+import org.onlab.packet.IGMP;
+import org.onlab.packet.IGMPGroup;
+import org.onlab.packet.IGMPMembership;
+import org.onlab.packet.IGMPQuery;
+import org.onlab.packet.IP;
+import org.onlab.packet.IPv4;
+import org.onlab.packet.IPv6;
+import org.onlab.packet.LLC;
+import org.onlab.packet.LLDP;
+import org.onlab.packet.LLDPOrganizationalTLV;
+import org.onlab.packet.LLDPTLV;
+import org.onlab.packet.MPLS;
+import org.onlab.packet.MplsLabel;
+import org.onlab.packet.ONOSLLDP;
+import org.onlab.packet.PIM;
+import org.onlab.packet.RADIUS;
+import org.onlab.packet.RADIUSAttribute;
+import org.onlab.packet.RIP;
+import org.onlab.packet.RIPV2AuthEntry;
+import org.onlab.packet.RIPV2Entry;
+import org.onlab.packet.RIPng;
+import org.onlab.packet.RIPngEntry;
+import org.onlab.packet.TCP;
+import org.onlab.packet.TpPort;
+import org.onlab.packet.UDP;
+import org.onlab.packet.VXLAN;
+import org.onlab.util.KryoNamespace;
 import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
+import org.onosproject.mastership.MastershipService;
+import org.onosproject.net.ConnectPoint;
 import org.onosproject.net.Device;
 import org.onosproject.net.DeviceId;
 import org.onosproject.net.device.DeviceEvent;
@@ -43,7 +97,10 @@ import org.onosproject.net.flowobjective.ForwardingObjective;
 import org.onosproject.net.flowobjective.Objective;
 import org.onosproject.net.flowobjective.ObjectiveContext;
 import org.onosproject.net.flowobjective.ObjectiveError;
+import org.onosproject.net.packet.DefaultInboundPacket;
+import org.onosproject.net.packet.DefaultPacketContext;
 import org.onosproject.net.packet.DefaultPacketRequest;
+import org.onosproject.net.packet.InboundPacket;
 import org.onosproject.net.packet.OutboundPacket;
 import org.onosproject.net.packet.PacketContext;
 import org.onosproject.net.packet.PacketEvent;
@@ -57,14 +114,13 @@ import org.onosproject.net.packet.PacketRequest;
 import org.onosproject.net.packet.PacketService;
 import org.onosproject.net.packet.PacketStore;
 import org.onosproject.net.packet.PacketStoreDelegate;
-import org.onosproject.net.provider.AbstractProviderRegistry;
+import org.onosproject.net.provider.AbstractProvider;
 import org.onosproject.net.provider.AbstractProviderService;
+import org.onosproject.net.provider.AbstractProxyProviderRegistry;
+import org.onosproject.net.provider.ProviderId;
+import org.onosproject.store.serializers.KryoNamespaces;
+import org.onosproject.store.service.Serializer;
 import org.slf4j.Logger;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.onlab.util.Tools.groupedThreads;
@@ -80,7 +136,8 @@ import static org.slf4j.LoggerFactory.getLogger;
 @Component(immediate = true)
 @Service
 public class PacketManager
-        extends AbstractProviderRegistry<PacketProvider, PacketProviderService>
+        extends AbstractProxyProviderRegistry<PacketProvider, PacketProviderService,
+                PacketManager.PacketProxy, PacketManager.PacketProxyService>
         implements PacketService, PacketProviderRegistry {
 
     private final Logger log = getLogger(getClass());
@@ -90,6 +147,54 @@ public class PacketManager
     private static final String ERROR_NULL_APP_ID = "Application ID cannot be null";
     private static final String ERROR_NULL_DEVICE_ID = "Device ID cannot be null";
     private static final String SUPPORT_PACKET_REQUEST_PROPERTY = "supportPacketRequest";
+
+    private final Serializer serializer = Serializer.using(KryoNamespace.newBuilder()
+        .register(KryoNamespaces.API)
+        .nextId(KryoNamespaces.BEGIN_USER_CUSTOM_ID)
+        .register(new CorrelatedPacketContextSerializer(), CorrelatedPacketContext.class)
+        .register(DefaultTrafficTreatment.Builder.class)
+        .register(new DefaultInboundPacketSerializer(), DefaultInboundPacket.class)
+        .register(
+            ARP.class,
+            ChassisId.class,
+            Data.class,
+            DHCP.class,
+            DHCP6.class,
+            DscpClass.class,
+            EAP.class,
+            EAPOL.class,
+            Ethernet.class,
+            EthType.class,
+            ICMP.class,
+            ICMP6.class,
+            ICMPEcho.class,
+            IGMP.class,
+            IGMPGroup.class,
+            IGMPMembership.class,
+            IGMPQuery.class,
+            IP.class,
+            IPv4.class,
+            IPv6.class,
+            LLC.class,
+            LLDP.class,
+            LLDPOrganizationalTLV.class,
+            LLDPTLV.class,
+            MPLS.class,
+            MplsLabel.class,
+            ONOSLLDP.class,
+            PIM.class,
+            RADIUS.class,
+            RADIUSAttribute.class,
+            RIP.class,
+            RIPng.class,
+            RIPngEntry.class,
+            RIPV2AuthEntry.class,
+            RIPV2Entry.class,
+            TCP.class,
+            TpPort.class,
+            UDP.class,
+            VXLAN.class)
+        .build());
 
     private final PacketStoreDelegate delegate = new InternalStoreDelegate();
 
@@ -109,6 +214,9 @@ public class PacketManager
     protected PacketStore store;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected MastershipService mastershipService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected FlowObjectiveService objectiveService;
 
     private ExecutorService eventHandlingExecutor;
@@ -119,11 +227,19 @@ public class PacketManager
 
     private final PacketDriverProvider defaultProvider = new PacketDriverProvider();
 
+    private final AtomicLong correlationId = new AtomicLong();
+    private final Map<Long, PacketContext> packetContexts = Maps.newConcurrentMap();
+
     private ApplicationId appId;
     private NodeId localNodeId;
 
+    public PacketManager() {
+        super(PacketProxy.class, PacketProxyService.class);
+    }
+
     @Activate
     public void activate() {
+        activateProxy();
         eventHandlingExecutor = Executors.newSingleThreadExecutor(
                 groupedThreads("onos/net/packet", "event-handler", log));
         localNodeId = clusterService.getLocalNode().id();
@@ -148,6 +264,7 @@ public class PacketManager
 
     @Deactivate
     public void deactivate() {
+        deactivateProxy();
         store.unsetDelegate(delegate);
         deviceService.removeListener(deviceListener);
         eventHandlingExecutor.shutdown();
@@ -380,18 +497,43 @@ public class PacketManager
     }
 
     @Override
-    protected PacketProviderService createProviderService(PacketProvider provider) {
-        return new InternalPacketProviderService(provider);
+    protected Serializer getProxySerializer() {
+        return serializer;
+    }
+
+    @Override
+    protected PacketProviderService createProxyProviderService(PacketProvider provider) {
+        return new ProxyPacketProviderService(provider);
+    }
+
+    @Override
+    protected PacketProviderService createControllerProviderService(PacketProvider provider) {
+        return new ControllerPacketProviderService(provider);
+    }
+
+    @Override
+    protected PacketProvider createControllerProvider() {
+        return new ControllerPacketProvider();
+    }
+
+    @Override
+    protected PacketProxy createProxy() {
+        return new ProxyPacketProxy();
+    }
+
+    @Override
+    protected PacketProxyService createProxyService() {
+        return new ControllerPacketProxyService();
     }
 
     /**
      * Personalized packet provider service issued to the supplied provider.
      */
-    private class InternalPacketProviderService
+    private class ControllerPacketProviderService
             extends AbstractProviderService<PacketProvider>
             implements PacketProviderService {
 
-        protected InternalPacketProviderService(PacketProvider provider) {
+        protected ControllerPacketProviderService(PacketProvider provider) {
             super(provider);
         }
 
@@ -542,6 +684,132 @@ public class PacketManager
         void addNanos(long nanos) {
             this.nanos += nanos;
             this.invocations++;
+        }
+    }
+
+    interface PacketProxy {
+        void emit(OutboundPacket packet);
+        void send(long id, PacketContext outboundContext);
+    }
+
+    interface PacketProxyService {
+        void processPacket(ProviderId providerId, PacketContext context);
+    }
+
+    private class ControllerPacketProxyService implements PacketProxyService {
+        @Override
+        public void processPacket(ProviderId providerId, PacketContext context) {
+            createProviderService(getProvider(providerId)).processPacket(context);
+        }
+    }
+
+    private class ControllerPacketProvider extends AbstractProvider implements PacketProvider {
+        ControllerPacketProvider() {
+            super(ProviderId.NONE);
+        }
+
+        @Override
+        public void emit(OutboundPacket packet) {
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).emit(packet);
+        }
+    }
+
+    private class ProxyPacketProviderService extends AbstractProviderService<PacketProvider> implements PacketProviderService {
+        ProxyPacketProviderService(PacketProvider provider) {
+            super(provider);
+        }
+
+        @Override
+        public void processPacket(PacketContext context) {
+            Device device = deviceService.getDevice(context.outPacket().sendThrough());
+            if (device == null) {
+                return;
+            }
+
+            NodeId master = mastershipService.getMasterFor(device.id());
+            if (master != null) {
+                long id = correlationId.incrementAndGet();
+                if (context.outPacket() != null) {
+                    packetContexts.put(id, context);
+                }
+                PacketContext correlatedContext = new CorrelatedPacketContext(
+                    context.time(), context.inPacket(), context.outPacket(), context.block(), id);
+                proxyServiceFactory.getProxyFor(master)
+                    .processPacket(provider().id(), correlatedContext);
+            } else {
+                log.warn("Failed processPacket by proxy: no master found for device {}", device.id());
+            }
+        }
+    }
+
+    private class ProxyPacketProxy implements PacketProxy {
+        @Override
+        public void emit(OutboundPacket packet) {
+            localEmit(packet);
+        }
+
+        @Override
+        public void send(long id, PacketContext outboundContext) {
+            PacketContext context = packetContexts.remove(id);
+            if (context != null) {
+                context.outPacket().data().put(outboundContext.outPacket().data());
+                context.treatmentBuilder().addTreatment(outboundContext.treatmentBuilder().build());
+                context.send();
+            }
+        }
+    }
+
+    private class CorrelatedPacketContext extends DefaultPacketContext {
+        private final long correlationId;
+
+        CorrelatedPacketContext(long time, InboundPacket inPkt, OutboundPacket outPkt, boolean block, long correlationId) {
+            super(time, inPkt, outPkt, block);
+            this.correlationId = correlationId;
+        }
+
+        @Override
+        public void send() {
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).send(correlationId, this);
+        }
+    }
+
+    private static class DefaultInboundPacketSerializer extends com.esotericsoftware.kryo.Serializer<DefaultInboundPacket> {
+        @Override
+        public void write(Kryo kryo, Output output, DefaultInboundPacket packet) {
+            kryo.writeObject(output, packet.receivedFrom().toString());
+            kryo.writeObject(output, packet.parsed());
+            kryo.writeObject(output, packet.unparsed().array());
+            kryo.writeObjectOrNull(output, packet.cookie().orElse(null), Long.class);
+        }
+
+        @Override
+        public DefaultInboundPacket read(Kryo kryo, Input input, Class<DefaultInboundPacket> type) {
+            ConnectPoint receivedFrom = ConnectPoint.fromString(kryo.readObject(input, String.class));
+            Ethernet parsed = kryo.readObject(input, Ethernet.class);
+            ByteBuffer unparsed = ByteBuffer.wrap(kryo.readObject(input, byte[].class));
+            Optional<Long> cookie = Optional.ofNullable(kryo.readObjectOrNull(input, Long.class));
+            return new DefaultInboundPacket(receivedFrom, parsed, unparsed, cookie);
+        }
+    }
+
+    private class CorrelatedPacketContextSerializer extends com.esotericsoftware.kryo.Serializer<CorrelatedPacketContext> {
+        @Override
+        public void write(Kryo kryo, Output output, CorrelatedPacketContext context) {
+            kryo.writeObject(output, context.correlationId);
+            kryo.writeObject(output, context.time());
+            kryo.writeClassAndObject(output, context.inPacket());
+            kryo.writeClassAndObject(output, context.outPacket());
+            kryo.writeObject(output, context.block());
+        }
+
+        @Override
+        public CorrelatedPacketContext read(Kryo kryo, Input input, Class<CorrelatedPacketContext> type) {
+            long correlationId = kryo.readObject(input, Long.TYPE);
+            long time = kryo.readObject(input, Long.TYPE);
+            InboundPacket inboundPacket = (InboundPacket) kryo.readClassAndObject(input);
+            OutboundPacket outboundPacket = (OutboundPacket) kryo.readClassAndObject(input);
+            boolean block = kryo.readObject(input, Boolean.TYPE);
+            return new CorrelatedPacketContext(time, inboundPacket, outboundPacket, block, correlationId);
         }
     }
 }

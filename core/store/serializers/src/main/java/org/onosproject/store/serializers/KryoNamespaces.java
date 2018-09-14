@@ -77,6 +77,7 @@ import org.onosproject.net.HostLocation;
 import org.onosproject.net.Link;
 import org.onosproject.net.LinkKey;
 import org.onosproject.net.MarkerResource;
+import org.onosproject.net.MastershipRole;
 import org.onosproject.net.OchSignal;
 import org.onosproject.net.OchSignalType;
 import org.onosproject.net.OduSignalId;
@@ -720,6 +721,7 @@ public final class KryoNamespaces {
                     L3ModificationInstruction.ModArpEthInstruction.class,
                     L3ModificationInstruction.ModArpOpInstruction.class,
                     L3ModificationInstruction.ModArpIPInstruction.class)
+            .register(MastershipRole.class)
             .build("API");
 
     /**

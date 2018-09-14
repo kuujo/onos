@@ -40,7 +40,10 @@ import org.slf4j.LoggerFactory;
 @Component(immediate = true)
 @Service(value = AtomixManager.class)
 public class AtomixManager {
+
+    private static final String NODE_TYPE = System.getProperty("onos.node.type", "onos");
     private static final String LOCAL_DATA_DIR = System.getProperty("karaf.data") + "/db/partitions/";
+
     private final Logger log = LoggerFactory.getLogger(getClass());
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
@@ -62,6 +65,12 @@ public class AtomixManager {
         log.info("{}", metadataService.getClusterMetadata());
         atomix = createAtomix();
         atomix.start().join();
+        boolean proxyEnabled = NODE_TYPE.equalsIgnoreCase("proxy")
+            || NODE_TYPE.equalsIgnoreCase("controller");
+        if (proxyEnabled) {
+            log.info("Proxy is enabled");
+            log.info("Proxy node type {}", NODE_TYPE);
+        }
         log.info("Started");
     }
 
@@ -79,7 +88,7 @@ public class AtomixManager {
                 .withClusterId(metadata.getName())
                 .withMemberId(metadataService.getLocalNode().id().id())
                 .withAddress(metadataService.getLocalNode().ip().toString(), metadataService.getLocalNode().tcpPort())
-                .withProperty("type", "onos")
+                .withProperty("type", NODE_TYPE)
                 .withMembershipProvider(BootstrapDiscoveryProvider.builder()
                     .withNodes(metadata.getStorageNodes().stream()
                         .map(node -> io.atomix.cluster.Node.builder()
@@ -104,7 +113,7 @@ public class AtomixManager {
                 .withClusterId(metadata.getName())
                 .withMemberId(metadataService.getLocalNode().id().id())
                 .withAddress(metadataService.getLocalNode().ip().toString(), metadataService.getLocalNode().tcpPort())
-                .withProperty("type", "onos")
+                .withProperty("type", NODE_TYPE)
                 .withMembershipProvider(BootstrapDiscoveryProvider.builder()
                     .withNodes(metadata.getControllerNodes().stream()
                         .map(node -> io.atomix.cluster.Node.builder()

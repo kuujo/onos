@@ -44,6 +44,13 @@ public interface ClusterService extends ListenerService<ClusterEvent, ClusterEve
     Set<ControllerNode> getNodes();
 
     /**
+     * Returns a sorted list of proxy nodes.
+     *
+     * @return a sorted list of proxy nodes
+     */
+    Set<Node> getProxyNodes();
+
+    /**
      * Returns the set of consensus nodes.
      *
      * @return the set of consensus nodes

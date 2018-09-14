@@ -45,7 +45,7 @@ ssh -tt $remote "
     # Drop copycat related log level for the console
     echo "log4j.logger.io.atomix=INFO" \
         >> $ONOS_INSTALL_DIR/$KARAF_DIST/etc/org.ops4j.pax.logging.cfg
-    echo "log4j.logger.io.atomix.cluster.messaging=ERROR" \
+    echo "log4j.logger.io.atomix.cluster.messaging=WARN" \
         >> $ONOS_INSTALL_DIR/$KARAF_DIST/etc/org.ops4j.pax.logging.cfg
 
     # Patch the Apache Karaf distribution file to load ONOS boot features

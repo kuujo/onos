@@ -15,7 +15,27 @@
  */
 package org.onosproject.net.device.impl;
 
+import java.time.Instant;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Queue;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
@@ -28,10 +48,14 @@ import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
 import org.onlab.util.KryoNamespace;
 import org.onlab.util.Tools;
+import org.onosproject.cluster.ClusterEvent;
+import org.onosproject.cluster.ClusterEventListener;
 import org.onosproject.cluster.ClusterService;
+import org.onosproject.cluster.Node;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.incubator.net.config.basics.PortDescriptionsConfig;
 import org.onosproject.mastership.MastershipEvent;
+import org.onosproject.mastership.MastershipInfo;
 import org.onosproject.mastership.MastershipListener;
 import org.onosproject.mastership.MastershipService;
 import org.onosproject.mastership.MastershipTerm;
@@ -66,8 +90,9 @@ import org.onosproject.net.device.DeviceStore;
 import org.onosproject.net.device.DeviceStoreDelegate;
 import org.onosproject.net.device.PortDescription;
 import org.onosproject.net.device.PortStatistics;
-import org.onosproject.net.provider.AbstractListenerProviderRegistry;
+import org.onosproject.net.provider.AbstractProvider;
 import org.onosproject.net.provider.AbstractProviderService;
+import org.onosproject.net.provider.AbstractProxyListenerProviderRegistry;
 import org.onosproject.net.provider.Provider;
 import org.onosproject.net.provider.ProviderId;
 import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
@@ -76,23 +101,6 @@ import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.upgrade.UpgradeService;
 import org.slf4j.Logger;
-
-import java.time.Instant;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
@@ -114,7 +122,8 @@ import static org.slf4j.LoggerFactory.getLogger;
 @Component(immediate = true)
 @Service
 public class DeviceManager
-        extends AbstractListenerProviderRegistry<DeviceEvent, DeviceListener, DeviceProvider, DeviceProviderService>
+        extends AbstractProxyListenerProviderRegistry<DeviceEvent, DeviceListener, DeviceProvider, DeviceProviderService,
+                DeviceManager.DeviceProxy, DeviceManager.DeviceProxyService>
         implements DeviceService, DeviceAdminService, DeviceProviderRegistry, PortConfigOperatorRegistry {
 
     private static final String DEVICE_ID_NULL = "Device ID cannot be null";
@@ -173,6 +182,10 @@ public class DeviceManager
     private PortAnnotationOperator portAnnotationOp;
     private DeviceAnnotationOperator deviceAnnotationOp;
 
+    private final Map<DeviceId, Queue<RoleRequest>> roleRequests = Maps.newConcurrentMap();
+    private final Map<NodeId, Map<DeviceId, MastershipRole>> nodeRoles = Maps.newConcurrentMap();
+    private final ClusterEventListener clusterEventListener = new InternalClusterEventListener();
+
     private static final MessageSubject PORT_UPDOWN_SUBJECT =
             new MessageSubject("port-updown-req");
 
@@ -199,8 +212,14 @@ public class DeviceManager
     private final Map<DeviceId, LocalStatus> deviceLocalStatus =
             Maps.newConcurrentMap();
 
+    public DeviceManager() {
+        super(DeviceProxy.class, DeviceProxyService.class);
+    }
+
     @Activate
     public void activate() {
+        activateProxy();
+
         portAnnotationOp = new PortAnnotationOperator(networkConfigService);
         deviceAnnotationOp = new DeviceAnnotationOperator(networkConfigService);
         portOpsIndex.put(PortAnnotationConfig.class, portAnnotationOp);
@@ -213,6 +232,7 @@ public class DeviceManager
         eventDispatcher.addSink(DeviceEvent.class, listenerRegistry);
         mastershipService.addListener(mastershipListener);
         networkConfigService.addListener(networkConfigListener);
+        clusterService.addListener(clusterEventListener);
 
         backgroundService.scheduleWithFixedDelay(() -> {
             try {
@@ -235,14 +255,48 @@ public class DeviceManager
 
     @Deactivate
     public void deactivate() {
+        deactivateProxy();
+        proxyService.unregisterProxyService(DeviceProxy.class);
+        proxyService.unregisterProxyService(DeviceProxyService.class);
         backgroundService.shutdown();
         networkConfigService.removeListener(networkConfigListener);
         store.unsetDelegate(delegate);
         mastershipService.removeListener(mastershipListener);
+        clusterService.removeListener(clusterEventListener);
         eventDispatcher.removeSink(DeviceEvent.class);
         communicationService.removeSubscriber(PORT_UPDOWN_SUBJECT);
         portReqeustExecutor.shutdown();
         log.info("Stopped");
+    }
+
+    @Override
+    protected Serializer getProxySerializer() {
+        return SERIALIZER;
+    }
+
+    @Override
+    protected DeviceProviderService createProxyProviderService(DeviceProvider provider) {
+        return new ProxyDeviceProviderService(provider);
+    }
+
+    @Override
+    protected DeviceProviderService createControllerProviderService(DeviceProvider provider) {
+        return new ControllerDeviceProviderService(provider);
+    }
+
+    @Override
+    protected DeviceProvider createControllerProvider() {
+        return new ControllerDeviceProvider();
+    }
+
+    @Override
+    protected DeviceProxy createProxy() {
+        return new ProxyDeviceProxy();
+    }
+
+    @Override
+    protected DeviceProxyService createProxyService() {
+        return new ControllerDeviceProxyService();
     }
 
     @Override
@@ -446,12 +500,6 @@ public class DeviceManager
         }
     }
 
-    @Override
-    protected DeviceProviderService createProviderService(
-            DeviceProvider provider) {
-        return new InternalDeviceProviderService(provider);
-    }
-
     /**
      * Checks if all the reachable devices have a valid mastership role.
      */
@@ -503,20 +551,21 @@ public class DeviceManager
                 continue;
             }
 
-            log.info("{} is reachable but did not have a valid role, reasserting", deviceId);
-
             // isReachable but was not MASTER or STANDBY, get a role and apply
             // Note: NONE triggers request to MastershipService
-            reassertRole(deviceId, NONE);
+            if (!proxyRoleService.isProxyEnabled() || proxyRoleService.isControllerNode()) {
+                log.info("{} is reachable but did not have a valid role, reasserting", deviceId);
+                reassertRole(deviceId, NONE);
+            }
         }
     }
 
     // Personalized device provider service issued to the supplied provider.
-    private class InternalDeviceProviderService
+    private class ControllerDeviceProviderService
             extends AbstractProviderService<DeviceProvider>
             implements DeviceProviderService {
 
-        InternalDeviceProviderService(DeviceProvider provider) {
+        ControllerDeviceProviderService(DeviceProvider provider) {
             super(provider);
         }
 
@@ -876,13 +925,7 @@ public class DeviceManager
         MastershipRole myNextRole = nextRole;
         if (myNextRole == NONE && upgradeService.isLocalActive()) {
             try {
-                mastershipService.requestRoleFor(did).get();
-                MastershipTerm term = termService.getMastershipTerm(did);
-                if (term != null && localNodeId.equals(term.master())) {
-                    myNextRole = MASTER;
-                } else {
-                    myNextRole = STANDBY;
-                }
+                myNextRole = mastershipService.requestRoleFor(did).get();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.error("Interrupted waiting for Mastership", e);
@@ -1240,6 +1283,266 @@ public class DeviceManager
             this.deviceId = null;
             this.portNumber = null;
             this.enable = false;
+        }
+    }
+
+    interface DeviceProxy {
+        void triggerProbe(DeviceId deviceId);
+        void roleChanged(NodeId nodeId, DeviceId deviceId, MastershipRole newRole);
+        boolean isReachable(DeviceId deviceId);
+        void changePortState(DeviceId deviceId, PortNumber portNumber, boolean enable);
+        void triggerDisconnect(DeviceId deviceId);
+    }
+
+    interface DeviceProxyService {
+        void deviceConnected(ProviderId providerId, DeviceId deviceId, DeviceDescription deviceDescription);
+        void deviceDisconnected(ProviderId providerId, DeviceId deviceId);
+        void updatePorts(ProviderId providerId, DeviceId deviceId, List<PortDescription> portDescriptions);
+        void deletePort(ProviderId providerId, DeviceId deviceId, PortDescription portDescription);
+        void portStatusChanged(ProviderId providerId, DeviceId deviceId, PortDescription portDescription);
+        void receivedRoleReply(ProviderId providerId, DeviceId deviceId, MastershipRole requested, MastershipRole response);
+        void updatePortStatistics(ProviderId providerId, DeviceId deviceId, Collection<PortStatistics> portStatistics);
+    }
+
+    private class ControllerDeviceProxyService implements DeviceProxyService {
+        @Override
+        public void deviceConnected(ProviderId providerId, DeviceId deviceId, DeviceDescription deviceDescription) {
+            createProviderService(getProvider(providerId)).deviceConnected(deviceId, deviceDescription);
+        }
+
+        @Override
+        public void deviceDisconnected(ProviderId providerId, DeviceId deviceId) {
+            createProviderService(getProvider(providerId)).deviceDisconnected(deviceId);
+        }
+
+        @Override
+        public void updatePorts(ProviderId providerId, DeviceId deviceId, List<PortDescription> portDescriptions) {
+            createProviderService(getProvider(providerId)).updatePorts(deviceId, portDescriptions);
+        }
+
+        @Override
+        public void deletePort(ProviderId providerId, DeviceId deviceId, PortDescription portDescription) {
+            createProviderService(getProvider(providerId)).deletePort(deviceId, portDescription);
+        }
+
+        @Override
+        public void portStatusChanged(ProviderId providerId, DeviceId deviceId, PortDescription portDescription) {
+            createProviderService(getProvider(providerId)).portStatusChanged(deviceId, portDescription);
+        }
+
+        @Override
+        public void receivedRoleReply(ProviderId providerId, DeviceId deviceId, MastershipRole requested, MastershipRole response) {
+            createProviderService(getProvider(providerId)).receivedRoleReply(deviceId, requested, response);
+        }
+
+        @Override
+        public void updatePortStatistics(ProviderId providerId, DeviceId deviceId, Collection<PortStatistics> portStatistics) {
+            createProviderService(getProvider(providerId)).updatePortStatistics(deviceId, portStatistics);
+        }
+    }
+
+    private class ControllerDeviceProvider extends AbstractProvider implements DeviceProvider {
+        ControllerDeviceProvider() {
+            super(ProviderId.NONE);
+        }
+
+        @Override
+        public void triggerProbe(DeviceId deviceId) {
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).triggerProbe(deviceId);
+        }
+
+        @Override
+        public void triggerDisconnect(DeviceId deviceId) {
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).triggerDisconnect(deviceId);
+        }
+
+        @Override
+        public void roleChanged(DeviceId deviceId, MastershipRole newRole) {
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).roleChanged(localNodeId, deviceId, newRole);
+        }
+
+        @Override
+        public boolean isReachable(DeviceId deviceId) {
+            return proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).isReachable(deviceId);
+        }
+
+        @Override
+        public void changePortState(DeviceId deviceId, PortNumber portNumber, boolean enable) {
+            proxyFactory.getProxyFor(proxyRoleService.getProxyNode()).changePortState(deviceId, portNumber, enable);
+        }
+    }
+
+    private class ProxyDeviceProviderService extends AbstractProviderService<DeviceProvider> implements DeviceProviderService {
+        ProxyDeviceProviderService(DeviceProvider provider) {
+            super(provider);
+        }
+
+        @Override
+        public void deviceConnected(DeviceId deviceId, DeviceDescription deviceDescription) {
+            for (NodeId nodeId : proxyRoleService.getControllerNodes()) {
+                proxyServiceFactory.getProxyFor(nodeId)
+                    .deviceConnected(provider().id(), deviceId, deviceDescription);
+            }
+        }
+
+        @Override
+        public void deviceDisconnected(DeviceId deviceId) {
+            roleRequests.remove(deviceId);
+            for (NodeId nodeId : proxyRoleService.getControllerNodes()) {
+                proxyServiceFactory.getProxyFor(nodeId)
+                    .deviceDisconnected(provider().id(), deviceId);
+            }
+        }
+
+        @Override
+        public void updatePorts(DeviceId deviceId, List<PortDescription> portDescriptions) {
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .updatePorts(provider().id(), deviceId, ImmutableList.copyOf(portDescriptions));
+            } else {
+                log.warn("Failed updatePorts by proxy: no master found for device {}", deviceId);
+            }
+        }
+
+        @Override
+        public void deletePort(DeviceId deviceId, PortDescription portDescription) {
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .deletePort(provider().id(), deviceId, portDescription);
+            } else {
+                log.warn("Failed deletePort by proxy: no master found for device {}", deviceId);
+            }
+        }
+
+        @Override
+        public void portStatusChanged(DeviceId deviceId, PortDescription portDescription) {
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .portStatusChanged(provider().id(), deviceId, portDescription);
+            } else {
+                log.warn("Failed portStatusChanged by proxy: no master found for device {}", deviceId);
+            }
+        }
+
+        @Override
+        public void receivedRoleReply(DeviceId deviceId, MastershipRole requested, MastershipRole response) {
+            Queue<RoleRequest> requests = roleRequests.get(deviceId);
+            if (requests != null) {
+                RoleRequest request = requests.poll();
+                if (request != null) {
+                    MastershipRole role = MastershipRole.values()[Math.max(request.role.ordinal(), response.ordinal())];
+                    proxyServiceFactory.getProxyFor(request.nodeId)
+                        .receivedRoleReply(provider().id(), deviceId, request.role, role);
+                }
+            }
+        }
+
+        @Override
+        public void updatePortStatistics(DeviceId deviceId, Collection<PortStatistics> portStatistics) {
+            NodeId master = mastershipService.getMasterFor(deviceId);
+            if (master != null) {
+                proxyServiceFactory.getProxyFor(master)
+                    .updatePortStatistics(provider().id(), deviceId, ImmutableSet.copyOf(portStatistics));
+            } else {
+                log.warn("Failed receivedRoleReply by proxy: no master found for device {}", deviceId);
+            }
+        }
+    }
+
+    private class ProxyDeviceProxy implements DeviceProxy {
+        @Override
+        public void triggerProbe(DeviceId deviceId) {
+            getProvider(deviceId).triggerProbe(deviceId);
+        }
+
+        @Override
+        public void roleChanged(NodeId nodeId, DeviceId deviceId, MastershipRole newRole) {
+            roleRequests.computeIfAbsent(deviceId, id -> new ConcurrentLinkedQueue<>())
+                .add(new RoleRequest(nodeId, newRole));
+
+            nodeRoles.computeIfAbsent(nodeId, nid -> Maps.newConcurrentMap()).put(deviceId, newRole);
+
+            // Determine the aggregate role for this proxy node.
+            MastershipRole aggregateRole = newRole;
+            for (NodeId controllerNodeId : proxyRoleService.getControllerNodes()) {
+                Map<DeviceId, MastershipRole> deviceRoles = nodeRoles.get(controllerNodeId);
+                if (deviceRoles != null) {
+                    MastershipRole deviceRole = deviceRoles.get(deviceId);
+                    if (deviceRole != null && deviceRole.ordinal() < aggregateRole.ordinal()) {
+                        aggregateRole = deviceRole;
+                    }
+                }
+            }
+            getProvider(deviceId).roleChanged(deviceId, aggregateRole);
+        }
+
+        @Override
+        public boolean isReachable(DeviceId deviceId) {
+            return getProvider(deviceId).isReachable(deviceId);
+        }
+
+        @Override
+        public void changePortState(DeviceId deviceId, PortNumber portNumber, boolean enable) {
+            getProvider(deviceId).changePortState(deviceId, portNumber, enable);
+        }
+
+        @Override
+        public void triggerDisconnect(DeviceId deviceId) {
+            getProvider(deviceId).triggerDisconnect(deviceId);
+        }
+    }
+
+    private static class RoleRequest {
+        private final NodeId nodeId;
+        private final MastershipRole role;
+
+        RoleRequest(NodeId nodeId, MastershipRole role) {
+            this.nodeId = nodeId;
+            this.role = role;
+        }
+    }
+
+    private class InternalClusterEventListener implements ClusterEventListener {
+        @Override
+        public void event(ClusterEvent event) {
+            if (event.type() == ClusterEvent.Type.INSTANCE_REMOVED) {
+                nodeRoles.remove(event.subject().id());
+            }
+
+            // If this is a proxy node, update controller node roles.
+            if (proxyRoleService.isProxyEnabled() && proxyRoleService.isProxyNode()) {
+                Set<NodeId> controllerNodeIds = proxyRoleService.getControllerNodes();
+
+                // First, remove all the reassigned controller nodes from local node roles.
+                for (Node node : clusterService.getNodes()) {
+                    if (!controllerNodeIds.contains(node.id())) {
+                        nodeRoles.remove(node.id());
+                    }
+                }
+
+                // Then iterate through devices and update roles for all controller nodes.
+                for (Device device : getDevices()) {
+                    MastershipInfo mastership = mastershipService.getMastershipFor(device.id());
+                    NodeId standby = null;
+                    for (NodeId backupId : mastership.backups()) {
+                        if (controllerNodeIds.contains(backupId)) {
+                            nodeRoles.computeIfAbsent(backupId, id -> Maps.newConcurrentMap()).put(device.id(), STANDBY);
+                            standby = backupId;
+                        }
+                    }
+
+                    // If a master node is set and is assigned to this proxy, reassert the proxy role.
+                    // Otherwise, downgrade the proxy role to standby.
+                    if (mastership.master().isPresent() && controllerNodeIds.contains(mastership.master().get())) {
+                        createProxy().roleChanged(mastership.master().get(), device.id(), MASTER);
+                    } else if (standby != null) {
+                        createProxy().roleChanged(standby, device.id(), STANDBY);
+                    }
+                }
+            }
         }
     }
 }

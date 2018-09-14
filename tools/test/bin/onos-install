@@ -36,7 +36,7 @@ _EOF_
 
 onos-check-bits
 
-while getopts fnvm: o; do
+while getopts fnvcpm: o; do
     case "$o" in
         f) uninstall=true;;
         u) noupstart=true; noinitd=true; nosysd=true;;
@@ -44,6 +44,8 @@ while getopts fnvm: o; do
         s) nosysd=true;;
         n) nostart=true;;
         m) mvn_settings=$OPTARG;;
+        c) controller=true;;
+        p) proxy=true;;
         v) upgrade=true;;
     esac
 done
@@ -89,6 +91,16 @@ ssh -tt $remote "
         rm YourKit-JavaProfiler-${ONOS_YOURKIT}.zip
         mv /tmp/YourKit-JavaProfiler-$(echo $ONOS_YOURKIT | sed 's/\(.*\)-.*/\1/')/bin/linux-x86-64/libyjpagent.so $ONOS_INSTALL_DIR/libyjpagent.so
         echo -e 'export JAVA_OPTS="${JAVA_OPTS:--agentpath:$ONOS_INSTALL_DIR/libyjpagent.so}=listen=all"' >> $ONOS_INSTALL_DIR/options
+    fi
+
+    if [ ! -z "$controller" ]
+    then
+        echo -e 'export JAVA_OPTS="${JAVA_OPTS:--Donos.node.type=controller}"' >> $ONOS_INSTALL_DIR/options
+    fi
+
+    if [ ! -z "$proxy" ]
+    then
+        echo -e 'export JAVA_OPTS="${JAVA_OPTS:--Donos.node.type=proxy}"' >> $ONOS_INSTALL_DIR/options
     fi
 
     # Set up correct user to run onos-service

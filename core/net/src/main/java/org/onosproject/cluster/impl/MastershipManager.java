@@ -15,6 +15,18 @@
  */
 package org.onosproject.cluster.impl;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+
 import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
 import com.google.common.collect.Lists;
@@ -54,18 +66,6 @@ import org.onosproject.upgrade.UpgradeEvent;
 import org.onosproject.upgrade.UpgradeEventListener;
 import org.onosproject.upgrade.UpgradeService;
 import org.slf4j.Logger;
-
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.Lists.newArrayList;
@@ -192,7 +192,6 @@ public class MastershipManager
     @Override
     public MastershipRole getLocalRole(DeviceId deviceId) {
         checkPermission(CLUSTER_READ);
-
         checkNotNull(deviceId, DEVICE_ID_NULL);
         return store.getRole(clusterService.getLocalNode().id(), deviceId);
     }

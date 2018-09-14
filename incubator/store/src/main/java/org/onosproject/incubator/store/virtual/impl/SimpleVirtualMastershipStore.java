@@ -493,6 +493,11 @@ public class SimpleVirtualMastershipStore
             }
 
             @Override
+            public Set<Node> getProxyNodes() {
+                return ImmutableSet.of();
+            }
+
+            @Override
             public Set<Node> getConsensusNodes() {
                 return ImmutableSet.of();
             }
