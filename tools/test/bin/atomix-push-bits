@@ -41,13 +41,14 @@ SSH_OPTIONS=" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 if [ ! -z "$ATOMIX_ROOT" ]; then
   echo "Pushing to $node from $ATOMIX_ROOT"
   ATOMIX_TAR=$ATOMIX_ROOT/dist/target/atomix.tar.gz
-elif [ -e $ATOMIX_MAVEN ]; then
+elif [ -e "$ATOMIX_MAVEN" ]; then
   echo "Pushing to $node from $ATOMIX_MAVEN"
   ATOMIX_TAR=$ATOMIX_MAVEN
 else
   echo "Pushing to $node from $ATOMIX_LOCAL"
-  rm $ATOMIX_LOCAL
-  wget -O $ATOMIX_LOCAL $ATOMIX_REMOTE
+  if [ ! -f "$ATOMIX_LOCAL" ]; then
+      wget -O $ATOMIX_LOCAL $ATOMIX_REMOTE
+  fi
   ATOMIX_TAR=$ATOMIX_LOCAL
 fi
 
@@ -59,6 +60,6 @@ remHash=$(ssh $remote cksum /tmp/atomix.tar.gz 2>/dev/null | cut -d' ' -f1,2)
 if [ -n "$locHash" ] && [ "$locHash" = "$remHash" ]; then
   echo "Atomix bits /tmp/atomix.tar.gz already up-to-date on $node..."
 else
-  ssh $remote rm -f $ATOMIX_TAR
+  ssh $remote rm -f /tmp/atomix.tar.gz
   scp -q $ATOMIX_TAR $remote_with_bracket:/tmp/atomix.tar.gz
 fi
