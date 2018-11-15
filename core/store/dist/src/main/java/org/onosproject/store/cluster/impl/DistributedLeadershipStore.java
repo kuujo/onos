@@ -16,6 +16,7 @@
 package org.onosproject.store.cluster.impl;
 
 import com.google.common.collect.Maps;
+import org.apache.commons.lang3.tuple.Pair;
 import org.onosproject.cfg.ComponentConfigService;
 import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.Leadership;
@@ -42,8 +43,10 @@ import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 
 import java.util.Dictionary;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -93,55 +96,45 @@ public class DistributedLeadershipStore
     /** Leader election timeout in milliseconds. */
     private long electionTimeoutMillis = ELECTION_TIMEOUT_MILLIS_DEFAULT;
 
-    private ExecutorService statusChangeHandler;
+    private ExecutorService eventExecutor;
     private NodeId localNodeId;
     private LeaderElector leaderElector;
     private final Map<String, Leadership> localLeaderCache = Maps.newConcurrentMap();
     private final UpgradeEventListener upgradeListener = new InternalUpgradeEventListener();
 
-    private final Consumer<Change<Leadership>> leadershipChangeListener =
-            change -> {
-                Leadership oldValue = change.oldValue();
-                Leadership newValue = change.newValue();
-
-                // If the topic is not relevant to this version, skip the event.
-                if (!isLocalTopic(newValue.topic())) {
-                    return;
-                }
-
-                boolean leaderChanged = !Objects.equals(oldValue.leader(), newValue.leader());
-                boolean candidatesChanged = !Objects.equals(oldValue.candidates(), newValue.candidates());
-
-                LeadershipEvent.Type eventType = null;
-                if (leaderChanged && candidatesChanged) {
-                    eventType = LeadershipEvent.Type.LEADER_AND_CANDIDATES_CHANGED;
-                }
-                if (leaderChanged && !candidatesChanged) {
-                    eventType = LeadershipEvent.Type.LEADER_CHANGED;
-                }
-                if (!leaderChanged && candidatesChanged) {
-                    eventType = LeadershipEvent.Type.CANDIDATES_CHANGED;
-                }
-                notifyDelegate(new LeadershipEvent(eventType, new Leadership(
-                        parseTopic(change.newValue().topic()),
-                        change.newValue().leader(),
-                        change.newValue().candidates())));
-                // Update local cache of currently held leaderships
-                if (Objects.equals(newValue.leaderNodeId(), localNodeId)) {
-                    localLeaderCache.put(newValue.topic(), newValue);
-                } else {
-                    localLeaderCache.remove(newValue.topic());
-                }
-            };
+    private final Consumer<Change<Leadership>> leadershipChangeListener = change ->
+            eventExecutor.execute(() -> handleLeadershipChange(change));
 
     private final Consumer<Status> clientStatusListener = status ->
-            statusChangeHandler.execute(() -> handleStatusChange(status));
+            eventExecutor.execute(() -> handleStatusChange(status));
+
+    private void handleLeadershipChange(Change<Leadership> change) {
+        Leadership oldValue = change.oldValue();
+        Leadership newValue = change.newValue();
+
+        // If the topic is not relevant to this version, skip the event.
+        if (!isLocalTopic(newValue.topic())) {
+            return;
+        }
+
+        // Update local cache of currently held leaderships
+        notifyDelegate(oldValue, newValue);
+        if (Objects.equals(newValue.leaderNodeId(), localNodeId)) {
+            localLeaderCache.put(newValue.topic(), newValue);
+        } else {
+            localLeaderCache.remove(newValue.topic());
+        }
+    }
 
     private void handleStatusChange(Status status) {
         // Notify mastership Service of disconnect and reconnect
         if (status == Status.ACTIVE) {
             // Service Restored
-            localLeaderCache.forEach((topic, leadership) -> leaderElector.run(topic, localNodeId));
+            Set<Pair<Leadership, Leadership>> leaderships = new HashSet<>();
+            localLeaderCache.forEach((topic, oldLeadership) -> {
+                Leadership newLeadership = leaderElector.run(topic, localNodeId);
+                leaderships.add(Pair.of(oldLeadership, newLeadership));
+            });
             leaderElector.getLeaderships().forEach((topic, leadership) ->
                     notifyDelegate(new LeadershipEvent(
                             LeadershipEvent.Type.SERVICE_RESTORED,
@@ -149,6 +142,7 @@ public class DistributedLeadershipStore
                                     parseTopic(leadership.topic()),
                                     leadership.leader(),
                                     leadership.candidates()))));
+            leaderships.forEach(leadershipPair -> notifyDelegate(leadershipPair.getLeft(), leadershipPair.getRight()));
         } else if (status == Status.SUSPENDED) {
             // Service Suspended
             localLeaderCache.forEach((topic, leadership) ->
@@ -164,10 +158,30 @@ public class DistributedLeadershipStore
         }
     }
 
+    private void notifyDelegate(Leadership oldLeadership, Leadership newLeadership) {
+        boolean leaderChanged = !Objects.equals(oldLeadership.leader(), newLeadership.leader());
+        boolean candidatesChanged = !Objects.equals(oldLeadership.candidates(), newLeadership.candidates());
+
+        LeadershipEvent.Type eventType = null;
+        if (leaderChanged && candidatesChanged) {
+            eventType = LeadershipEvent.Type.LEADER_AND_CANDIDATES_CHANGED;
+        }
+        if (leaderChanged && !candidatesChanged) {
+            eventType = LeadershipEvent.Type.LEADER_CHANGED;
+        }
+        if (!leaderChanged && candidatesChanged) {
+            eventType = LeadershipEvent.Type.CANDIDATES_CHANGED;
+        }
+        notifyDelegate(new LeadershipEvent(eventType, new Leadership(
+                parseTopic(newLeadership.topic()),
+                newLeadership.leader(),
+                newLeadership.candidates())));
+    }
+
     @Activate
     public void activate() {
         configService.registerProperties(getClass());
-        statusChangeHandler = Executors.newSingleThreadExecutor(
+        eventExecutor = Executors.newSingleThreadExecutor(
                 groupedThreads("onos/store/dist/cluster/leadership", "status-change-handler", log));
         localNodeId = clusterService.getLocalNode().id();
         leaderElector = storageService.leaderElectorBuilder()
@@ -214,7 +228,7 @@ public class DistributedLeadershipStore
         leaderElector.removeChangeListener(leadershipChangeListener);
         leaderElector.removeStatusChangeListener(clientStatusListener);
         upgradeService.removeListener(upgradeListener);
-        statusChangeHandler.shutdown();
+        eventExecutor.shutdown();
         configService.unregisterProperties(getClass(), false);
         log.info("Stopped");
     }
