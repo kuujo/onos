@@ -17,6 +17,7 @@ package org.onosproject.net.packet.impl;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import org.onlab.util.ItemNotFoundException;
 import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.core.ApplicationId;
@@ -279,10 +280,14 @@ public class PacketManager
     private void pushToAllDevices(PacketRequest request) {
         log.debug("Pushing packet request {} to all devices", request);
         for (Device device : deviceService.getDevices()) {
-            Driver driver = driverService.getDriver(device.id());
-            if (driver != null &&
-                    Boolean.parseBoolean(driver.getProperty(SUPPORT_PACKET_REQUEST_PROPERTY))) {
-                pushRule(device, request);
+            try {
+                Driver driver = driverService.getDriver(device.id());
+                if (driver != null &&
+                        Boolean.parseBoolean(driver.getProperty(SUPPORT_PACKET_REQUEST_PROPERTY))) {
+                    pushRule(device, request);
+                }
+            } catch (ItemNotFoundException e) {
+                // Driver not found. Skip push.
             }
         }
     }
