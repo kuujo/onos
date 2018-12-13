@@ -19,7 +19,7 @@
     <group name="Multi-Node-Failure" if="${OC2}">
         <sequential var="${OC#}"
                     starts="Node-Death-${#}"
-                    ends="Check-All-Logs-${#-1}">
+                    ends="Check-Apps-${#-1}">
             <step name="Node-Death-${#}"
                   exec="onos-power ${OC#} off"/>
 
@@ -39,9 +39,10 @@
                   requires="Wait-for-Start-${#}"
                   exec="onos-check-nodes ${OC#}"/>
 
-            <step name="Check-Masters-${#}"
+            <!--<step name="Check-Masters-${#}"
                   requires="~Check-Nodes-${#}"
                   exec="check-masters.py ${OC#}"/>
+            -->
 
             <step name="Check-Components-${#}"
                   requires="~Check-Nodes-${#}"
@@ -51,13 +52,14 @@
                   requires="~Check-Nodes-${#}"
                   exec="onos-check-apps ${OC#} ${ONOS_APPS} includes"/>
 
-            <step name="Check-Flows-${#}"
+            <!--<step name="Check-Flows-${#}"
                   requires="~Check-Nodes-${#}"
                   exec="onos-check-flows ${OC#}"/>
 
             <step name="Check-All-Logs-${#}"
                   requires="~Check-Nodes-${#},~Check-Masters-${#},~Check-Components-${#},~Check-Apps-${#},~Check-Flows-${#}"
                   exec="onos-check-all-logs"/>
+            -->
         </sequential>
     </group>
 
