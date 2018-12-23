@@ -19,6 +19,7 @@ package org.onosproject.routeservice.store;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -132,7 +133,14 @@ public class DefaultRouteTable implements RouteTable {
 
     @Override
     public void remove(Route route) {
-        routes.remove(route.prefix().toString(), new RawRoute(route));
+        getRoutes(route.prefix())
+            .routes()
+            .stream()
+            .filter(r -> r.equals(route))
+            .findAny()
+            .ifPresent(matchRoute -> {
+                routes.remove(matchRoute.prefix().toString(), new RawRoute(matchRoute));
+            });
     }
 
     @Override
