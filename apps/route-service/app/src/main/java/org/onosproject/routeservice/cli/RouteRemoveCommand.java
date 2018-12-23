@@ -21,6 +21,7 @@ import org.apache.karaf.shell.commands.Command;
 import org.onlab.packet.IpAddress;
 import org.onlab.packet.IpPrefix;
 import org.onosproject.cli.AbstractShellCommand;
+import org.onosproject.cluster.NodeId;
 import org.onosproject.routeservice.Route;
 import org.onosproject.routeservice.RouteAdminService;
 
@@ -45,6 +46,9 @@ public class RouteRemoveCommand extends AbstractShellCommand {
             required = false)
     String source = null;
 
+    @Argument(index = 3, name = "sourceNode", description = "Source node ID", required = false)
+    String sourceNode = null;
+
     @Override
     protected void execute() {
         RouteAdminService service = AbstractShellCommand.get(RouteAdminService.class);
@@ -56,8 +60,10 @@ public class RouteRemoveCommand extends AbstractShellCommand {
         // otherwise routes are created with corresponding source.
 
         Route route = source == null ?
-                new Route(Route.Source.STATIC, prefix, nextHop) :
-                new Route(Route.Source.valueOf(source), prefix, nextHop);
+            new Route(Route.Source.STATIC, prefix, nextHop) :
+            sourceNode == null ?
+                new Route(Route.Source.valueOf(source), prefix, nextHop)
+                : new Route(Route.Source.valueOf(source), prefix, nextHop, NodeId.nodeId(sourceNode));
 
         service.withdraw(Collections.singleton(route));
     }
