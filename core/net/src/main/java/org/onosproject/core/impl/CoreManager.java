@@ -97,6 +97,7 @@ public class CoreManager implements CoreService {
 
     @Activate
     protected void activate() {
+        log.warn("Available processors: {}", Runtime.getRuntime().availableProcessors());
         registerApplication(CORE_APP_NAME);
         cfgService.registerProperties(getClass());
     }
